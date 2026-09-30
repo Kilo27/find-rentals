@@ -14,7 +14,7 @@ if (!password && process.env.ALLOW_NO_AUTH !== "1") {
 const dataDir = path.resolve(process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || "./data");
 const store = new Store(dataDir);
 const pusher = createPusher({ store });
-const scanner = createScanner({ store, pusher });
+const scanner = createScanner({ store, pusher, log: console });
 const startDelayMs = Number(process.env.SCAN_START_DELAY_SECONDS ?? 10) * 1000;
 const scheduler = createScheduler({ store, scanner, startDelayMs });
 

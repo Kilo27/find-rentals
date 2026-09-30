@@ -49,6 +49,17 @@ npm run probe -- --url=https://example-agent.ie/lettings/limerick   # try any pa
 
 It prints, per page, how many listings it recognised and for each: title, price, coordinates, availability, owner-occupied signal and whether the filters would pass it. If a source shows 0 listings it prints the start of the HTML it received, and **Status → Sources** plus `GET /api/debug` (while logged in) keep the same diagnostics for later scans.
 
+## Reading the logs
+
+Each scan writes one summary line to the service logs (Railway: service → Deployments → View logs), plus one line per problem page:
+
+```
+[scan] ok mode=normal 4120ms | daft=12 ul=8 rent=0! myhome=ERROR(HTTP 403 from www.myhome.ie) | candidates=20 rejected=14 pending=0 matches=6 new=1 notified=1
+[scan] rent https://www.rent.ie/...: WARNING page loaded but no listings were recognised (layout change, bot wall or empty results)
+```
+
+`name=N` is how many listings that source returned, `!` means a page had a warning or error, and `ERROR(...)` means the whole source failed. Logs contain counts and source health only, never listing contents or the password.
+
 ## How it behaves
 
 - First scan is a *baseline*: one "Watching started: N matches" notification, existing listings marked seen. If detail pages are still being fetched (limit per scan), the baseline waits until they are done.
