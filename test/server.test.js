@@ -1,0 +1,104 @@
+import test, { before, after } from "node:test";
+import assert from "node:assert/strict";
+import { createApp } from "../src/app.js";
+import { createScanner } from "../src/scan.js";
+import { createScheduler } from "../src/scheduler.js";
+import { gatewayResponse, makeFetch, rawListing, tempStore, fakePusher } from "./helpers.js";
+
+let server;
+let base;
+let store;
+let cookie = "";
+
+const call = async (method, path, body, withCookie = true) => {
+  const res = await fetch(base + path, {
+    method,
+    headers: { "Content-Type": "application/json", ...(withCookie && cookie ? { Cookie: cookie } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const set = res.headers.get("set-cookie");
+  return { res, data: await res.json().catch(() => null), set };
+};
+
+before(async () => {
+  ({ store } = tempStore());
+  store.data.config = { ...store.data.config, sections: ["sharing"] };
+  const pusher = fakePusher();
+  const fetchImpl = makeFetch(() => gatewayResponse([rawListing({ id: 1 })]));
+  const scanner = createScanner({ store, pusher, fetchImpl });
+  const scheduler = createScheduler({ store, scanner, startDelayMs: 3_600_000 });
+  const app = createApp({ store, scanner, pusher, scheduler, password: "hunter2", secret: "s3cret" });
+  await new Promise((r) => (server = app.listen(0, "127.0.0.1", r)));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+
+after(() => server.close());
+
+test("health and static shell are public", async () => {
+  assert.equal((await fetch(`${base}/healthz`)).status, 200);
+  const html = await (await fetch(`${base}/`)).text();
+  assert.match(html, /manifest\.webmanifest/);
+  const sw = await fetch(`${base}/sw.js`);
+  assert.equal(sw.status, 200);
+  assert.equal(sw.headers.get("cache-control"), "no-cache");
+  const manifest = await fetch(`${base}/manifest.webmanifest`);
+  assert.equal((await manifest.json()).display, "standalone");
+  assert.equal((await fetch(`${base}/icons/apple-touch-icon.png`)).headers.get("content-type"), "image/png");
+});
+
+test("API requires auth", async () => {
+  for (const [m, p] of [["GET", "/api/state"], ["PUT", "/api/config"], ["POST", "/api/scan"], ["POST", "/api/test-push"], ["GET", "/api/debug"]]) {
+    const { res } = await call(m, p, m === "GET" ? undefined : {}, false);
+    assert.equal(res.status, 401, `${m} ${p}`);
+  }
+});
+
+test("wrong password is rejected; right password sets an httpOnly cookie", async () => {
+  const bad = await call("POST", "/api/login", { password: "nope" }, false);
+  assert.equal(bad.res.status, 401);
+  const good = await call("POST", "/api/login", { password: "hunter2" }, false);
+  assert.equal(good.res.status, 200);
+  assert.match(good.set, /fr_session=/);
+  assert.match(good.set, /HttpOnly/i);
+  cookie = good.set.split(";")[0];
+});
+
+test("scan now populates matches; state endpoint exposes config and VAPID key", async () => {
+  const scan = await call("POST", "/api/scan");
+  assert.equal(scan.res.status, 200);
+  assert.equal(scan.data.lastRun.ok, true);
+  const { data } = await call("GET", "/api/state");
+  assert.equal(data.matches.length, 1);
+  assert.equal(data.config.radiusKm, 2);
+  assert.equal(data.vapidPublicKey, "test-public-key");
+  assert.ok(data.sections.sharing);
+});
+
+test("config can be updated, is validated, and persists to disk", async () => {
+  const ok = await call("PUT", "/api/config", { radiusKm: 1.5, priceMax: 700, excludeKeywords: "noisy, smoking" });
+  assert.equal(ok.res.status, 200);
+  assert.equal(ok.data.config.radiusKm, 1.5);
+  assert.deepEqual(ok.data.config.excludeKeywords, ["noisy", "smoking"]);
+  assert.equal(store.data.config.priceMax, 700);
+
+  const bad = await call("PUT", "/api/config", { radiusKm: 500, intervalMinutes: 1 });
+  assert.equal(bad.res.status, 400);
+  assert.ok(bad.data.errors.length >= 2);
+  assert.equal(store.data.config.radiusKm, 1.5, "rejected update must not change config");
+
+  const reloaded = JSON.parse((await import("node:fs")).readFileSync(store.file, "utf8"));
+  assert.equal(reloaded.config.radiusKm, 1.5);
+});
+
+test("logout clears the session", async () => {
+  const out = await call("POST", "/api/logout");
+  assert.equal(out.res.status, 200);
+  const after = await call("GET", "/api/state", undefined, false);
+  assert.equal(after.res.status, 401);
+});
+
+test("login is rate limited", async () => {
+  let last;
+  for (let i = 0; i < 12; i++) last = await call("POST", "/api/login", { password: "wrong" }, false);
+  assert.equal(last.res.status, 429);
+});
