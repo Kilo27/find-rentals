@@ -457,3 +457,25 @@ test("an empty trailing results page is normal, not a layout warning", async () 
   assert.equal(run.sources[0].notes[0].warning, undefined);
   assert.equal(run.matches, 1);
 });
+
+test("list data carrying literal 0,0 or NaN coordinates still gets the advert page's real ones (the live MyHome case)", async () => {
+  const MYHOME = "https://www.myhome.ie/rentals/limerick/property-to-rent";
+  const rows = [
+    { id: 7101, price: 1200, displayAddress: "5 Near Close, Castletroy", url: "/rentals/brochure/5-near-close/7101", latitude: 0, longitude: 0 },
+    { id: 7102, price: 2500, displayAddress: "35 Far Quay, Corbally", url: "/rentals/brochure/35-far-quay/7102", latitude: 0, longitude: 0 },
+  ];
+  const jsonLd = { "@type": "Apartment", name: "7 Jsonld Road, Castletroy", url: "/rentals/brochure/7-jsonld/7103", offers: { price: "1100" }, geo: { latitude: null, longitude: null } };
+  const listHtml = `<html><head><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { results: rows } })}</script>
+    <script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body>${"<p>x</p>".repeat(40)}
+    ${rows.map((r) => `<a href="${r.url}">${r.displayAddress}</a> €${r.price} / month`).join("\n")}</body></html>`;
+  const d = (km) => page(`<meta property="place:location:latitude" content="${kmNorth(km).lat.toFixed(5)}"><meta property="place:location:longitude" content="${kmNorth(km).lng.toFixed(5)}">`, "<h1>Brochure</h1><p>A bright property with good transport links and all amenities nearby, available now.</p>");
+  const fetchImpl = router([[MYHOME, listHtml], [/7101/, d(0.8)], [/7102/, d(3.0)], [/7103/, d(1.2)]]);
+  const { store, pusher } = setup(["myhome"], { myhomeUrls: [MYHOME] });
+  const run = await scannerFor(store, pusher, fetchImpl).run();
+
+  assert.equal(run.candidates, 3);
+  assert.deepEqual(store.data.matches.map((m) => m.id).sort(), ["myhome:7101", "myhome:7103"], "the 3.0 km one is rejected on its real coordinates");
+  for (const m of store.data.matches) assert.equal(m.distanceSource, "source", `${m.id} uses the advert page's coordinates, not a guess`);
+  assert.ok(Math.abs(store.data.matches.find((m) => m.id === "myhome:7101").distanceKm - 0.8) < 0.02);
+  assert.ok(Math.abs(store.data.matches.find((m) => m.id === "myhome:7103").distanceKm - 1.2) < 0.02);
+});

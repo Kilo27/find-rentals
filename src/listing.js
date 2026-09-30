@@ -2,6 +2,10 @@ import { parsePriceMonthly } from "./text.js";
 
 const ROOM_RE = /\b(room|rooms|share|sharing|shared|bedsit|single|double|twin|ensuite|en-suite|lodger|digs)\b/i;
 
+// 0,0 ("null island"), NaN and other non-locations are "no coordinate", never a place.
+export const validCoord = (lat, lng) =>
+  Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01;
+
 export function guessKind(title = "", url = "") {
   return ROOM_RE.test(`${title} ${url}`) ? "room" : "property";
 }
@@ -28,7 +32,7 @@ export function makeListing({
   pending = false,
 }) {
   const bedsMatch = bedsText ? /(\d+)/.exec(bedsText) : null;
-  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01;
+  const hasCoords = validCoord(lat, lng);
   return {
     id: `${source}:${externalId}`,
     source,
