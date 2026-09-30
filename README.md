@@ -86,19 +86,19 @@ To search somewhere else: change the centre, radius, area names, the source page
 
 ## When a site blocks cloud hosts (proxy)
 
-Daft and Rent.ie refuse requests from some cloud providers' IP addresses (HTTP 403, or Daft's "Service Unavailable" page). The Status tab and the logs show this. Two ways round it, using the same setting:
+Daft and Rent.ie refuse requests from cloud providers' IP addresses (HTTP 403, or Daft's "Service Unavailable" page). **This was tested: a relay running in Railway's EU West (Amsterdam) region is refused too**, so moving regions or adding another cloud service does not help. The request has to leave from an ordinary (residential or ISP) IP address. Two ways, using the same setting:
 
-1. **Your own relay in another region.** Run the same image as a second Railway service with `PROXY_MODE=1`, `PROXY_PASSWORD=<long random>`, `PORT=3128` and a different region (e.g. EU West). It is a minimal HTTPS relay: password-protected CONNECT tunnels only, to `daft.ie` and `rent.ie` only (`PROXY_ALLOW`), port 443 only, never to private addresses. **Do not give it a public domain**; the app reaches it over Railway's private network. On start it logs `[relay] selftest daft ...` so you can see whether that region is let in.
-2. **A paid proxy service.** Any HTTP(S) proxy URL works.
+1. **A paid residential/ISP proxy service.** Any HTTP(S) proxy URL works.
+2. **A relay on your own home connection.** The same image can run as a minimal relay (`PROXY_MODE=1 PROXY_PASSWORD=<long random> PORT=3128 node src/server.js`) on a PC or Raspberry Pi at home. It only allows password-protected HTTPS tunnels (CONNECT) to `daft.ie` and `rent.ie` (`PROXY_ALLOW`), on port 443, never to private addresses. You must make it reachable from Railway (router port-forward or a tunnel). Plain HTTP to the relay exposes only its password, so use a long random one; the traffic to the sites inside the tunnel is HTTPS.
 
 Then set on the app service:
 
 ```
-SCRAPER_PROXY_URL=http://relay:<PROXY_PASSWORD>@<relay-service-name>.railway.internal:3128
+SCRAPER_PROXY_URL=http://relay:<PROXY_PASSWORD>@<relay-host>:3128
 SCRAPER_PROXY_SOURCES=daft,rent      # default; only these go through the proxy
 ```
 
-Other sources and the geocoder stay direct. The scan log line ends with `via-proxy=daft,rent` when it is active.
+Other sources and the geocoder stay direct. The scan log line ends with `via-proxy=daft,rent` when it is active. On start the relay logs `[relay] selftest daft ...` and `[relay] selftest rent.ie ...`, which tells you straight away whether its connection is let in.
 
 ## Limitations
 
