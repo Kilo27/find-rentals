@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { haversineKm } from "../src/geo.js";
 import { DEFAULT_CONFIG, ConfigError, normalizeConfig } from "../src/config.js";
-import { buildPayload, fetchSection, normalizeListing, parsePriceMonthly, shapeIdFor } from "../src/daft.js";
+import { buildPayload, fetchSection, normalizeListing, parsePriceMonthly, resetHeaderProfiles, shapeIdFor } from "../src/daft.js";
 import { evaluateListing } from "../src/filter.js";
 import { UL, gatewayResponse, httpError, kmNorth, makeFetch, rawListing } from "./helpers.js";
 
@@ -131,12 +131,33 @@ test("daft: retries without server filters on a 4xx and reports degraded", async
   assert.equal(fetchImpl.calls[1].body.filters, undefined);
 });
 
-test("daft: 403 and 429 are not retried", async () => {
-  for (const status of [403, 429, 500]) {
+test("daft: 429 and 5xx are not retried; 403 tries both header sets once, then fails with the body", async () => {
+  for (const status of [429, 500]) {
     const fetchImpl = makeFetch(() => httpError(status));
     await assert.rejects(fetchSection(config(), "sharing", { fetchImpl }), (e) => e.status === status);
     assert.equal(fetchImpl.calls.length, 1);
   }
+  resetHeaderProfiles();
+  const blocked = makeFetch(() => httpError(403, "Attention Required | Cloudflare"));
+  await assert.rejects(fetchSection(config(), "sharing", { fetchImpl: blocked }), (e) => e.status === 403 && /Cloudflare/.test(e.body));
+  assert.equal(blocked.calls.length, 2, "library-style headers, then browser-style headers");
+});
+
+test("daft: falls back to browser-style headers when library-style ones are refused, and remembers", async () => {
+  resetHeaderProfiles();
+  const fetchImpl = makeFetch((body, n) => (n === 1 ? httpError(403) : gatewayResponse([rawListing({ id: 1 })])));
+  const r = await fetchSection(config(), "sharing", { fetchImpl });
+  assert.equal(r.listings.length, 1);
+  const [first, second] = fetchImpl.calls;
+  assert.equal(first.opts.headers["User-Agent"], "", "library profile sends a blank User-Agent like daftlistings");
+  assert.equal(first.opts.headers.Origin, undefined);
+  assert.match(second.opts.headers["User-Agent"], /Mozilla/);
+  assert.equal(second.opts.headers.Origin, "https://www.daft.ie");
+
+  const next = makeFetch(() => gatewayResponse([]));
+  await fetchSection(config(), "sharing", { fetchImpl: next });
+  assert.match(next.calls[0].opts.headers["User-Agent"], /Mozilla/, "the working profile is tried first next time");
+  resetHeaderProfiles();
 });
 
 const ev = (over, cfg) => {
@@ -163,6 +184,13 @@ test("filter: listings without coordinates follow the unverified-distance policy
   assert.equal(evaluateListing(mk("Room in Ennis"), config()).reason, "no location");
   assert.equal(evaluateListing(mk("Room in Ennis"), config({ unverifiedDistance: "include" })).ok, true);
   assert.equal(evaluateListing(nearby, config({ unverifiedDistance: "exclude" })).reason, "no location");
+});
+
+test("filter: locality hints match the address or title only, never marketing text", () => {
+  const mk = (title, text) => ({ ...normalizeListing({ id: 9, title, price: "€500 per month", description: text }, "sharing") });
+  assert.equal(evaluateListing(mk("Mystery Place", "5 min from UL, close to Castletroy"), config()).reason, "no location");
+  assert.equal(evaluateListing(mk("Room on Plassey Road", ""), config()).ok, true);
+  assert.ok(!config().localityHints.includes("university of limerick"));
 });
 
 test("filter: owner-occupied by field, keyword, and when toggled off", () => {

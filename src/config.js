@@ -39,7 +39,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   endGraceDays: 60,
   geocode: true,
   unverifiedDistance: "locality",
-  localityHints: ["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry", "university of limerick"],
+  localityHints: ["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry"],
   respectRobots: true,
   maxDetailFetches: 40,
   priceMin: null,

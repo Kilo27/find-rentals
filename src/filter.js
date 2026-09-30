@@ -79,8 +79,9 @@ export function evaluateLocation(listing, config) {
   flags.push("distance-unverified");
   if (config.unverifiedDistance === "exclude") return { ok: false, reason: "no location", distanceKm: null, flags };
   if (config.unverifiedDistance === "locality") {
-    const text = listing.text.toLowerCase();
-    if (!config.localityHints.some((h) => text.includes(h))) return { ok: false, reason: "no location", distanceKm: null, flags };
+    // Only the address/title counts: marketing text says "close to UL" about places miles away.
+    const place = `${listing.address ?? ""} ${listing.title}`.toLowerCase();
+    if (!config.localityHints.some((h) => place.includes(h))) return { ok: false, reason: "no location", distanceKm: null, flags };
   }
   return { ok: true, reason: null, distanceKm: null, flags };
 }

@@ -73,6 +73,17 @@ test("availability: immediate", () => {
   assert.equal(parseAvailability("Available immediately until June", NOW).availableTo, "2027-06-30");
 });
 
+test("availability: 'Available: Now' with a colon, as on the UL portal", () => {
+  const r = parseAvailability("Available: Now 2 LMKP10131726 €850 Per person per month", NOW);
+  assert.equal(r.immediate, true);
+  assert.equal(r.availableFrom, "2026-09-30");
+});
+
+test("the UL 'Resident Landlord/Host Family' label is recognised as owner-occupied", () => {
+  assert.equal(ownerOccupiedFromText("The Meadows, Limerick Resident Landlord/Host Family, Room in House / Apartment with other tenants"), true);
+  assert.equal(ownerOccupiedFromText("Dublin Rd, Castletroy Room in House / Apartment with other tenants"), null);
+});
+
 test("availability: no false positives from ordinary words", () => {
   const r = parseAvailability("Close to the market, may suit a student. Marvellous location, from €650 per month.", NOW);
   assert.equal(r.availableFrom, null);

@@ -22,8 +22,12 @@ export class DaftError extends Error {
 
 const endpoint = () => process.env.DAFT_API_URL || "https://gateway.daft.ie/api/v2/ads/listings";
 
-function headers() {
-  return {
+// Header sets tried in order. "library" mirrors the open-source daftlistings client (blank User-Agent,
+// no Origin), which Daft's gateway accepts; "browser" is tried if that is refused. The one that
+// works is remembered for later requests.
+const PROFILES = {
+  library: () => ({ "Content-Type": "application/json", "User-Agent": process.env.DAFT_USER_AGENT ?? "", brand: "daft", platform: "web" }),
+  browser: () => ({
     "Content-Type": "application/json",
     Accept: "application/json",
     "User-Agent": process.env.DAFT_USER_AGENT || DEFAULT_UA,
@@ -31,8 +35,12 @@ function headers() {
     Referer: `${DAFT_BASE}/`,
     brand: "daft",
     platform: "web",
-  };
-}
+  }),
+};
+let profileOrder = ["library", "browser"];
+export const resetHeaderProfiles = () => {
+  profileOrder = ["library", "browser"];
+};
 
 // Daft only offers stored radius shapes (1/3/5/10/20 km); pick the smallest that
 // covers the requested radius. The exact radius is enforced later via haversine.
@@ -73,26 +81,38 @@ export function buildPayload(config, section, from = 0, withServerFilters = true
 }
 
 async function post(fetchImpl, payload) {
-  let res;
-  try {
-    res = await fetchImpl(endpoint(), {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch (err) {
-    throw new DaftError(`Network error calling Daft: ${err.message}`);
+  let refused = null;
+  for (const name of profileOrder) {
+    let res;
+    try {
+      res = await fetchImpl(endpoint(), {
+        method: "POST",
+        headers: PROFILES[name](),
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (err) {
+      throw new DaftError(`Network error calling Daft: ${err.message}`);
+    }
+    if (res.status === 403) {
+      refused = res;
+      continue;
+    }
+    if (!res.ok) {
+      const body = (await res.text().catch(() => "")).slice(0, 300);
+      throw new DaftError(`Daft API returned HTTP ${res.status}`, { status: res.status, body });
+    }
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new DaftError("Daft API returned non-JSON response");
+    }
+    profileOrder = [name, ...profileOrder.filter((n) => n !== name)];
+    return data;
   }
-  if (!res.ok) {
-    const body = (await res.text().catch(() => "")).slice(0, 300);
-    throw new DaftError(`Daft API returned HTTP ${res.status}`, { status: res.status, body });
-  }
-  try {
-    return await res.json();
-  } catch {
-    throw new DaftError("Daft API returned non-JSON response");
-  }
+  const body = (await refused.text().catch(() => "")).slice(0, 300);
+  throw new DaftError("Daft API returned HTTP 403", { status: 403, body });
 }
 
 const canRetryWithoutFilters = (err) =>

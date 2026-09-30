@@ -93,7 +93,21 @@ export function createGeocoder({
 }
 
 export async function resolveLocation(listing, config, geocoder, budget) {
-  if (listing.lat !== null || !config.geocode || !geocoder) return;
+  if (!config.geocode || !geocoder) return;
+  if (listing.lat !== null) {
+    // Coordinates scraped from a page are cross-checked against the address; the API's own are trusted.
+    if (listing.source === "daft" || listing.distanceSource !== "source") return;
+    const [q] = addressQueries(listing);
+    if (!q) return;
+    const r = await geocoder.geocode(q, config.center, budget);
+    if (r && !r.coarse && haversineKm(listing.lat, listing.lng, r.lat, r.lng) > 2) {
+      listing.lat = r.lat;
+      listing.lng = r.lng;
+      listing.distanceSource = "geocoded";
+      listing.coordsCorrected = true;
+    }
+    return;
+  }
   for (const q of addressQueries(listing)) {
     const r = await geocoder.geocode(q, config.center, budget);
     if (r) {

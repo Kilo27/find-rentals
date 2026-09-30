@@ -1,8 +1,10 @@
 import { ADAPTERS } from "./sources/index.js";
+import { usableDetail } from "./sources/web.js";
 import { createFetcher } from "./html.js";
 import { createGeocoder, resolveLocation } from "./geocode.js";
 import { analyzeListing, evaluateLocation, evaluateNonLocation } from "./filter.js";
 import { dedupe } from "./dedupe.js";
+import { stripSharedCoords } from "./coords.js";
 import { buildListingPayload } from "./push.js";
 
 const MAX_INDIVIDUAL_PUSHES = 5;
@@ -11,7 +13,7 @@ const SEEN_TTL_MS = 365 * 24 * 3600_000;
 const CACHE_TTL_MS = 14 * 24 * 3600_000;
 const MAX_PENDING_SCANS = 5;
 const MAX_BASELINE_SCANS = 6;
-const GEOCODE_BUDGET = 30;
+const GEOCODE_BUDGET = 60;
 const SOURCE_ALERT_AFTER = 6;
 
 const srcBrief = (s) => {
@@ -35,12 +37,18 @@ export function problemLines(run) {
   for (const s of run.sources) {
     for (const n of s.notes) {
       const where = `${s.id} ${n.group}`;
-      if (!n.ok) out.push(`[scan] ${where}: ERROR ${n.error}`);
+      if (!n.ok) {
+        const body = n.body ? ` [${String(n.body).replace(/\s+/g, " ").slice(0, 120)}]` : "";
+        out.push(`[scan] ${where}: ERROR ${n.error}${body}`);
+      }
       else if (n.warning) out.push(`[scan] ${where}: WARNING ${n.warning}`);
       else if (n.skipped) out.push(`[scan] ${where}: skipped, ${n.skipped}`);
       else if (n.degraded) out.push(`[scan] ${where}: server filters rejected, ran unfiltered`);
     }
     if (!s.ok && s.notes.length === 0) out.push(`[scan] ${s.id}: ERROR ${s.error}`);
+  }
+  for (const [source, count] of Object.entries(run.coordsIgnored ?? {})) {
+    out.push(`[scan] ${source}: ignored ${count} coordinate(s) shared by many listings (site-level map position, not the property)`);
   }
   return out;
 }
@@ -71,6 +79,10 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     const nowIso = t0.toISOString();
     const config = store.data.config;
     const d = store.data;
+
+    for (const [id, v] of Object.entries(d.pageCache)) {
+      if (id.startsWith("ul:") || (v.detail && !usableDetail(v.detail))) delete d.pageCache[id];
+    }
 
     const deps = {
       fetchImpl,
@@ -152,6 +164,8 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       }
     }
 
+    const coordsIgnored = stripSharedCoords([...candidates.values()], d.siteConstants);
+
     const survivors = [];
     let rejected = 0;
     let pendingCount = 0;
@@ -184,6 +198,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       }
       const flags = [...a.flags, ...b.flags];
       if (listing.pending) flags.push("unenriched");
+      if (listing.coordsCorrected) flags.push("coords-corrected");
       survivors.push({ ...listing, distanceKm: b.distanceKm, flags });
     }
     d.pendingAttempts = pendingAttempts;
@@ -265,6 +280,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       candidates: candidates.size,
       rejected,
       pending: pendingCount,
+      coordsIgnored,
       matches: matches.length,
       newCount: fresh.length,
       notified,

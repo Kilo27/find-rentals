@@ -36,8 +36,9 @@ const html = (id, label, urlsKey, opts = {}) => ({
 
 export const ADAPTERS = {
   daft,
-  ul: html("ul", "UL Accommodation", "ulUrls", { hrefRe: /\/Advert\/\d+/i, paginate: false }),
+  // The print page already lists address, price, availability and landlord type per advert; the advert pages are an empty JavaScript shell.
+  ul: html("ul", "UL Accommodation", "ulUrls", { hrefRe: /\/Advert\/\d+/i, paginate: false, detail: false, titleIsAddress: true }),
   rent: html("rent", "Rent.ie", "rentUrls", { hrefRe: ID_IN_PATH, paginate: true }),
-  myhome: html("myhome", "MyHome.ie", "myhomeUrls", { hrefRe: ID_IN_PATH, paginate: true }),
+  myhome: html("myhome", "MyHome.ie", "myhomeUrls", { hrefRe: /\/brochure\/.+\/\d+/i, paginate: true }),
   web: html("web", "Custom pages", "webUrls", { hrefRe: /\d{5,}/, paginate: true }),
 };

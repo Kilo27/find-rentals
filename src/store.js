@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_CONFIG, normalizeConfig } from "./config.js";
 
+// Defaults shipped earlier that were wrong: "university of limerick" is the destination, not a nearby area,
+// and matched almost every advert.
+const OLD_LOCALITY_HINTS = JSON.stringify(["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry", "university of limerick"]);
+
 const freshState = () => ({
   version: 1,
   config: normalizeConfig(DEFAULT_CONFIG),
@@ -15,6 +19,7 @@ const freshState = () => ({
   debug: {},
   pageCache: {},
   geocache: {},
+  siteConstants: {},
   sourceHealth: {},
   pendingAttempts: {},
   baselineScans: 0,
@@ -40,6 +45,9 @@ export class Store {
       const state = { ...freshState(), ...parsed };
       try {
         state.config = normalizeConfig(parsed.config ?? {});
+        if (JSON.stringify(state.config.localityHints) === OLD_LOCALITY_HINTS) {
+          state.config.localityHints = [...DEFAULT_CONFIG.localityHints];
+        }
       } catch {
         state.config = normalizeConfig(DEFAULT_CONFIG);
       }

@@ -375,7 +375,7 @@ const STOP_TAGS = new Set(["body", "html", "ul", "ol", "table", "tbody", "main",
 
 // Finds one "card" per listing link without relying on site-specific class names:
 // climb from the link until the container would hold a second distinct listing.
-export function extractCards($, baseUrl, hrefRe) {
+export function extractCards($, baseUrl, hrefRe, center = null) {
   const byKey = new Map();
   const keyOf = (a) => {
     const u = resolveUrl(baseUrl, $(a).attr("href"));
@@ -418,12 +418,13 @@ export function extractCards($, baseUrl, hrefRe) {
       if (src && !src.startsWith("data:")) image = resolveUrl(baseUrl, src);
     });
     const beds = /(\d+)\s*(?:bed(?:room)?s?)\b/i.exec(text);
+    const own = center ? coordsFromHtml($.html(card), center) : null;
     cards.push({
       url: key,
       title,
       priceText: findPriceText(text),
-      lat: null,
-      lng: null,
+      lat: own?.lat ?? null,
+      lng: own?.lng ?? null,
       bedsText: beds ? `${beds[1]} Bed` : null,
       image,
       address: "",
