@@ -84,6 +84,22 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 
 To search somewhere else: change the centre, radius, area names, the source page URLs and the Daft location ID (IDs are in the open-source [`daftlistings`](https://pypi.org/project/daftlistings/) package, `location.py`).
 
+## When a site blocks cloud hosts (proxy)
+
+Daft and Rent.ie refuse requests from some cloud providers' IP addresses (HTTP 403, or Daft's "Service Unavailable" page). The Status tab and the logs show this. Two ways round it, using the same setting:
+
+1. **Your own relay in another region.** Run the same image as a second Railway service with `PROXY_MODE=1`, `PROXY_PASSWORD=<long random>`, `PORT=3128` and a different region (e.g. EU West). It is a minimal HTTPS relay: password-protected CONNECT tunnels only, to `daft.ie` and `rent.ie` only (`PROXY_ALLOW`), port 443 only, never to private addresses. **Do not give it a public domain**; the app reaches it over Railway's private network. On start it logs `[relay] selftest daft ...` so you can see whether that region is let in.
+2. **A paid proxy service.** Any HTTP(S) proxy URL works.
+
+Then set on the app service:
+
+```
+SCRAPER_PROXY_URL=http://relay:<PROXY_PASSWORD>@<relay-service-name>.railway.internal:3128
+SCRAPER_PROXY_SOURCES=daft,rent      # default; only these go through the proxy
+```
+
+Other sources and the geocoder stay direct. The scan log line ends with `via-proxy=daft,rent` when it is active.
+
 ## Limitations
 
 - Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's gateway is unofficial. If Railway's IPs are blocked you will get a "looks broken" notification.
