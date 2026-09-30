@@ -14,7 +14,40 @@ const MAX_BASELINE_SCANS = 6;
 const GEOCODE_BUDGET = 30;
 const SOURCE_ALERT_AFTER = 6;
 
-export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date() }) {
+const srcBrief = (s) => {
+  if (!s.ok) return `${s.id}=ERROR(${s.error})`;
+  const flagged = s.notes.some((n) => n.warning || !n.ok);
+  return `${s.id}=${s.fetched}${flagged ? "!" : ""}`;
+};
+
+// One line per scan for the platform logs: counts and source health only, never listing contents.
+export function summarizeRun(run) {
+  const sources = run.sources.map(srcBrief).join(" ");
+  if (!run.ok) return `[scan] FAILED in ${run.durationMs}ms: ${run.error} | ${sources}`;
+  return (
+    `[scan] ok mode=${run.mode} ${run.durationMs}ms | ${sources} | candidates=${run.candidates} rejected=${run.rejected}` +
+    ` pending=${run.pending} matches=${run.matches} new=${run.newCount} notified=${run.notified}`
+  );
+}
+
+export function problemLines(run) {
+  const out = [];
+  for (const s of run.sources) {
+    for (const n of s.notes) {
+      const where = `${s.id} ${n.group}`;
+      if (!n.ok) out.push(`[scan] ${where}: ERROR ${n.error}`);
+      else if (n.warning) out.push(`[scan] ${where}: WARNING ${n.warning}`);
+      else if (n.skipped) out.push(`[scan] ${where}: skipped, ${n.skipped}`);
+      else if (n.degraded) out.push(`[scan] ${where}: server filters rejected, ran unfiltered`);
+    }
+    if (!s.ok && s.notes.length === 0) out.push(`[scan] ${s.id}: ERROR ${s.error}`);
+  }
+  return out;
+}
+
+const SILENT = { log() {}, warn() {} };
+
+export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT }) {
   let inflight = null;
 
   function run() {
@@ -23,6 +56,17 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   }
 
   async function doScan() {
+    const result = await scanOnce();
+    try {
+      log.log(summarizeRun(result));
+      for (const line of problemLines(result)) log.warn(line);
+    } catch {
+      /* logging must never break a scan */
+    }
+    return result;
+  }
+
+  async function scanOnce() {
     const t0 = now();
     const nowIso = t0.toISOString();
     const config = store.data.config;
