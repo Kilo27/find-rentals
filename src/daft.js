@@ -1,3 +1,7 @@
+import { makeListing } from "./listing.js";
+import { parsePriceMonthly } from "./text.js";
+
+export { parsePriceMonthly };
 export const DAFT_BASE = "https://www.daft.ie";
 export const PAGE_SIZE = 50;
 
@@ -139,14 +143,6 @@ function expandGrouped(item) {
   return [l];
 }
 
-export function parsePriceMonthly(text) {
-  const m = /€\s*([\d,]+(?:\.\d+)?)/.exec(String(text ?? ""));
-  if (!m) return null;
-  const n = Number(m[1].replace(/,/g, ""));
-  if (!Number.isFinite(n)) return null;
-  return /week/i.test(text) ? Math.round((n * 52) / 12) : Math.round(n);
-}
-
 function findOwnerOccupied(obj, depth = 0) {
   if (!obj || typeof obj !== "object" || depth > 3) return null;
   for (const [key, value] of Object.entries(obj)) {
@@ -178,26 +174,24 @@ export function normalizeListing(l, section) {
   const coords = l.point?.coordinates;
   const lng = Array.isArray(coords) ? Number(coords[0]) : NaN;
   const lat = Array.isArray(coords) ? Number(coords[1]) : NaN;
-  const priceText = typeof l.price === "string" ? l.price : "";
-  const bedsText = typeof l.numBedrooms === "string" ? l.numBedrooms : null;
-  const bedsMatch = bedsText ? /(\d+)/.exec(bedsText) : null;
-  const title = String(l.title ?? l.displayAddress ?? "Listing");
 
-  return {
-    id,
+  return makeListing({
+    source: "daft",
+    sourceLabel: "Daft.ie",
+    group: section,
     section,
-    title,
+    kind: section === "residential-to-rent" ? "property" : "room",
+    externalId: id,
     url: l.seoFriendlyPath ? new URL(l.seoFriendlyPath, DAFT_BASE).href : `${DAFT_BASE}/${id}`,
-    priceText,
-    priceMonthly: parsePriceMonthly(priceText),
-    bedsText,
-    beds: bedsMatch ? Number(bedsMatch[1]) : null,
+    title: String(l.title ?? l.displayAddress ?? "Listing"),
+    priceText: typeof l.price === "string" ? l.price : "",
+    lat,
+    lng,
+    bedsText: typeof l.numBedrooms === "string" ? l.numBedrooms : null,
     propertyType: typeof l.propertyType === "string" ? l.propertyType : null,
-    lat: Number.isFinite(lat) ? lat : null,
-    lng: Number.isFinite(lng) ? lng : null,
     publishedAt: typeof l.publishDate === "number" ? new Date(l.publishDate).toISOString() : null,
     ownerOccupied: findOwnerOccupied(l),
     image: firstImageUrl(l),
-    text: [title, l.description, l.shortDescription].filter((s) => typeof s === "string").join(" \n "),
-  };
+    text: [l.description, l.shortDescription].filter((s) => typeof s === "string").join(" \n "),
+  });
 }

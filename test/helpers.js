@@ -33,10 +33,10 @@ export function gatewayResponse(items, total = items.length) {
 
 export function makeFetch(handler) {
   const calls = [];
-  const fn = async (url, opts) => {
-    const body = JSON.parse(opts.body);
+  const fn = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
     calls.push({ url, opts, body });
-    const out = await handler(body, calls.length);
+    const out = await handler(body, calls.length, url);
     if (out instanceof Response) return out;
     return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
   };
@@ -65,3 +65,25 @@ export function fakePusher({ subscribers = 1, sendResult } = {}) {
     removeSubscription() {},
   };
 }
+
+// Routes by exact URL (string) or RegExp. Unmatched URLs return 404.
+export function router(routes) {
+  const calls = [];
+  const fn = async (url, opts = {}) => {
+    calls.push({ url, opts });
+    for (const [pattern, handler] of routes) {
+      const hit = typeof pattern === "string" ? pattern === url : pattern.test(url);
+      if (!hit) continue;
+      const out = typeof handler === "function" ? await handler(url, opts) : handler;
+      if (out instanceof Response) return out;
+      if (typeof out === "string") return new Response(out, { status: 200, headers: { "Content-Type": "text/html" } });
+      return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("not found", { status: 404 });
+  };
+  fn.calls = calls;
+  fn.count = (re) => calls.filter((c) => re.test(c.url)).length;
+  return fn;
+}
+
+export const noSleep = async () => {};

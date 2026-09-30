@@ -1,8 +1,20 @@
+import { isSafeUrl } from "./html.js";
+
 export const SECTIONS = {
   "residential-to-rent": "Houses & apartments",
   sharing: "Rooms to rent / share",
   "student-accommodation-to-share": "Student accommodation",
 };
+
+export const SOURCES = {
+  daft: "Daft.ie",
+  ul: "UL Accommodation",
+  rent: "Rent.ie",
+  myhome: "MyHome.ie",
+  web: "Custom pages",
+};
+
+export const UNVERIFIED_MODES = ["locality", "include", "exclude"];
 
 export const DEFAULT_CONFIG = Object.freeze({
   enabled: true,
@@ -10,8 +22,26 @@ export const DEFAULT_CONFIG = Object.freeze({
   center: Object.freeze({ label: "University of Limerick", lat: 52.6733, lng: -8.5739 }),
   radiusKm: 2,
   daftLocationId: "4342",
+  sources: ["daft", "ul", "rent", "myhome"],
   sections: Object.keys(SECTIONS),
+  ulUrls: ["https://www.accommodation.ul.ie/SearchResults/Print/All"],
+  rentUrls: [
+    "https://www.rent.ie/rooms-to-rent/limerick/castletroy/",
+    "https://www.rent.ie/student-accommodation/University-of-Limerick/46/",
+    "https://www.rent.ie/houses-to-rent/limerick/castletroy/",
+    "https://www.rent.ie/apartments-to-rent/limerick/castletroy/",
+  ],
+  myhomeUrls: ["https://www.myhome.ie/rentals/limerick/property-to-rent"],
+  webUrls: [],
   excludeOwnerOccupied: true,
+  excludeWeekdayOnly: true,
+  availabilityGraceDays: 14,
+  endGraceDays: 60,
+  geocode: true,
+  unverifiedDistance: "locality",
+  localityHints: ["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry", "university of limerick"],
+  respectRobots: true,
+  maxDetailFetches: 40,
   priceMin: null,
   priceMax: null,
   bedsMin: null,
@@ -75,6 +105,13 @@ function parseDate(errors, name, value) {
   return s;
 }
 
+function parseUrls(errors, name, value) {
+  const list = Array.isArray(value) ? value : String(value ?? "").split(/[\s,]+/);
+  const urls = [...new Set(list.map((u) => String(u).trim()).filter(Boolean))];
+  for (const u of urls) if (!isSafeUrl(u)) errors.push(`${name}: "${u}" must be a public https:// URL`);
+  return urls;
+}
+
 function parseKeywords(value) {
   const list = Array.isArray(value) ? value : String(value ?? "").split(/[\n,]/);
   return [...new Set(list.map((s) => String(s).trim().toLowerCase()).filter(Boolean))];
@@ -95,8 +132,21 @@ export function normalizeConfig(input = {}) {
     },
     radiusKm: parseNumber(errors, "radiusKm", src.radiusKm, { min: 0.1, max: 20 }),
     daftLocationId: String(src.daftLocationId ?? "").trim(),
+    sources: [],
     sections: [],
+    ulUrls: parseUrls(errors, "ulUrls", src.ulUrls),
+    rentUrls: parseUrls(errors, "rentUrls", src.rentUrls),
+    myhomeUrls: parseUrls(errors, "myhomeUrls", src.myhomeUrls),
+    webUrls: parseUrls(errors, "webUrls", src.webUrls),
     excludeOwnerOccupied: parseBool(errors, "excludeOwnerOccupied", src.excludeOwnerOccupied),
+    excludeWeekdayOnly: parseBool(errors, "excludeWeekdayOnly", src.excludeWeekdayOnly),
+    availabilityGraceDays: parseNumber(errors, "availabilityGraceDays", src.availabilityGraceDays, { min: 0, max: 365, int: true }),
+    endGraceDays: parseNumber(errors, "endGraceDays", src.endGraceDays, { min: 0, max: 365, int: true }),
+    geocode: parseBool(errors, "geocode", src.geocode),
+    unverifiedDistance: String(src.unverifiedDistance ?? ""),
+    localityHints: parseKeywords(src.localityHints),
+    respectRobots: parseBool(errors, "respectRobots", src.respectRobots),
+    maxDetailFetches: parseNumber(errors, "maxDetailFetches", src.maxDetailFetches, { min: 0, max: 200, int: true }),
     priceMin: parseNumber(errors, "priceMin", src.priceMin, { min: 0, nullable: true }),
     priceMax: parseNumber(errors, "priceMax", src.priceMax, { min: 0, nullable: true }),
     bedsMin: parseNumber(errors, "bedsMin", src.bedsMin, { min: 0, int: true, nullable: true }),
@@ -112,12 +162,19 @@ export function normalizeConfig(input = {}) {
 
   if (!/^\d+$/.test(out.daftLocationId)) errors.push("daftLocationId must be a number");
 
+  if (!UNVERIFIED_MODES.includes(out.unverifiedDistance)) errors.push(`unverifiedDistance must be one of ${UNVERIFIED_MODES.join(", ")}`);
+
+  const sources = Array.isArray(src.sources) ? src.sources : [];
+  for (const id of sources) if (!(id in SOURCES)) errors.push(`unknown source "${id}"`);
+  out.sources = sources.filter((id) => id in SOURCES);
+  if (out.enabled && out.sources.length === 0) errors.push("select at least one source");
+
   const sections = Array.isArray(src.sections) ? src.sections : [];
   for (const s of sections) {
     if (!(s in SECTIONS)) errors.push(`unknown section "${s}"`);
   }
   out.sections = sections.filter((s) => s in SECTIONS);
-  if (out.enabled && out.sections.length === 0) errors.push("select at least one section");
+  if (out.enabled && out.sources.includes("daft") && out.sections.length === 0) errors.push("select at least one Daft section (or untick Daft.ie)");
 
   for (const [lo, hi] of [["priceMin", "priceMax"], ["bedsMin", "bedsMax"], ["leaseMinMonths", "leaseMaxMonths"]]) {
     if (out[lo] !== null && out[hi] !== null && out[lo] > out[hi]) errors.push(`${lo} must not exceed ${hi}`);

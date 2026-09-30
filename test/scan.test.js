@@ -11,7 +11,7 @@ const bySection = (map) => makeFetch((body) => {
 
 function setup({ pusher = fakePusher(), sections = ["sharing"] } = {}) {
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sections };
+  store.data.config = { ...store.data.config, sections, sources: ["daft"] };
   return { store, pusher };
 }
 
@@ -25,7 +25,7 @@ test("scan: first run is a baseline - one summary push, listings marked seen", a
   assert.equal(run.matches, 2);
   assert.equal(pusher.sent.length, 1);
   assert.match(pusher.sent[0].title, /Watching started: 2/);
-  assert.deepEqual(Object.keys(store.data.seen).sort(), ["1", "2"]);
+  assert.deepEqual(Object.keys(store.data.seen).sort(), ["daft:1", "daft:2"]);
   assert.equal(store.data.matches.length, 2);
   assert.equal(store.data.matches[0].text, undefined);
 });
@@ -97,13 +97,13 @@ test("scan: listings stay unseen if delivery fails to every device, then retry",
 
   items = [rawListing({ id: 1 }), rawListing({ id: 2 })];
   await scanner.run();
-  assert.equal(store.data.seen["2"], undefined);
+  assert.equal(store.data.seen["daft:2"], undefined);
 
   delivering = true;
   pusher.sent.length = 0;
   await scanner.run();
   assert.equal(pusher.sent.length, 1);
-  assert.ok(store.data.seen["2"]);
+  assert.ok(store.data.seen["daft:2"]);
 });
 
 test("scan: with no subscribers listings are still marked seen", async () => {
@@ -114,7 +114,7 @@ test("scan: with no subscribers listings are still marked seen", async () => {
   await scanner.run();
   items = [rawListing({ id: 9 })];
   await scanner.run();
-  assert.ok(store.data.seen["9"]);
+  assert.ok(store.data.seen["daft:9"]);
 });
 
 test("scan: duplicate ids across sections are collapsed", async () => {
@@ -139,7 +139,7 @@ test("scan: total failure records error and alerts on 3rd consecutive failure on
   }
   assert.equal(store.data.failureCount, 4);
   assert.equal(pusher.sent.length, 1);
-  assert.match(pusher.sent[0].title, /can't reach Daft/);
+  assert.match(pusher.sent[0].title, /can't reach any source/);
   assert.equal(store.data.baselineDone, false, "baseline must wait for a successful scan");
 });
 
@@ -176,8 +176,8 @@ test("scan: partial failure keeps previous matches for the failed section", asyn
   const run = await scanner.run();
   assert.equal(run.ok, true);
   assert.equal(store.data.failureCount, 0);
-  assert.deepEqual(store.data.matches.map((m) => m.id).sort(), ["1", "2"]);
-  assert.equal(run.sections.find((s) => s.section === "residential-to-rent").ok, false);
+  assert.deepEqual(store.data.matches.map((m) => m.id).sort(), ["daft:1", "daft:2"]);
+  assert.equal(run.sources[0].notes.find((n) => n.group === "residential-to-rent").ok, false);
 });
 
 test("scan: concurrent run() calls share one scan", async () => {
@@ -233,10 +233,10 @@ test("push: rejects malformed or non-https subscriptions", () => {
 
 test("push: listing payload formatting", () => {
   const payload = buildListingPayload(
-    { id: "3", title: "Room 3, Plassey", priceMonthly: 600, priceText: "€600 per month", distanceKm: 0.84, bedsText: "Double Room", flags: ["short-term", "owner-occupied-unknown"], url: "https://www.daft.ie/x" },
+    { id: "daft:3", title: "Room 3, Plassey", priceMonthly: 600, priceText: "€600 per month", distanceKm: 0.84, bedsText: "Double Room", sourceLabel: "Daft.ie", flags: ["short-term", "owner-occupied-unknown"], url: "https://www.daft.ie/x" },
     { center: { label: "UL" } },
   );
   assert.equal(payload.title, "€600/mo · Room 3, Plassey");
-  assert.equal(payload.body, "0.8 km from UL · Double Room · short-term friendly · check owner-occupied");
-  assert.equal(payload.tag, "listing-3");
+  assert.equal(payload.body, "0.8 km from UL · Daft.ie · Double Room · short-term friendly · check owner-occupied");
+  assert.equal(payload.tag, "listing-daft:3");
 });

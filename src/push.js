@@ -77,13 +77,21 @@ export function createPusher({ store, webpush = webpushLib, env = process.env })
 
 export function buildListingPayload(listing, config) {
   const price = listing.priceMonthly !== null ? `€${listing.priceMonthly.toLocaleString("en-IE")}/mo` : listing.priceText || "Price n/a";
-  const dist = listing.distanceKm !== null ? `${listing.distanceKm.toFixed(1)} km from ${config.center.label}` : config.center.label;
+  const flags = listing.flags ?? [];
+  let dist = config.center.label;
+  if (listing.distanceKm !== null && listing.distanceKm !== undefined) {
+    dist = `${flags.includes("distance-approx") ? "~" : ""}${listing.distanceKm.toFixed(1)} km from ${config.center.label}`;
+  } else if (flags.includes("distance-unverified")) dist = `distance unverified (${config.center.label} area)`;
   const extras = [];
-  if (listing.flags?.includes("short-term")) extras.push("short-term friendly");
-  if (listing.flags?.includes("owner-occupied-unknown")) extras.push("check owner-occupied");
+  if (flags.includes("available-now")) extras.push("available now");
+  else if (listing.availableFrom) extras.push(`from ${listing.availableFrom}`);
+  if (flags.includes("ends-early")) extras.push(`ends ${listing.availableTo}`);
+  if (flags.includes("short-term")) extras.push("short-term friendly");
+  if (flags.includes("owner-occupied-unknown")) extras.push("check owner-occupied");
+  const also = listing.alsoOn?.length ? `also on ${listing.alsoOn.map((a) => a.label).join(", ")}` : null;
   return {
     title: `${price} · ${listing.title}`.slice(0, 120),
-    body: [dist, listing.bedsText, ...extras].filter(Boolean).join(" · "),
+    body: [dist, listing.sourceLabel, listing.bedsText, ...extras, also].filter(Boolean).join(" · "),
     url: listing.url,
     tag: `listing-${listing.id}`,
   };

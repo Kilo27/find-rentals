@@ -22,7 +22,7 @@ const call = async (method, path, body, withCookie = true) => {
 
 before(async () => {
   ({ store } = tempStore());
-  store.data.config = { ...store.data.config, sections: ["sharing"] };
+  store.data.config = { ...store.data.config, sections: ["sharing"], sources: ["daft"] };
   const pusher = fakePusher();
   const fetchImpl = makeFetch(() => gatewayResponse([rawListing({ id: 1 })]));
   const scanner = createScanner({ store, pusher, fetchImpl });

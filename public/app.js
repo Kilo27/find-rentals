@@ -150,6 +150,12 @@ function renderMain() {
   );
 }
 
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00Z`);
+  return d.toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 function renderMatches() {
   if (!state.matches.length) {
     const ran = state.lastRun;
@@ -161,12 +167,13 @@ function renderMatches() {
   }
   return state.matches.map((m) => {
     const isNew = m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
-    const meta = [
-      m.bedsText,
-      m.propertyType,
-      m.distanceKm !== null && m.distanceKm !== undefined ? `${m.distanceKm.toFixed(1)} km` : null,
-      state.sections[m.section],
-    ].filter(Boolean);
+    const flags = m.flags ?? [];
+    let dist = null;
+    if (m.distanceKm !== null && m.distanceKm !== undefined) {
+      const how = m.distanceSource === "geocoded" ? " (from address)" : m.distanceSource === "geocoded-area" ? " (approx, area only)" : "";
+      dist = `${flags.includes("distance-approx") ? "~" : ""}${m.distanceKm.toFixed(1)} km${how}`;
+    } else if (flags.includes("distance-unverified")) dist = "distance unverified";
+    const meta = [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean);
     return h(
       "a",
       { class: "card", href: m.url, target: "_blank", rel: "noopener noreferrer" },
@@ -181,8 +188,13 @@ function renderMatches() {
           "div",
           { class: "badges" },
           isNew ? h("span", { class: "badge new" }, "NEW") : null,
-          m.flags?.includes("short-term") ? h("span", { class: "badge" }, "short-term friendly") : null,
-          m.flags?.includes("owner-occupied-unknown") ? h("span", { class: "badge warn" }, "check owner-occupied") : null,
+          flags.includes("available-now") ? h("span", { class: "badge" }, "available now") : m.availableFrom ? h("span", { class: "badge" }, `from ${fmtDate(m.availableFrom)}`) : null,
+          flags.includes("ends-early") ? h("span", { class: "badge warn" }, `ends ${fmtDate(m.availableTo)}`) : null,
+          flags.includes("short-term") ? h("span", { class: "badge" }, "short-term friendly") : null,
+          flags.includes("owner-occupied-unknown") ? h("span", { class: "badge warn" }, "check owner-occupied") : null,
+          flags.includes("distance-unverified") ? h("span", { class: "badge warn" }, "check distance") : null,
+          flags.includes("availability-unknown") ? h("span", { class: "badge warn" }, "availability not stated") : null,
+          m.alsoOn?.length ? h("span", { class: "badge" }, `also on ${m.alsoOn.map((a) => a.label).join(", ")}`) : null,
           m.publishedAt ? h("span", { class: "badge" }, `listed ${timeAgo(m.publishedAt)}`) : null,
         ),
       ),
@@ -215,6 +227,24 @@ function renderSettings() {
     return [h("label", {}, label), f[name], hint ? h("div", { class: "hint" }, hint) : null];
   };
 
+  const sourceChecks = Object.entries(state.sources).map(([id, label]) => {
+    f[`source:${id}`] = h("input", { type: "checkbox", checked: c.sources.includes(id) });
+    return h("label", { class: "check" }, f[`source:${id}`], label);
+  });
+  const urlArea = (name, label, value) => {
+    f[name] = h("textarea", { value: value.join("\n"), rows: "3", spellcheck: "false", autocapitalize: "off" });
+    return [h("label", {}, label), f[name]];
+  };
+  f.unverifiedDistance = h(
+    "select",
+    {},
+    [
+      ["locality", "Only if the area name matches (recommended)"],
+      ["include", "Always include (flagged)"],
+      ["exclude", "Exclude"],
+    ].map(([v, t]) => h("option", { value: v, selected: c.unverifiedDistance === v }, t)),
+  );
+
   const sectionChecks = Object.entries(state.sections).map(([id, label]) => {
     f[`section:${id}`] = h("input", { type: "checkbox", checked: c.sections.includes(id) });
     return h("label", { class: "check" }, f[`section:${id}`], label);
@@ -226,8 +256,21 @@ function renderSettings() {
     intervalMinutes: Number(f.intervalMinutes.value),
     center: { label: f.centerLabel.value, lat: Number(f.lat.value), lng: Number(f.lng.value) },
     radiusKm: Number(f.radiusKm.value),
+    sources: Object.keys(state.sources).filter((id) => f[`source:${id}`].checked),
     sections: Object.keys(state.sections).filter((id) => f[`section:${id}`].checked),
+    ulUrls: f.ulUrls.value,
+    rentUrls: f.rentUrls.value,
+    myhomeUrls: f.myhomeUrls.value,
+    webUrls: f.webUrls.value,
     excludeOwnerOccupied: f.excludeOwnerOccupied.checked,
+    excludeWeekdayOnly: f.excludeWeekdayOnly.checked,
+    availabilityGraceDays: Number(f.availabilityGraceDays.value),
+    endGraceDays: Number(f.endGraceDays.value),
+    geocode: f.geocode.checked,
+    unverifiedDistance: f.unverifiedDistance.value,
+    localityHints: f.localityHints.value,
+    respectRobots: f.respectRobots.checked,
+    maxDetailFetches: Number(f.maxDetailFetches.value),
     priceMin: numOrNull(f.priceMin),
     priceMax: numOrNull(f.priceMax),
     bedsMin: numOrNull(f.bedsMin),
@@ -284,10 +327,18 @@ function renderSettings() {
     h(
       "div",
       { class: "panel" },
-      h("h2", {}, "What"),
+      h("h2", {}, "Where to look"),
+      sourceChecks,
+      h("div", { class: "hint" }, "Daft.ie sections:"),
       sectionChecks,
+    ),
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, "What"),
       check("excludeOwnerOccupied", "Exclude owner-occupied properties", c.excludeOwnerOccupied),
-      h("div", { class: "hint" }, "Uses Daft's owner-occupied filter for room listings plus keyword checks below. Untick to see them."),
+      h("div", { class: "hint" }, "Uses Daft's owner-occupied filter for rooms, then reads each listing's description for live-in landlord wording. Untick to see them."),
+      check("excludeWeekdayOnly", "Exclude weekday-only lets (Mon-Fri, 5-day)", c.excludeWeekdayOnly),
       h("div", { class: "row" }, num("priceMin", "Min €/month", c.priceMin), num("priceMax", "Max €/month", c.priceMax)),
       h("div", { class: "row" }, num("bedsMin", "Min beds (houses)", c.bedsMin), num("bedsMax", "Max beds (houses)", c.bedsMax)),
     ),
@@ -296,11 +347,12 @@ function renderSettings() {
       { class: "panel" },
       h("h2", {}, "When"),
       h("div", { class: "row" }, date("needFrom", "Need from (blank = immediately)", c.needFrom), date("stayUntil", "Stay until", c.stayUntil)),
+      h("div", { class: "row" }, num("availabilityGraceDays", "Accept up to N days after need-from", c.availabilityGraceDays, { step: "1", min: "0" }), num("endGraceDays", "Accept ending up to N days before stay-until", c.endGraceDays, { step: "1", min: "0" })),
       h("div", { class: "row" }, num("leaseMinMonths", "Min lease (months)", c.leaseMinMonths), num("leaseMaxMonths", "Max lease (months)", c.leaseMaxMonths)),
       h(
         "div",
         { class: "hint" },
-        "Daft rarely publishes availability dates in search results, so dates are used to flag short-term-friendly listings. Lease limits filter only listings that state a lease length.",
+        "Availability is read from listing text where stated (UL Accommodation, Rent.ie, MyHome.ie). Daft search results rarely include it, so Daft listings are not date-filtered. Listings that state a start date too late, or an end date too early, are excluded. Lease limits only apply to Daft.",
       ),
     ),
     h(
@@ -320,6 +372,16 @@ function renderSettings() {
         "details",
         {},
         h("summary", {}, "Advanced"),
+        urlArea("ulUrls", "UL Accommodation pages (one per line)", c.ulUrls),
+        urlArea("rentUrls", "Rent.ie search pages", c.rentUrls),
+        urlArea("myhomeUrls", "MyHome.ie search pages", c.myhomeUrls),
+        urlArea("webUrls", "Custom pages (any listings site; enable under Where to look)", c.webUrls),
+        h("label", {}, "If a listing has no coordinates"),
+        f.unverifiedDistance,
+        area("localityHints", "Area names that count as nearby", c.localityHints, "Used only for listings whose location can't be determined."),
+        check("geocode", "Look up coordinates from addresses (OpenStreetMap)", c.geocode),
+        check("respectRobots", "Respect robots.txt on scraped sites", c.respectRobots),
+        num("maxDetailFetches", "Max detail pages fetched per scan", c.maxDetailFetches, { step: "1", min: "0" }),
         text("daftLocationId", "Daft location ID", c.daftLocationId, { inputmode: "numeric" }),
         h("div", { class: "hint" }, "4342 = University of Limerick. Other IDs: see the location list in the daftlistings package."),
         num("maxPages", "Max result pages (50 per page)", c.maxPages, { min: "1", max: "10", step: "1" }),
@@ -416,11 +478,27 @@ function renderStatus() {
       h("h2", {}, "Scanner"),
       r ? kv("Last scan", `${timeAgo(r.at)} (${r.ok ? "ok" : "FAILED"})`) : kv("Last scan", "not yet"),
       r && r.ok ? kv("Listings seen / matching / new", `${r.candidates} / ${r.matches} / ${r.newCount}`) : null,
+      r && r.ok && r.pending ? kv("Waiting for detail pages", String(r.pending)) : null,
       r && !r.ok ? kv("Error", r.error) : null,
-      r ? r.sections.map((s) => kv(state.sections[s.section] || s.section, s.ok ? `${s.fetched} fetched${s.degraded ? " (server filters off)" : ""}` : `error: ${s.error}`)) : null,
       kv("Next scan", state.scanning ? "running now" : state.config.enabled ? inFuture(state.nextRunAt) : "paused"),
       state.failureCount ? kv("Consecutive failures", String(state.failureCount)) : null,
       scan,
+    ),
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, "Sources"),
+      r
+        ? r.sources.map((src) => {
+            const health = state.sourceHealth?.[src.id];
+            const warn = src.notes.find((n) => n.warning)?.warning;
+            const skipped = src.notes.filter((n) => n.skipped).length;
+            const detail = src.ok
+              ? `${src.fetched} found${skipped ? `, ${skipped} page(s) not found` : ""}${warn ? " - check layout" : ""}`
+              : `error: ${src.error}`;
+            return kv(src.label, health?.failures >= 3 ? `${detail} (failing x${health.failures})` : detail);
+          })
+        : h("div", { class: "hint" }, "No scan yet."),
     ),
     h(
       "div",

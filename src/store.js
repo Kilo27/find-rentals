@@ -13,6 +13,11 @@ const freshState = () => ({
   failureCount: 0,
   lastRun: null,
   debug: {},
+  pageCache: {},
+  geocache: {},
+  sourceHealth: {},
+  pendingAttempts: {},
+  baselineScans: 0,
 });
 
 export class Store {

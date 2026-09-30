@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { ConfigError, SECTIONS, normalizeConfig } from "./config.js";
+import { ConfigError, SECTIONS, SOURCES, normalizeConfig } from "./config.js";
 import { createAuth } from "./auth.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
@@ -37,6 +37,8 @@ export function createApp({ store, scanner, pusher, scheduler, password, secret 
     res.json({
       config: store.data.config,
       sections: SECTIONS,
+      sources: SOURCES,
+      sourceHealth: store.data.sourceHealth,
       matches: store.data.matches,
       lastRun: store.data.lastRun,
       failureCount: store.data.failureCount,

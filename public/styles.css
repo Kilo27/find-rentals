@@ -87,3 +87,7 @@ button:disabled { opacity: 0.5; }
 .kv span:first-child { color: var(--muted); }
 .login { padding: 48px 16px; }
 details summary { cursor: pointer; font-weight: 600; margin: 12px 0 0; }
+select {
+  width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 10px;
+}

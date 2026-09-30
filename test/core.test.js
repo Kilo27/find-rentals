@@ -85,7 +85,9 @@ test("daft: price parsing handles weekly, ranges of text and POA", () => {
 
 test("daft: normalizeListing extracts fields", () => {
   const n = normalizeListing(rawListing({ id: 7, km: 1.5, extra: { ownerOccupied: true } }).listing, "sharing");
-  assert.equal(n.id, "7");
+  assert.equal(n.id, "daft:7");
+  assert.equal(n.source, "daft");
+  assert.equal(n.kind, "room");
   assert.equal(n.url, "https://www.daft.ie/share/room-7/7");
   assert.equal(n.priceMonthly, 650);
   assert.equal(n.beds, 1);
@@ -109,8 +111,8 @@ test("daft: fetchSection paginates and expands grouped sub-units", async () => {
   const r = await fetchSection(config({ maxPages: 4 }), "sharing", { fetchImpl });
   assert.equal(fetchImpl.calls.length, 2);
   assert.equal(r.listings.length, 50 + 2 + 1);
-  assert.ok(r.listings.some((l) => l.id === "901" && l.priceMonthly === 700));
-  assert.ok(r.listings.some((l) => l.id === "902" && l.priceMonthly === 800));
+  assert.ok(r.listings.some((l) => l.id === "daft:901" && l.priceMonthly === 700));
+  assert.ok(r.listings.some((l) => l.id === "daft:902" && l.priceMonthly === 800));
   assert.equal(fetchImpl.calls[0].opts.headers.brand, "daft");
 });
 
@@ -152,17 +154,21 @@ test("filter: distance is enforced exactly", () => {
   assert.ok(Math.abs(d - 1) < 0.01);
 });
 
-test("filter: missing coordinates pass through flagged", () => {
-  const l = normalizeListing({ id: 5, title: "No coords", price: "€500 per month" }, "sharing");
-  const r = evaluateListing(l, config());
+test("filter: listings without coordinates follow the unverified-distance policy", () => {
+  const mk = (title) => normalizeListing({ id: 5, title, price: "€500 per month" }, "sharing");
+  const nearby = mk("Room in Castletroy, Co. Limerick");
+  const r = evaluateListing(nearby, config());
   assert.equal(r.ok, true);
-  assert.ok(r.flags.includes("no-location"));
+  assert.ok(r.flags.includes("distance-unverified"));
+  assert.equal(evaluateListing(mk("Room in Ennis"), config()).reason, "no location");
+  assert.equal(evaluateListing(mk("Room in Ennis"), config({ unverifiedDistance: "include" })).ok, true);
+  assert.equal(evaluateListing(nearby, config({ unverifiedDistance: "exclude" })).reason, "no location");
 });
 
 test("filter: owner-occupied by field, keyword, and when toggled off", () => {
   assert.equal(ev({ extra: { ownerOccupied: true } }).reason, "owner occupied");
-  assert.match(ev({ title: "Double room, owner-occupied house" }).reason, /keyword/);
-  assert.match(ev({ title: "Live-in landlord, quiet house" }).reason, /keyword/);
+  assert.match(ev({ title: "Double room, owner-occupied house" }).reason, /owner occupied/);
+  assert.match(ev({ title: "Live-in landlord, quiet house" }).reason, /owner occupied/);
   assert.equal(ev({ extra: { ownerOccupied: true } }, { excludeOwnerOccupied: false }).ok, true);
   assert.equal(ev({ title: "Owner occupied room" }, { excludeOwnerOccupied: false }).ok, true);
 });
