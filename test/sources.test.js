@@ -418,3 +418,42 @@ test("upgrade: stale cache entries from the old code (loading shells with the ca
   assert.equal(store.data.pageCache["rent:1"], undefined, "a tiny 'Please Wait' entry is removed for any source");
   assert.ok(store.data.pageCache["rent:2"], "a healthy entry survives");
 });
+
+test("MyHome-style list JSON with null coordinates falls through to the real ones on each advert page", async () => {
+  const MYHOME = "https://www.myhome.ie/rentals/limerick/property-to-rent";
+  const rows = [
+    { id: 7001, price: 1200, displayAddress: "5 Near Close, Castletroy", url: "/rentals/brochure/5-near-close/7001", latitude: null, longitude: null },
+    { id: 7002, price: 2500, displayAddress: "35 Far Quay, Corbally", url: "/rentals/brochure/35-far-quay/7002", latitude: null, longitude: null },
+    { id: 7003, price: 900, displayAddress: "9 Other Road, Rathkeale", url: "/rentals/brochure/9-other-road/7003", latitude: null, longitude: null },
+  ];
+  const listHtml = `<html><head><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { results: rows } })}</script></head><body>${"<p>x</p>".repeat(40)}
+    ${rows.map((r) => `<a href="${r.url}">${r.displayAddress}</a> €${r.price} / month`).join("\n")}</body></html>`;
+  const d = (km, text) => page(`<meta property="place:location:latitude" content="${kmNorth(km).lat.toFixed(5)}"><meta property="place:location:longitude" content="${kmNorth(km).lng.toFixed(5)}">`, `<h1>Brochure</h1><p>${text} A bright property with good transport links and all amenities nearby, available now.</p>`);
+  const fetchImpl = router([
+    [MYHOME, listHtml],
+    [/7001/, d(0.8, "Near.")],
+    [/7002/, d(3.0, "Far.")],
+    [/7003/, d(22, "Other.")],
+  ]);
+  const { store, pusher } = setup(["myhome"], { myhomeUrls: [MYHOME] });
+  const run = await scannerFor(store, pusher, fetchImpl).run();
+  assert.deepEqual(run.coordsIgnored, {}, "no phantom shared 0,0 coordinate");
+  assert.deepEqual(store.data.matches.map((m) => m.id), ["myhome:7001"], "3.0 km and 22 km are outside 2 km");
+  assert.equal(store.data.matches[0].distanceSource, "source");
+  assert.ok(Math.abs(store.data.matches[0].distanceKm - 0.8) < 0.02);
+});
+
+test("an empty trailing results page is normal, not a layout warning", async () => {
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const p1 = `<html><body><ul><li><h3><a href="/rooms-to-rent/limerick/castletroy/a/555701">1 Quiet Road, Castletroy</a></h3><p>€500 per month</p></li></ul></body></html>`;
+  const empty = `<html><body>${"<p>That's everything for now, check back soon for more rooms in your area.</p>".repeat(40)}</body></html>`;
+  const fetchImpl = router([
+    [RENT, p1],
+    [`${RENT}?page=2`, empty],
+    [/555701/, page(meta(0.7), "<h1>Room</h1><p>A nice room in a shared house, available now, with bills included.</p>")],
+  ]);
+  const { store, pusher } = setup(["rent"], { rentUrls: [RENT] });
+  const run = await scannerFor(store, pusher, fetchImpl).run();
+  assert.equal(run.sources[0].notes[0].warning, undefined);
+  assert.equal(run.matches, 1);
+});

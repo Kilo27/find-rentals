@@ -108,7 +108,7 @@ export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, pa
         sample: merged[0] ?? null,
         head: merged.length === 0 ? collapse(res.html).slice(0, 800) : undefined,
       };
-      if (merged.length === 0 && res.html.length > 2000 && !looksEmpty(res.html)) {
+      if (page === 1 && merged.length === 0 && res.html.length > 2000 && !looksEmpty(res.html)) {
         note.warning = "page loaded but no listings were recognised (layout change, bot wall or empty results)";
       }
       if (fresh.length === 0) break;

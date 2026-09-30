@@ -28,7 +28,7 @@ export function makeListing({
   pending = false,
 }) {
   const bedsMatch = bedsText ? /(\d+)/.exec(bedsText) : null;
-  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.01 && Math.abs(lng) > 0.01;
   return {
     id: `${source}:${externalId}`,
     source,

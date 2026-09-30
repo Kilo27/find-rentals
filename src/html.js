@@ -241,8 +241,8 @@ export function candidatesFromJsonLd(nodes, baseUrl) {
       url,
       title,
       priceText,
-      lat: geo ? Number(geo.latitude) : null,
-      lng: geo ? Number(geo.longitude) : null,
+      lat: geo ? num(geo.latitude) : null,
+      lng: geo ? num(geo.longitude) : null,
       address: addressToString(n.address ?? n.location?.address),
       text: collapse(n.description ?? ""),
       image: typeof image === "string" ? image : (image?.url ?? null),
@@ -308,6 +308,9 @@ function pick(obj, names) {
   return undefined;
 }
 
+// JSON null/"" must count as "no value": Number(null) is 0, which would put the listing at 0,0.
+const num = (v) => (v === null || v === undefined || v === "" || typeof v === "object" ? NaN : Number(v));
+
 const asString = (v) => {
   if (typeof v === "string") return collapse(v);
   if (typeof v === "number") return String(v);
@@ -318,17 +321,19 @@ const asString = (v) => {
 };
 
 function coordsOf(obj) {
-  const direct = [pick(obj, KEYS.lat), pick(obj, KEYS.lng)];
-  if (direct.every((v) => v !== undefined && Number.isFinite(Number(v)))) return { lat: Number(direct[0]), lng: Number(direct[1]) };
+  const direct = [num(pick(obj, KEYS.lat)), num(pick(obj, KEYS.lng))];
+  if (direct.every(Number.isFinite)) return { lat: direct[0], lng: direct[1] };
   for (const key of ["location", "geo", "geolocation", "coordinates", "point", "latlng", "position"]) {
     const sub = pick(obj, [key]);
-    if (Array.isArray(sub) && sub.length >= 2 && sub.every((v) => Number.isFinite(Number(v)))) {
+    if (Array.isArray(sub) && sub.length >= 2 && sub.slice(0, 2).every((v) => Number.isFinite(num(v)))) {
       return { lat: Number(sub[1]), lng: Number(sub[0]) };
     }
     if (sub && typeof sub === "object") {
       const c = coordsOf(sub);
       if (c) return c;
-      if (Array.isArray(sub.coordinates)) return { lat: Number(sub.coordinates[1]), lng: Number(sub.coordinates[0]) };
+      if (Array.isArray(sub.coordinates) && sub.coordinates.slice(0, 2).every((v) => Number.isFinite(num(v)))) {
+        return { lat: Number(sub.coordinates[1]), lng: Number(sub.coordinates[0]) };
+      }
     }
   }
   return null;
