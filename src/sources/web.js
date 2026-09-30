@@ -12,7 +12,7 @@ import {
   parseDetailPage,
   sameSite,
 } from "../html.js";
-import { makeListing } from "../listing.js";
+import { makeListing, validCoord } from "../listing.js";
 
 export const ID_IN_PATH = /\d{5,}\/?$/;
 const DETAIL_TTL_MS = 24 * 3600_000;
@@ -39,13 +39,20 @@ function mergeCandidates(cards, structured) {
       continue;
     }
     for (const f of ["priceText", "address", "image", "bedsText"]) if (!cur[f] && s[f]) cur[f] = s[f];
-    if (cur.lat === null && Number.isFinite(s.lat) && Number.isFinite(s.lng)) {
+    if (!validCoord(cur.lat, cur.lng) && validCoord(s.lat, s.lng)) {
       cur.lat = s.lat;
       cur.lng = s.lng;
     }
     if (s.text && !cur.text.includes(s.text)) cur.text = `${cur.text} ${s.text}`.slice(0, 3000);
   }
-  return [...byUrl.values()];
+  const out = [...byUrl.values()];
+  for (const c of out) {
+    if (!validCoord(c.lat, c.lng)) {
+      c.lat = null;
+      c.lng = null;
+    }
+  }
+  return out;
 }
 
 // Some sites render advert pages client-side: the HTML is an empty "Please Wait..." shell whose
@@ -61,7 +68,7 @@ function applyDetail(c, d) {
   c.text = `${c.text} ${d.text}`.slice(0, 7000);
   c.priceText = c.priceText || d.priceText;
   c.image = c.image || d.image;
-  if (c.lat === null && Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
+  if (!validCoord(c.lat, c.lng) && validCoord(d.lat, d.lng)) {
     c.lat = d.lat;
     c.lng = d.lng;
   }
