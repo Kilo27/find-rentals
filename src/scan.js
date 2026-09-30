@@ -5,6 +5,7 @@ import { createGeocoder, resolveLocation } from "./geocode.js";
 import { analyzeListing, evaluateLocation, evaluateNonLocation } from "./filter.js";
 import { dedupe } from "./dedupe.js";
 import { stripSharedCoords } from "./coords.js";
+import { proxyFromEnv } from "./proxy.js";
 import { buildListingPayload } from "./push.js";
 
 const MAX_INDIVIDUAL_PUSHES = 5;
@@ -28,7 +29,8 @@ export function summarizeRun(run) {
   if (!run.ok) return `[scan] FAILED in ${run.durationMs}ms: ${run.error} | ${sources}`;
   return (
     `[scan] ok mode=${run.mode} ${run.durationMs}ms | ${sources} | candidates=${run.candidates} rejected=${run.rejected}` +
-    ` pending=${run.pending} matches=${run.matches} new=${run.newCount} notified=${run.notified}`
+    ` pending=${run.pending} matches=${run.matches} new=${run.newCount} notified=${run.notified}` +
+    (run.proxied?.length ? ` | via-proxy=${run.proxied.join(",")}` : "")
   );
 }
 
@@ -55,7 +57,7 @@ export function problemLines(run) {
 
 const SILENT = { log() {}, warn() {} };
 
-export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT }) {
+export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT, proxy = proxyFromEnv() }) {
   let inflight = null;
 
   function run() {
@@ -93,13 +95,21 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     };
     const geocoder = createGeocoder({ store, fetchImpl, sleep, minIntervalMs: geocodeDelayMs });
 
+    // Sources listed in SCRAPER_PROXY_SOURCES go out through the proxy; everything else (and the geocoder) stays direct.
+    const proxiedFetcher = proxy.fetch
+      ? createFetcher({ fetchImpl: proxy.fetch, sleep, politenessMs, respectRobots: config.respectRobots })
+      : null;
+    const depsFor = (id) =>
+      proxy.fetch && proxy.sources.has(id) ? { ...deps, fetchImpl: proxy.fetch, fetcher: proxiedFetcher } : deps;
+    const proxied = proxy.fetch ? config.sources.filter((id) => proxy.sources.has(id)) : [];
+
     const results = [];
     const candidates = new Map();
     for (const id of config.sources) {
       const adapter = ADAPTERS[id];
       if (!adapter) continue;
       try {
-        const r = await adapter.fetch(config, deps);
+        const r = await adapter.fetch(config, depsFor(id));
         results.push({ id, label: adapter.label, ok: true, fetched: r.listings.length, notes: r.notes });
         for (const n of r.notes) {
           if (n.debug) d.debug[`${id}:${n.group}`] = { at: nowIso, ...n.debug };
@@ -280,6 +290,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       candidates: candidates.size,
       rejected,
       pending: pendingCount,
+      proxied,
       coordsIgnored,
       matches: matches.length,
       newCount: fresh.length,
