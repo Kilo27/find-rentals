@@ -227,3 +227,12 @@ test("sanity: kmNorth helper", () => {
   const p = kmNorth(2);
   assert.ok(Math.abs(haversineKm(UL.lat, UL.lng, p.lat, p.lng) - 2) < 0.001);
 });
+
+import { makeListing } from "../src/listing.js";
+
+test("makeListing never accepts 0,0 or non-finite values as a location", () => {
+  const base = { source: "x", sourceLabel: "X", externalId: "1", url: "https://x.ie/1", title: "T" };
+  assert.equal(makeListing({ ...base, lat: 0, lng: 0 }).lat, null);
+  assert.equal(makeListing({ ...base, lat: NaN, lng: -8.5 }).lat, null);
+  assert.equal(makeListing({ ...base, lat: 52.67, lng: -8.57 }).distanceSource, "source");
+});

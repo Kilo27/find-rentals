@@ -204,3 +204,20 @@ test("externalIdFromUrl prefers numeric ids, falls back to a slug", () => {
   assert.equal(externalIdFromUrl("https://www.rent.ie/rooms/castletroy/555001/"), "555001");
   assert.equal(externalIdFromUrl("https://site.ie/to-let/nice-room?x=1"), "to-let-nice-room");
 });
+
+test("null, empty or non-numeric coordinates in page JSON mean 'no location', never 0,0", () => {
+  const data = { results: [
+    { id: 1, price: 900, title: "Flat A, Somewhere", url: "/b/1", latitude: null, longitude: null },
+    { id: 2, price: 900, title: "Flat B, Somewhere", url: "/b/2", latitude: "", longitude: "" },
+    { id: 3, price: 900, title: "Flat C, Somewhere", url: "/b/3", location: { lat: null, lng: null } },
+    { id: 4, price: 900, title: "Flat D, Somewhere", url: "/b/4", point: { coordinates: [null, null] } },
+    { id: 5, price: 900, title: "Flat E, Somewhere", url: "/b/5", latitude: 52.67, longitude: -8.57 },
+  ] };
+  const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script>`;
+  const c = candidatesFromEmbeddedJson(extractEmbeddedJson(load(html), html), "https://site.ie/");
+  assert.deepEqual(c.map((x) => [x.lat, x.lng]), [[null, null], [null, null], [null, null], [null, null], [52.67, -8.57]]);
+
+  const ld = `<script type="application/ld+json">{"@type":"Apartment","name":"Flat","url":"/p/9","geo":{"latitude":null,"longitude":null}}</script>`;
+  const [l] = candidatesFromJsonLd(extractJsonLd(load(ld)), "https://site.ie/");
+  assert.ok(!Number.isFinite(l.lat), "JSON-LD null geo is not a coordinate");
+});
