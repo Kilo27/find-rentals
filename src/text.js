@@ -113,7 +113,7 @@ export function parseAvailability(text, now = new Date()) {
     }
   }
 
-  if (/avail\w*\s+(?:now|immediately|asap|straight\s*away)|immediate(?:ly)?\s+(?:avail\w*|move[\s-]*in)|move\s*in\s+(?:now|immediately|asap)|available\s+(?:right\s+)?now/i.test(t)) {
+  if (/avail\w*\s*[:\-]?\s*(?:now|immediately|asap|straight\s*away)|immediate(?:ly)?\s+(?:avail\w*|move[\s-]*in)|move\s*in\s+(?:now|immediately|asap)|available\s+(?:right\s+)?now/i.test(t)) {
     immediate = true;
     if (!from || from > today) from = today;
   }

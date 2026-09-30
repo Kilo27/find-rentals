@@ -240,3 +240,21 @@ test("push: listing payload formatting", () => {
   assert.equal(payload.body, "0.8 km from UL · Daft.ie · Double Room · short-term friendly · check owner-occupied");
   assert.equal(payload.tag, "listing-daft:3");
 });
+
+import fs from "node:fs";
+import path from "node:path";
+import { Store } from "../src/store.js";
+import { DEFAULT_CONFIG, normalizeConfig } from "../src/config.js";
+
+test("store: a saved config carrying the old 'university of limerick' locality hint is migrated", () => {
+  const { dir } = tempStore();
+  const old = { ...normalizeConfig(DEFAULT_CONFIG), localityHints: ["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry", "university of limerick"] };
+  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: old }));
+  const migrated = new Store(dir);
+  assert.ok(!migrated.data.config.localityHints.includes("university of limerick"));
+  assert.ok(migrated.data.config.localityHints.includes("castletroy"));
+
+  const custom = { ...old, localityHints: ["castletroy", "my own area"] };
+  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: custom }));
+  assert.deepEqual(new Store(dir).data.config.localityHints, ["castletroy", "my own area"], "user-edited hints are left alone");
+});

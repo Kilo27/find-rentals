@@ -58,63 +58,178 @@ function setup(sources, cfg = {}, pusher = fakePusher()) {
 const scannerFor = (store, pusher, fetchImpl) =>
   createScanner({ store, pusher, fetchImpl, sleep: noSleep, politenessMs: 0, geocodeDelayMs: 0, now: () => new Date("2026-09-30T12:00:00Z") });
 
-test("UL portal: description analysis, geocoding and availability drive the decision", async () => {
-  const fetchImpl = router(ulRoutes([
+// Shape taken from the live portal: the list page already carries address (as the title), price,
+// availability and landlord type. The advert pages themselves are an empty JavaScript shell whose
+// only coordinates are one site-wide map position.
+const CAMPUS_CONSTANT = { lat: 52.668738, lng: -8.576748 };
+const ulCard = ({ id, address, price, avail = "Now", type = "Room in House / Apartment with other tenants", note = "" }) => `
+<div class="advert"><a href="/Advert/${id}">${address}</a>
+  <div>Available: ${avail} 2 LMKP${id} ${price} Full price list Locate on map Rent Includes: Electricity, Heating, Water, Bills, Wi-Fi / Internet
+  ${address} ${type} Individuals Rooms (1 Available) ${avail} Flexible/ Academic year Description ${note}
+  Call SMS Tel: 08************* Click to view contact info Details Add to Hot List Report As Let 0 ${type} Rent: ${price} Available ${avail} Please Wait...</div></div>`;
+
+const UL_REAL_LIST = `<html><body><div id="results">
+  ${ulCard({ id: 2001, address: "Dromroe Village, Castletroy", price: "€520 Per person per month" })}
+  ${ulCard({ id: 2002, address: "The Meadows, Limerick", price: "€850 Per person per month", type: "Resident Landlord/Host Family, Room in House / Apartment with other tenants" })}
+  ${ulCard({ id: 2003, address: "Garraunykee, Castleconnell", price: "€150 Per person per week" })}
+  ${ulCard({ id: 2004, address: "Plassey Park Road, Castletroy", price: "€480 Per person per month", avail: "01/11/2026" })}
+  ${ulCard({ id: 2005, address: "Dublin Rd, Castletroy", price: "€150 Per person per week" })}
+  ${ulCard({ id: 2006, address: "Unknown Lane, Castletroy", price: "€500 Per person per month" })}
+  ${ulCard({ id: 2007, address: "Mystery Place", price: "€400 Per person per month", note: "5 min from UL, close to Castletroy shops" })}
+  ${ulCard({ id: 2008, address: "Weekday Room, Castletroy", price: "€300 Per person per month", note: "Monday to Friday only" })}
+</div></body></html>`;
+
+const campusShell = `<html><head><title>Student Property Details</title>
+  <script>var map = {"latitude": ${CAMPUS_CONSTANT.lat}, "longitude": ${CAMPUS_CONSTANT.lng}};</script></head><body><main>Please Wait...</main></body></html>`;
+
+test("UL portal: decisions come from the list page; advert shells and their map constant are never used", async () => {
+  const fetchImpl = router([
+    [UL_LIST, UL_REAL_LIST],
+    [/\/Advert\/\d+/, campusShell],
     nominatim({
-      "annacotty village": { lat: "52.6655", lon: "-8.5170", addresstype: "village" },
-      "3 newtown park": { lat: String(kmNorth(1.2).lat), lon: String(UL.lng), addresstype: "house" },
+      "dromroe village": { lat: String(kmNorth(1.0).lat), lon: String(UL.lng), addresstype: "residential" },
+      "garraunykee": { lat: "52.7300", lon: "-8.4400", addresstype: "hamlet" },
+      "dublin rd": { lat: String(kmNorth(1.6).lat), lon: String(UL.lng), addresstype: "road" },
+      castletroy: { lat: String(kmNorth(0.6).lat), lon: String(UL.lng), addresstype: "suburb" },
     }),
-  ]));
+  ]);
   const { store, pusher } = setup(["ul"]);
   const run = await scannerFor(store, pusher, fetchImpl).run();
 
   assert.equal(run.ok, true);
-  assert.equal(run.candidates, 5);
+  assert.equal(run.candidates, 8);
+  assert.equal(fetchImpl.count(/\/Advert\/\d+/), 0, "the JavaScript shell pages are not fetched at all");
+
   const ids = store.data.matches.map((m) => m.id).sort();
-  assert.deepEqual(ids, ["ul:1002", "ul:1005"], "owner-occupied weekday let, far Annacotty and late-available rooms are excluded");
+  assert.deepEqual(ids, ["ul:2001", "ul:2005", "ul:2006"], "owner-occupied, far, late, weekday-only and locationless adverts are excluded");
 
-  const m2 = store.data.matches.find((m) => m.id === "ul:1002");
-  assert.equal(m2.distanceSource, "source");
-  assert.ok(Math.abs(m2.distanceKm - 0.8) < 0.02);
-  assert.ok(m2.flags.includes("available-now"));
-  assert.equal(m2.availableTo, "2027-06-30");
-  assert.equal(m2.sourceLabel, "UL Accommodation");
-
-  const m5 = store.data.matches.find((m) => m.id === "ul:1005");
-  assert.equal(m5.distanceSource, "geocoded");
-  assert.ok(Math.abs(m5.distanceKm - 1.2) < 0.02);
+  for (const m of store.data.matches) {
+    assert.notEqual(m.distanceSource, "source", "no page coordinate was trusted");
+    assert.ok(Math.abs(m.lat - CAMPUS_CONSTANT.lat) > 0.001 || Math.abs(m.lng - CAMPUS_CONSTANT.lng) > 0.001, "never the campus constant");
+  }
+  const by = (id) => store.data.matches.find((m) => m.id === id);
+  assert.equal(by("ul:2001").distanceSource, "geocoded");
+  assert.ok(Math.abs(by("ul:2001").distanceKm - 1.0) < 0.05);
+  assert.ok(Math.abs(by("ul:2005").distanceKm - 1.6) < 0.05);
+  assert.equal(by("ul:2005").priceMonthly, 650, "weekly price converted");
+  assert.equal(by("ul:2006").distanceSource, "geocoded-area");
+  assert.ok(by("ul:2006").flags.includes("distance-approx"));
+  assert.ok(by("ul:2001").flags.includes("available-now"));
 });
 
-test("UL portal: detail pages are cached - second scan only fetches the list", async () => {
-  const fetchImpl = router(ulRoutes([nominatim({})]));
-  const { store, pusher } = setup(["ul"]);
+test("UL portal: marketing text naming a nearby area does not make an unlocatable advert nearby", async () => {
+  const fetchImpl = router([[UL_LIST, UL_REAL_LIST], nominatim({})]);
+  const { store, pusher } = setup(["ul"], { unverifiedDistance: "locality" });
+  await scannerFor(store, pusher, fetchImpl).run();
+  assert.ok(!store.data.matches.some((m) => m.id === "ul:2007"), "Mystery Place stays excluded");
+});
+
+test("a coordinate shared by many different listings is a site-wide position and is ignored, even for new listings later", async () => {
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const cards = (ids) => `<html><body><ul>${ids.map((id) => `<li><h3><a href="/rooms-to-rent/limerick/castletroy/listing-${id}/${id}">Some Road ${id}, Somewhere</a></h3><p>€500 per month</p></li>`).join("")}</ul></body></html>`;
+  const sameMap = `<meta property="place:location:latitude" content="${CAMPUS_CONSTANT.lat}"><meta property="place:location:latitude" content="${CAMPUS_CONSTANT.lat}"><meta property="place:location:longitude" content="${CAMPUS_CONSTANT.lng}">`;
+  const detail = (id) => page(sameMap, `<h1>Room ${id}</h1><p>A fine room available now, bills included, quiet estate, close to everything you need.</p>`);
+  let ids = [555101, 555102, 555103, 555104];
+  const fetchImpl = router([
+    [RENT, () => cards(ids)],
+    [/rent\.ie\/rooms-to-rent\/.*\/555\d+$/, (url) => detail(url.slice(-6))],
+    nominatim({ "some road 555101": { lat: String(kmNorth(0.8).lat), lon: String(UL.lng), addresstype: "road" }, "some road 555102": { lat: "52.80", lon: "-8.30", addresstype: "road" } }),
+  ]);
+  const { store, pusher } = setup(["rent"], { rentUrls: [RENT], unverifiedDistance: "exclude" });
   const scanner = scannerFor(store, pusher, fetchImpl);
+  const run = await scanner.run();
+
+  assert.equal(run.coordsIgnored.rent, 4, "all four carried the same map position");
+  assert.deepEqual(store.data.siteConstants.rent, [`${CAMPUS_CONSTANT.lat.toFixed(4)},${CAMPUS_CONSTANT.lng.toFixed(4)}`]);
+  assert.deepEqual(store.data.matches.map((m) => m.id), ["rent:555101"], "the near one, located from its address; the 10 km one rejected; unlocatable ones excluded");
+  assert.equal(store.data.matches[0].distanceSource, "geocoded");
+
+  ids = [555105];
+  const again = await scanner.run();
+  assert.equal(again.coordsIgnored.rent, 1, "alone it could not be detected as shared, but the remembered constant catches it");
+});
+
+test("an advert page that is a loading shell contributes no location, and is not refetched every scan", async () => {
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const list = `<html><body><ul><li><h3><a href="/rooms-to-rent/limerick/castletroy/x/555201">9 Elm Park, Castletroy</a></h3><p>€600 per month</p></li></ul></body></html>`;
+  const fetchImpl = router([
+    [RENT, list],
+    [/555201/, campusShell],
+    nominatim({ "9 elm park": { lat: String(kmNorth(1.1).lat), lon: String(UL.lng), addresstype: "house" } }),
+  ]);
+  const { store, pusher } = setup(["rent"], { rentUrls: [RENT] });
+  const scanner = scannerFor(store, pusher, fetchImpl);
+  const run = await scanner.run();
+  assert.match(run.sources[0].notes[0].warning, /JavaScript-rendered/);
+  const m = store.data.matches[0];
+  assert.equal(m.distanceSource, "geocoded");
+  assert.ok(Math.abs(m.distanceKm - 1.1) < 0.05);
   await scanner.run();
-  const detailCalls = fetchImpl.count(/\/Advert\/\d+/);
-  assert.equal(detailCalls, 5);
-  await scanner.run();
-  assert.equal(fetchImpl.count(/\/Advert\/\d+/), detailCalls, "no refetch of cached adverts");
-  assert.equal(fetchImpl.count(/SearchResults/), 2);
+  assert.equal(fetchImpl.count(/555201/), 1, "the unusable page is remembered, not refetched");
+});
+
+test("scraped page coordinates are cross-checked against the address and corrected when they disagree", async () => {
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const p = kmNorth(0.5);
+  const list = `<html><body><div id="r"><div class="c"><a href="/rooms-to-rent/x/555301">7 Far Road, Ennis</a>
+    <span data-lat="${p.lat.toFixed(5)}" data-lng="${p.lng.toFixed(5)}"></span> €700 per month</div></div></body></html>`;
+  const fetchImpl = router([
+    [RENT, list],
+    [/555301/, page("", "<h1>7 Far Road</h1><p>A room in a shared house with three other tenants, bills included.</p>")],
+    nominatim({ "7 far road": { lat: "52.84", lon: "-8.98", addresstype: "house" } }),
+  ]);
+  const { store, pusher } = setup(["rent"], { rentUrls: [RENT] });
+  const run = await scannerFor(store, pusher, fetchImpl).run();
+  assert.equal(run.matches, 0, "the card says 0.5 km but the address is in Ennis: rejected");
+});
+
+test("card-level coordinates that are unique and agree with the address are used", async () => {
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const p = kmNorth(0.9);
+  const list = `<html><body><div id="r"><div class="c"><a href="/rooms-to-rent/x/555401">3 Near Road, Castletroy</a>
+    <span data-lat="${p.lat.toFixed(5)}" data-lng="${p.lng.toFixed(5)}"></span> €700 per month</div></div></body></html>`;
+  const fetchImpl = router([
+    [RENT, list],
+    [/555401/, page("", "<h1>3 Near Road</h1><p>A room in a shared house with three other tenants, bills included.</p>")],
+    nominatim({ "3 near road": { lat: String(kmNorth(0.95).lat), lon: String(UL.lng), addresstype: "house" } }),
+  ]);
+  const { store, pusher } = setup(["rent"], { rentUrls: [RENT] });
+  await scannerFor(store, pusher, fetchImpl).run();
+  const m = store.data.matches[0];
+  assert.equal(m.distanceSource, "source");
+  assert.ok(Math.abs(m.distanceKm - 0.9) < 0.02);
+});
+
+test("price-filter chips and other junk links are not listings", async () => {
+  const PAGE = "https://agent.example.ie/lettings/limerick";
+  const html = `<html><body><ul><li><a href="/lettings/limerick/max-500000">Under €500k</a></li>
+    <li><a href="/lettings/limerick/min-100000">€100k</a></li>
+    <li><a href="/lettings/limerick/let-6600123">4 Castle Street, Limerick</a> €1,200 per month</li></ul></body></html>`;
+  const fetchImpl = router([[PAGE, html], [/6600123/, page("", "<h1>4 Castle Street</h1><p>A bright apartment in the city centre, available now, bills not included.</p>")]]);
+  const { store, pusher } = setup(["web"], { webUrls: [PAGE] });
+  const run = await scannerFor(store, pusher, fetchImpl).run();
+  assert.equal(run.candidates, 1);
 });
 
 test("detail budget: un-enriched listings are pending, not alerted, and baseline waits", async () => {
-  const fetchImpl = router(ulRoutes([nominatim({})]));
-  const { store, pusher } = setup(["ul"], { maxDetailFetches: 2 });
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const ids = [555501, 555502, 555503, 555504];
+  const list = `<html><body><ul>${ids.map((id) => `<li><h3><a href="/rooms-to-rent/limerick/castletroy/r/${id}">${id} Quiet Road, Castletroy</a></h3><p>€500 per month</p></li>`).join("")}</ul></body></html>`;
+  const fetchImpl = router([
+    [RENT, list],
+    [/rent\.ie\/rooms-to-rent\/.*\/5555\d\d$/, (url) => page(meta(0.5 + Number(url.slice(-2)) / 100), "<h1>Room</h1><p>A nice room in a shared house, available now, with bills included.</p>")],
+  ]);
+  const { store, pusher } = setup(["rent"], { rentUrls: [RENT], maxDetailFetches: 2 });
   const scanner = scannerFor(store, pusher, fetchImpl);
 
   const first = await scanner.run();
-  assert.equal(first.pending, 3);
+  assert.equal(first.pending, 2);
   assert.equal(store.data.baselineDone, false);
   assert.equal(pusher.sent.length, 0, "no premature 'watching started'");
-
   const second = await scanner.run();
-  assert.equal(second.pending, 1);
-  const third = await scanner.run();
-  assert.equal(third.pending, 0);
+  assert.equal(second.pending, 0);
   assert.equal(store.data.baselineDone, true);
-  assert.equal(pusher.sent.filter((p) => /Watching started/.test(p.title)).length, 1);
-  assert.deepEqual(store.data.matches.map((m) => m.id).sort(), ["ul:1002", "ul:1005"]);
-  assert.ok(store.data.matches.find((m) => m.id === "ul:1005").flags.includes("distance-unverified"), "no coordinates found, kept only because the address names Castletroy");
+  assert.equal(store.data.matches.length, 4);
 });
 
 test("UL portal: a robots.txt disallow is respected and reported", async () => {
@@ -290,4 +405,16 @@ test("dedupe: listing with real coordinates beats a geocoded copy; identical URL
   const u1 = L({ url: "https://www.rent.ie/a/1/", source: "rent" });
   const u2 = L({ url: "https://rent.ie/a/1", source: "rent", title: "Different title", priceText: "€1 per month" });
   assert.equal(dedupe([u1, u2]).length, 1);
+});
+
+test("upgrade: stale cache entries from the old code (loading shells with the campus constant) are purged, healthy ones kept", async () => {
+  const fetchImpl = router([[UL_LIST, UL_REAL_LIST], nominatim({})]);
+  const { store, pusher } = setup(["ul"]);
+  const polluted = { at: new Date().toISOString(), detail: { title: "Student Property Details", text: "Please Wait...", lat: CAMPUS_CONSTANT.lat, lng: CAMPUS_CONSTANT.lng, address: "", priceText: "", image: null }, lastSeen: new Date().toISOString() };
+  const healthy = { at: new Date().toISOString(), detail: { title: "Real", text: "A perfectly good description of a room with enough words in it to be useful.", lat: 52.67, lng: -8.57, address: "", priceText: "€500", image: null }, lastSeen: new Date().toISOString() };
+  store.data.pageCache = { "ul:999": polluted, "rent:1": { ...polluted }, "rent:2": healthy };
+  await scannerFor(store, pusher, fetchImpl).run();
+  assert.equal(store.data.pageCache["ul:999"], undefined);
+  assert.equal(store.data.pageCache["rent:1"], undefined, "a tiny 'Please Wait' entry is removed for any source");
+  assert.ok(store.data.pageCache["rent:2"], "a healthy entry survives");
 });

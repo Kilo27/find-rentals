@@ -45,7 +45,7 @@ test("when every source fails the summary says FAILED", async () => {
   const { scanner } = setup(["daft"], router([[DAFT, () => httpError(403, "blocked")]]), log);
   await scanner.run();
   assert.match(lines.log[0], /^\[scan\] FAILED in \d+ms: Daft API returned HTTP 403 \| daft=ERROR\(Daft API returned HTTP 403\)$/);
-  assert.match(lines.warn[0], /^\[scan\] daft sharing: ERROR Daft API returned HTTP 403$/);
+  assert.match(lines.warn[0], /^\[scan\] daft sharing: ERROR Daft API returned HTTP 403 \[blocked\]$/);
 });
 
 test("an unrecognised page layout is flagged with ! and a WARNING line", async () => {
@@ -99,4 +99,9 @@ test("the scanner is silent by default (library use and tests)", async () => {
 
 test("summarizeRun handles a run with no sources cleanly", () => {
   assert.equal(summarizeRun({ ok: false, durationMs: 3, error: "No sources enabled", sources: [] }), "[scan] FAILED in 3ms: No sources enabled | ");
+});
+
+test("ignored site-wide coordinates are reported in the logs", () => {
+  const run = { ok: true, sources: [], coordsIgnored: { ul: 80 } };
+  assert.deepEqual(problemLines(run), ["[scan] ul: ignored 80 coordinate(s) shared by many listings (site-level map position, not the property)"]);
 });

@@ -48,6 +48,14 @@ function mergeCandidates(cards, structured) {
   return [...byUrl.values()];
 }
 
+// Some sites render advert pages client-side: the HTML is an empty "Please Wait..." shell whose
+// only coordinates are a site-wide map default. Such a page must never contribute a location.
+export const usableDetail = (d) =>
+  Boolean(d) && d.text.length >= 40 && !/^\s*(?:please wait|loading|enable javascript)/i.test(d.text);
+
+const JUNK_TITLE = /^(?:under|over|up to|from|between|min|max)\s*€/i;
+const isJunkTitle = (t) => JUNK_TITLE.test(t) || !/[a-z]{3,}/i.test(t.replace(/€\s*[\d,.]+\s*[km]?/gi, ""));
+
 function applyDetail(c, d) {
   c.address = d.address || c.address;
   c.text = `${c.text} ${d.text}`.slice(0, 7000);
@@ -60,7 +68,7 @@ function applyDetail(c, d) {
   if (d.title && (!c.title || c.title.length < 6)) c.title = d.title;
 }
 
-export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, paginate = false, detail = true, config, deps }) {
+export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, paginate = false, detail = true, titleIsAddress = false, config, deps }) {
   const { fetcher, cache, budget, now } = deps;
   const maxPages = paginate ? Math.min(config.maxPages, 3) : 1;
   const listings = [];
@@ -88,7 +96,7 @@ export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, pa
         ...candidatesFromJsonLd(extractJsonLd($), res.url),
         ...candidatesFromEmbeddedJson(extractEmbeddedJson($, res.html), res.url),
       ].filter((c) => sameSite(c.url, res.url));
-      const cards = extractCards($, res.url, hrefRe).filter((c) => sameSite(c.url, res.url));
+      const cards = extractCards($, res.url, hrefRe, config.center).filter((c) => sameSite(c.url, res.url) && !isJunkTitle(c.title));
       const merged = mergeCandidates(cards, structured).filter((c) => c.title && c.title.length >= 3);
 
       const fresh = merged.filter((c) => !seenOnGroup.has(externalIdFromUrl(c.url)));
@@ -120,25 +128,32 @@ export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, pa
       let gone = false;
       if (detail) {
         const cached = cache[id];
+        const cachedDetail = cached && usableDetail(cached.detail) ? cached.detail : null;
         const fresh = cached && now() - Date.parse(cached.at) < DETAIL_TTL_MS;
-        if (fresh) applyDetail(c, cached.detail);
-        else if (budget.detail > 0) {
+        if (fresh) {
+          if (cachedDetail) applyDetail(c, cachedDetail);
+        } else if (budget.detail > 0) {
           budget.detail--;
           try {
             const r = await fetcher.get(c.url);
             const d = parseDetailPage(r.html, r.url, config.center);
-            cache[id] = { at: new Date(now()).toISOString(), detail: d };
-            applyDetail(c, d);
+            if (usableDetail(d)) {
+              cache[id] = { at: new Date(now()).toISOString(), detail: d };
+              applyDetail(c, d);
+            } else {
+              cache[id] = { at: new Date(now()).toISOString(), unusable: true };
+              note.warning = "advert pages carry no readable content (JavaScript-rendered); using list-page data only";
+            }
           } catch (err) {
             if (err.status === 404 || err.status === 410) gone = true;
-            else if (cached) applyDetail(c, cached.detail);
+            else if (cachedDetail) applyDetail(c, cachedDetail);
             else {
               pending = true;
               note.warning = `some detail pages failed: ${err.message}`;
             }
           }
-        } else if (cached) applyDetail(c, cached.detail);
-        else pending = true;
+        } else if (cachedDetail) applyDetail(c, cachedDetail);
+        else if (!cached) pending = true;
         if (cache[id]) cache[id].lastSeen = new Date(now()).toISOString();
       }
       if (gone) continue;
@@ -161,7 +176,7 @@ export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, pa
           bedsText: c.bedsText,
           image: c.image,
           text: c.text,
-          address: c.address,
+          address: titleIsAddress ? c.title : c.address,
           pending,
         }),
       );

@@ -6,17 +6,17 @@ Watches several Irish rental sources every 30 minutes for places near a point (d
 
 | Source | How | Notes |
 |---|---|---|
-| **Daft.ie** | Daft's gateway API (same as the open-source `daftlistings` client) | Real coordinates, server-side owner-occupied filter for rooms |
-| **UL Accommodation** (accommodation.ul.ie, Studentpad) | Scrapes the all-adverts page, then each advert | UL's own noticeboard; many adverts are owner-occupied or weekday-only, which the filters catch |
-| **Rent.ie** | Scrapes the Castletroy / University of Limerick search pages | Houses/apartments URLs are best guesses; a 404 is reported as "skipped" |
-| **MyHome.ie** | Scrapes the Limerick rentals page (embedded JSON first, then HTML) | County-wide; the distance check trims it |
+| **Daft.ie** | Daft's gateway API (same as the open-source `daftlistings` client) | Real coordinates, server-side owner-occupied filter for rooms. Daft may answer HTTP 403 to cloud hosts such as Railway; two header styles are tried and the Status tab shows the result |
+| **UL Accommodation** (accommodation.ul.ie, Studentpad) | Reads the all-adverts list page only: address (the title), price, availability and landlord type are all on it | UL's own noticeboard. The individual advert pages are an empty JavaScript shell, so they are not fetched. Many adverts are "Resident Landlord/Host Family" or weekday-only, which the filters catch. Distance comes from geocoding the address |
+| **Rent.ie** | Scrapes the Castletroy / University of Limerick search pages | Often answers HTTP 403 to cloud hosts. Houses/apartments URLs are best guesses; a 404 is reported as "skipped" |
+| **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Status tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page you add under Settings → Advanced | JSON-LD, embedded JSON or HTML cards |
 
 The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached.
 
 ## How accuracy is kept
 
-- **Distance** is checked exactly (straight line). Coordinates come from the source; if a listing has none, the address is geocoded via OpenStreetMap (cached, rate-limited, rejected if >40 km from the centre). Area-only geocodes are marked "approx". If nothing works the listing is only kept when its text names a nearby area, and is flagged "check distance".
+- **Distance** is checked exactly (straight line). Coordinates come from the source where it has real ones. A coordinate that appears on many *different* listings is a site-wide map position, not a property, and is ignored (and remembered). Coordinates scraped from a page are cross-checked against the address, and the address wins if they disagree by more than 2 km. If a listing has no usable coordinates its address is geocoded via OpenStreetMap (cached, rate-limited, rejected if more than 40 km from the centre); area-only results are marked "approx". If nothing works the listing is only kept when its **address or title** (never the description, which says "close to UL" about places miles away) names a nearby area, and is flagged "check distance". Advert pages that are an empty loading shell contribute nothing.
 - **Owner-occupied**: Daft's own filter for rooms, plus wording such as "owner-occupied", "live-in landlord", "sharing with the owner" in each listing's description. Negations ("not owner occupied", "landlord does not live in") are respected. Listings with no signal either way are flagged "check owner-occupied".
 - **Weekday-only lets** ("Monday to Friday", "5-day rental", "Sunday evening to Friday morning") are excluded by default. These are common near UL and useless if you need the place full-time.
 - **Availability**: start and end dates are read from listing text. A start date later than *need from* (default: today) plus a 14-day grace, or an end date more than 60 days before *stay until*, excludes the listing. Listings with no date are kept and flagged.
