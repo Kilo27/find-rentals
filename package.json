@@ -1,0 +1,23 @@
+{
+  "name": "find-rentals",
+  "version": "1.0.0",
+  "description": "Rental watcher: scrapes Daft.ie every 30 minutes near a location and sends Web Push alerts to an installable phone web app.",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "icons": "node scripts/make-icons.mjs",
+    "probe": "node scripts/probe-sources.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "express": "^5.2.1",
+    "web-push": "^3.6.7"
+  }
+}
