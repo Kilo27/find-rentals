@@ -1,7 +1,7 @@
 import { ADAPTERS } from "./sources/index.js";
 import { usableDetail } from "./sources/web.js";
 import { createFetcher } from "./html.js";
-import { createGeocoder, resolveLocation } from "./geocode.js";
+import { createGeocoder, resolveArea, resolveLocation } from "./geocode.js";
 import { analyzeListing, evaluateLocation, evaluateNonLocation } from "./filter.js";
 import { dedupe } from "./dedupe.js";
 import { stripSharedCoords } from "./coords.js";
@@ -248,6 +248,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
         rejected++;
         continue;
       }
+      await resolveArea(listing, config, geocoder, deps.budget);
       const flags = [...a.flags, ...b.flags];
       if (listing.pending) flags.push("unenriched");
       if (listing.coordsCorrected) flags.push("coords-corrected");
@@ -321,7 +322,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     const kept = d.matches.filter((m) => failedFor(m) && !currentIds.has(m.id));
     // memberIds stay on the stored match so a verdict on any copy of a property still applies when another copy wins.
     d.matches = [
-      ...matches.map(({ text, ...m }) => ({ ...m, firstSeenAt: seen[m.memberIds[0]]?.firstSeenAt ?? null })),
+      ...matches.map(({ text, areaQuery, ...m }) => ({ ...m, firstSeenAt: seen[m.memberIds[0]]?.firstSeenAt ?? null })),
       ...kept,
     ].slice(0, MAX_STORED_MATCHES);
 

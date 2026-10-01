@@ -1,14 +1,18 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { ConfigError, SECTIONS, SOURCES, normalizeConfig } from "./config.js";
 import { createAuth } from "./auth.js";
+import { areasForMatches } from "./mapdata.js";
 import { createUsers, UserError, normalizeUsername } from "./users.js";
 import { ownerOf } from "./push.js";
 import { CAMPUSES, campusIdsFor } from "./transit/campuses.js";
 import { defaultTransit } from "./transit.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
+// The map library is served from the installed package, so the page needs no third-party script host.
+const leafletDir = path.join(path.dirname(createRequire(import.meta.url).resolve("leaflet/package.json")), "dist");
 
 const publicDevice = (s) => ({ endpoint: s.endpoint.slice(-12), userAgent: s.userAgent, addedAt: s.addedAt, lastError: s.lastError });
 
@@ -28,7 +32,7 @@ function reviewFor(reviews, m) {
   return latest;
 }
 
-export function createApp({ store, scanner, pusher, scheduler, agentHub = null, transit = defaultTransit(), adminUsername = "admin", password, secret }) {
+export function createApp({ store, scanner, pusher, scheduler, agentHub = null, mapData = null, transit = defaultTransit(), adminUsername = "admin", password, secret }) {
   const app = express();
   const admin = normalizeUsername(adminUsername);
   const users = createUsers({ store, adminUsername: admin });
@@ -51,6 +55,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     // publicDir is fixed, so dotfiles: allow only stops Express refusing a checkout that sits under a dot folder (.claude/worktrees/...).
     res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"), { dotfiles: "allow" });
   });
+  app.use("/vendor/leaflet", express.static(leafletDir, { maxAge: "7d", index: false }));
   app.use(express.static(publicDir, { maxAge: "1h", index: "index.html" }));
 
   app.post("/api/login", auth.login);
@@ -78,6 +83,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       transit: transit ? transit.meta : null,
       sourceHealth: store.data.sourceHealth,
       matches: store.data.matches.map(({ memberIds: _ids, ...m }) => ({ ...m, review: reviewFor(store.data.reviews, m)?.status ?? null })),
+      areas: areasForMatches(store.data.matches, store.data.geocache),
       lastRun: store.data.lastRun,
       failureCount: store.data.failureCount,
       scanning: scanner.isRunning(),
@@ -86,6 +92,19 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       vapidPublicKey: pusher.publicKey,
       serverTime: new Date().toISOString(),
     });
+  });
+
+  // The campus outline and the bus and rail lines. They come from OpenStreetMap in the background, so this answers at
+  // once with what it has and a status; the page asks again while the lines are still loading.
+  api.get("/map", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(mapData ? mapData.get(store.data.config) : { center: store.data.config.center, radiusKm: store.data.config.radiusKm, campus: null, transit: null, transitStatus: "error", transitError: "Map data is not enabled" });
+  });
+
+  api.post("/map/refresh", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!mapData) return res.status(404).json({ error: "Map data is not enabled" });
+    res.json(mapData.get(store.data.config, { retry: true }));
   });
 
   // There is one search for the whole app, so only the admin may change it until searches are per user.

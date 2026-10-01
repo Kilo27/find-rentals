@@ -1,6 +1,13 @@
+import { h, timeAgo, MODE_ICON, describeMatch, badgeRow, listingImage } from "./ui.js";
+import { createMapView } from "./map.js";
+
 const root = document.getElementById("app");
 let state = null;
 let tab = "matches";
+let view = "list";
+try {
+  if (localStorage.getItem("rw.view") === "map") view = "map";
+} catch {}
 let usersList = [];
 let usersNote = null;
 // Verdicts that take a listing out of the main list, each with its own collapsed section and way back.
@@ -12,21 +19,18 @@ const dismissedStatuses = new Set(DISMISSED.map((d) => d.status));
 const isDismissed = (m) => dismissedStatuses.has(m.review);
 const openSections = {};
 
-function h(tag, attrs = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === false || v === null || v === undefined) continue;
-    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-    else if (k === "class") el.className = v;
-    else if (k === "value") el.value = v;
-    else if (k === "checked") el.checked = Boolean(v);
-    else el.setAttribute(k, v === true ? "" : v);
-  }
-  for (const c of children.flat()) {
-    if (c === null || c === undefined || c === false) continue;
-    el.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  }
-  return el;
+const mapView = createMapView({
+  api: (...args) => api(...args),
+  onShowList: () => setView("list"),
+});
+
+function setView(v) {
+  view = v;
+  try {
+    localStorage.setItem("rw.view", v);
+  } catch {}
+  render();
+  window.scrollTo(0, 0);
 }
 
 async function api(method, url, body) {
@@ -47,15 +51,6 @@ async function api(method, url, body) {
     throw err;
   }
   return data;
-}
-
-function timeAgo(iso) {
-  if (!iso) return "";
-  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
-  if (s < 90) return "just now";
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} d ago`;
 }
 
 function inFuture(iso) {
@@ -86,13 +81,17 @@ async function boot() {
   setInterval(async () => {
     if (!state || document.hidden) return;
     try {
+      const before = matchSignature();
       await loadState();
-      if (tab === "matches") render();
+      if (tab === "matches" && (view === "list" || before !== matchSignature())) render();
     } catch {}
   }, 60_000);
 }
 
+const matchSignature = () => JSON.stringify([state?.matches.map((m) => [m.id, m.priceMonthly, m.lat, m.lng, m.areaKey]), Object.keys(state?.areas ?? {})]);
+
 function render() {
+  root.classList.toggle("wide", Boolean(state) && tab === "matches" && view === "map");
   root.replaceChildren(state ? renderMain() : renderLogin());
 }
 
@@ -192,29 +191,19 @@ function renderMain() {
   );
 }
 
-function fmtDate(iso) {
-  if (!iso) return "";
-  const d = new Date(`${iso}T00:00:00Z`);
-  return d.toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
-
-const MODE_ICON = { bus: "🚌", tram: "🚋", rail: "🚆" };
-
-// How a home connects to the campus: the nearest stop of each direct route, shown when the home is far enough
-// from the campus that you'd want to ride (or when that link is the reason it is listed at all).
-function transitLines(m, flags) {
-  const via = flags.includes("transit-access");
-  if (!m.transit?.campuses?.length || !(via || (m.distanceKm ?? 0) >= 1)) return null;
-  const rows = m.transit.campuses.flatMap((c) => c.options.slice(0, via ? 3 : 2).map((o) => ({ c, o }))).slice(0, 4);
-  return rows.map(({ c, o }) =>
-    h(
-      "div",
-      { class: "transit" },
-      `${MODE_ICON[o.mode] ?? "🚌"} ${o.label} · ${o.stop}, ${o.distM} m`,
-      o.mins ? ` · ${o.mins} min to ${c.short}` : ` · to ${c.short}`,
-      ` · ${o.perDay}/day`,
+function renderMatches() {
+  const toggle = h(
+    "div",
+    { class: "seg", role: "group", "aria-label": "Matches view" },
+    [["list", "List"], ["map", "Map"]].map(([id, label]) =>
+      h("button", { type: "button", class: view === id ? "active" : "", "aria-pressed": String(view === id), onclick: () => view !== id && setView(id) }, label),
     ),
   );
+  if (view === "map") {
+    mapView.update({ ...state, matches: state.matches.filter((m) => !isDismissed(m)) });
+    return [toggle, mapView.el];
+  }
+  return [toggle, ...[renderList()].flat()];
 }
 
 // Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server says no.
@@ -232,14 +221,10 @@ async function setReview(m, status) {
   }
 }
 
-function renderMatches() {
+function renderList() {
   if (!state.matches.length) {
     const ran = state.lastRun;
-    return h(
-      "div",
-      { class: "empty" },
-      ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...",
-    );
+    return h("div", { class: "empty" }, ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...");
   }
   const active = state.matches.filter((m) => !isDismissed(m));
   return [
@@ -261,43 +246,22 @@ function renderMatches() {
 function renderCard(m) {
   const seen = m.review === "seen";
   const dismissed = DISMISSED.find((d) => d.status === m.review);
-  const isNew = !m.review && m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
-  const flags = m.flags ?? [];
-  let dist = null;
-  if (m.distanceKm !== null && m.distanceKm !== undefined) {
-    const how = m.distanceSource === "geocoded" ? " (from address)" : m.distanceSource === "geocoded-area" ? " (approx, area only)" : "";
-    dist = `${flags.includes("distance-approx") ? "~" : ""}${m.distanceKm.toFixed(1)} km${how}`;
-  } else if (flags.includes("distance-unverified")) dist = "distance unverified";
-  const meta = [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean);
+  const d = describeMatch(m, state.config);
   return h(
     "div",
     { class: `card${m.review ? ` ${m.review}` : ""}` },
     h(
       "a",
       { class: "card-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
-      m.image ? h("img", { src: m.image, loading: "lazy", alt: "", referrerpolicy: "no-referrer" }) : null,
+      listingImage(m),
       h(
         "div",
         { class: "body" },
-        h("div", { class: "price" }, m.priceMonthly !== null ? `€${m.priceMonthly.toLocaleString("en-IE")}/mo` : m.priceText || "Price n/a"),
+        h("div", { class: "price" }, d.price),
         h("div", { class: "title" }, m.title),
-        h("div", { class: "meta" }, meta.join(" · ")),
-        transitLines(m, flags),
-        h(
-          "div",
-          { class: "badges" },
-          isNew ? h("span", { class: "badge new" }, "NEW") : null,
-          seen ? h("span", { class: "badge" }, "seen") : null,
-          flags.includes("available-now") ? h("span", { class: "badge" }, "available now") : m.availableFrom ? h("span", { class: "badge" }, `from ${fmtDate(m.availableFrom)}`) : null,
-          flags.includes("ends-early") ? h("span", { class: "badge warn" }, `ends ${fmtDate(m.availableTo)}`) : null,
-          flags.includes("short-term") ? h("span", { class: "badge" }, "short-term friendly") : null,
-          flags.includes("owner-occupied-unknown") ? h("span", { class: "badge warn" }, "check owner-occupied") : null,
-          flags.includes("transit-access") ? h("span", { class: "badge transit" }, `beyond ${state.config.radiusKm} km · direct route`) : null,
-          flags.includes("distance-unverified") ? h("span", { class: "badge warn" }, "check distance") : null,
-          flags.includes("availability-unknown") ? h("span", { class: "badge warn" }, "availability not stated") : null,
-          m.alsoOn?.length ? h("span", { class: "badge" }, `also on ${m.alsoOn.map((a) => a.label).join(", ")}`) : null,
-          m.publishedAt ? h("span", { class: "badge" }, `listed ${timeAgo(m.publishedAt)}`) : null,
-        ),
+        h("div", { class: "meta" }, d.meta),
+        d.transit.map((t) => h("div", { class: "transit" }, t)),
+        badgeRow(d.badges),
       ),
     ),
     h(
