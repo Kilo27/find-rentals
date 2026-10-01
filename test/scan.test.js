@@ -258,3 +258,20 @@ test("store: a saved config carrying the old 'university of limerick' locality h
   fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: custom }));
   assert.deepEqual(new Store(dir).data.config.localityHints, ["castletroy", "my own area"], "user-edited hints are left alone");
 });
+
+test("store: a saved config carrying the old, mostly broken default Rent.ie URLs is migrated", () => {
+  const { dir } = tempStore();
+  const oldUrls = [
+    "https://www.rent.ie/rooms-to-rent/limerick/castletroy/",
+    "https://www.rent.ie/student-accommodation/University-of-Limerick/46/",
+    "https://www.rent.ie/houses-to-rent/limerick/castletroy/",
+    "https://www.rent.ie/apartments-to-rent/limerick/castletroy/",
+  ];
+  const old = { ...normalizeConfig(DEFAULT_CONFIG), rentUrls: oldUrls };
+  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: old }));
+  assert.deepEqual(new Store(dir).data.config.rentUrls, DEFAULT_CONFIG.rentUrls);
+
+  const custom = { ...old, rentUrls: oldUrls.slice(0, 2) };
+  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: custom }));
+  assert.deepEqual(new Store(dir).data.config.rentUrls, oldUrls.slice(0, 2), "user-edited URLs are left alone");
+});

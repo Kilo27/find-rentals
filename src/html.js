@@ -11,8 +11,8 @@ export class SourceError extends Error {
   }
 }
 
-const DEFAULT_UA =
-  "Mozilla/5.0 (compatible; RentalWatch/1.0; personal rental monitor) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+// No browser tokens: Rent.ie's Cloudflare answers 403 "Security Check" to any user agent claiming Chrome.
+const DEFAULT_UA = "Mozilla/5.0 (compatible; RentalWatch/1.0; personal rental monitor)";
 const UA_TOKEN = "rentalwatch";
 const MAX_HTML = 3_000_000;
 
