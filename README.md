@@ -66,6 +66,19 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 - After that, each new match gets one notification showing price, title, distance, source and availability. More than 5 new in one scan: 5 individual pushes plus a digest. Tapping opens the listing.
 - If every source fails 3 scans in a row you get a notification, and another on recovery.
 
+## Map view
+
+The Matches tab has a **List | Map** switch. The map is OpenStreetMap (Leaflet) and shows:
+
+- **Houses** as price pins. Listings at the same spot, or close enough to overlap, share one pin that counts them. A teal pin is a listing first seen in the last 24 hours.
+- **Approximate locations** as a dashed, shaded area with a chip like "≈ Castletroy". This is used when the exact address is not known: the listing's address only resolved to a place name, or it has no coordinates at all but its address or title names one of your "area names that count as nearby". The area is the place's OpenStreetMap outline when it has one, otherwise a circle sized to the kind of place. Listings with no location information at all are counted in a note under the map, with a link back to the list.
+- **The campus** (the centre point in Settings) as a star, with its OpenStreetMap outline when found, and the search radius as a dashed circle.
+- **Public transport**: every bus, rail and tram route in the area, and bus stops once you zoom in. Routes passing within 1 km of the centre are listed first and drawn thicker. Tap a route in the panel to highlight it.
+
+On a computer, hovering a pin or area shows the listing's details and clicking opens it. On a phone, tapping opens a panel with the details and a **View listing** button, so nothing redirects until you press that.
+
+The transport lines come from OpenStreetMap's Overpass API. The server fetches them in the background the first time the map is needed, keeps them for a week, and shows the old copy while refreshing. The public Overpass servers are sometimes overloaded, so several mirrors are tried; if all fail the panel says so and offers "Try again". Area outlines come from Nominatim during scans, using the same lookup budget and cache as addresses. Map tiles are loaded by the browser straight from `tile.openstreetmap.org` (light use only, per OpenStreetMap's tile policy); the Leaflet library itself is served by this app.
+
 ## Settings (all editable in the app)
 
 | Setting | Default |

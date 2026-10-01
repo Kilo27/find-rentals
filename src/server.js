@@ -5,6 +5,7 @@ import { createPusher } from "./push.js";
 import { createScanner } from "./scan.js";
 import { createScheduler } from "./scheduler.js";
 import { createAgentHub } from "./agent-hub.js";
+import { createMapData } from "./mapdata.js";
 import { proxyFromEnv } from "./proxy.js";
 
 const password = process.env.ACCESS_PASSWORD;
@@ -38,7 +39,9 @@ const scanner = createScanner({ store, pusher, log: console, proxy: proxyFromEnv
 const startDelayMs = Number(process.env.SCAN_START_DELAY_SECONDS ?? 10) * 1000;
 const scheduler = createScheduler({ store, scanner, startDelayMs });
 
-const app = createApp({ store, scanner, pusher, scheduler, agentHub, password: password ?? "", secret: process.env.SESSION_SECRET });
+const mapData = createMapData({ store, log: console });
+
+const app = createApp({ store, scanner, pusher, scheduler, agentHub, mapData, password: password ?? "", secret: process.env.SESSION_SECRET });
 
 const port = Number(process.env.PORT || 3000);
 const server = app.listen(port, "0.0.0.0", () => {
@@ -47,6 +50,8 @@ const server = app.listen(port, "0.0.0.0", () => {
     console.warn("WARNING: no volume attached - state is lost on every deploy. Add a Railway Volume.");
   }
   scheduler.start();
+  // Fetch the transport lines now, so the map is ready the first time it is opened.
+  setTimeout(() => mapData.get(store.data.config), 5000).unref();
 });
 
 for (const sig of ["SIGTERM", "SIGINT"]) {

@@ -19,6 +19,7 @@
   "dependencies": {
     "cheerio": "^1.2.0",
     "express": "^5.2.1",
+    "leaflet": "^1.9.4",
     "undici": "^7.30.0",
     "web-push": "^3.6.7"
   }

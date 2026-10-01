@@ -1,12 +1,16 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { ConfigError, SECTIONS, SOURCES, normalizeConfig } from "./config.js";
 import { createAuth } from "./auth.js";
+import { areasForMatches } from "./mapdata.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
+// The map library is served from the installed package, so the page needs no third-party script host.
+const leafletDir = path.join(path.dirname(createRequire(import.meta.url).resolve("leaflet/package.json")), "dist");
 
-export function createApp({ store, scanner, pusher, scheduler, agentHub = null, password, secret }) {
+export function createApp({ store, scanner, pusher, scheduler, agentHub = null, mapData = null, password, secret }) {
   const app = express();
   const auth = createAuth({ password, secret });
 
@@ -23,8 +27,10 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
 
   app.get("/sw.js", (_req, res) => {
     res.set("Cache-Control", "no-cache");
-    res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"));
+    // Relative to a root, so a dot-directory somewhere above the project (a .claude worktree, say) is not refused.
+    res.type("application/javascript").sendFile("sw.js", { root: publicDir });
   });
+  app.use("/vendor/leaflet", express.static(leafletDir, { maxAge: "7d", index: false }));
   app.use(express.static(publicDir, { maxAge: "1h", index: "index.html" }));
 
   app.post("/api/login", (req, res) => auth.login(req, res));
@@ -46,6 +52,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       sources: SOURCES,
       sourceHealth: store.data.sourceHealth,
       matches: store.data.matches,
+      areas: areasForMatches(store.data.matches, store.data.geocache),
       lastRun: store.data.lastRun,
       failureCount: store.data.failureCount,
       scanning: scanner.isRunning(),
@@ -59,6 +66,19 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       vapidPublicKey: pusher.publicKey,
       serverTime: new Date().toISOString(),
     });
+  });
+
+  // The campus outline and the bus and rail lines. They come from OpenStreetMap in the background, so this answers at
+  // once with what it has and a status; the page asks again while the lines are still loading.
+  api.get("/map", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(mapData ? mapData.get(store.data.config) : { center: store.data.config.center, radiusKm: store.data.config.radiusKm, campus: null, transit: null, transitStatus: "error", transitError: "Map data is not enabled" });
+  });
+
+  api.post("/map/refresh", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!mapData) return res.status(404).json({ error: "Map data is not enabled" });
+    res.json(mapData.get(store.data.config, { retry: true }));
   });
 
   api.put("/config", (req, res) => {

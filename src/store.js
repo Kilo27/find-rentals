@@ -27,6 +27,7 @@ const freshState = () => ({
   debug: {},
   pageCache: {},
   geocache: {},
+  mapCache: { transit: {}, campus: {} },
   siteConstants: {},
   sourceHealth: {},
   laptop: { lastOnlineAt: null, offlineNotified: false },
