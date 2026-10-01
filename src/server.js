@@ -7,10 +7,18 @@ import { createScheduler } from "./scheduler.js";
 import { createAgentHub } from "./agent-hub.js";
 import { createMapData } from "./mapdata.js";
 import { proxyFromEnv } from "./proxy.js";
+import { isValidUsername, normalizeUsername } from "./users.js";
 
 const password = process.env.ACCESS_PASSWORD;
 if (!password && process.env.ALLOW_NO_AUTH !== "1") {
   console.error("ACCESS_PASSWORD is required (set ALLOW_NO_AUTH=1 only for local development).");
+  process.exit(1);
+}
+
+// The admin account is this username plus ACCESS_PASSWORD. Everyone else is created by the admin in the app.
+const adminUsername = normalizeUsername(process.env.ADMIN_USERNAME || "admin");
+if (!isValidUsername(adminUsername)) {
+  console.error("ADMIN_USERNAME must be 2-32 characters: lowercase letters, numbers, dot, dash or underscore.");
   process.exit(1);
 }
 
@@ -41,7 +49,7 @@ const scheduler = createScheduler({ store, scanner, startDelayMs });
 
 const mapData = createMapData({ store, log: console });
 
-const app = createApp({ store, scanner, pusher, scheduler, agentHub, mapData, password: password ?? "", secret: process.env.SESSION_SECRET });
+const app = createApp({ store, scanner, pusher, scheduler, agentHub, mapData, adminUsername, password: password ?? "", secret: process.env.SESSION_SECRET });
 
 const port = Number(process.env.PORT || 3000);
 const server = app.listen(port, "0.0.0.0", () => {

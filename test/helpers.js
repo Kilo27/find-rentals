@@ -75,8 +75,11 @@ export function fakePusher({ subscribers = 1, sendResult } = {}) {
       sent.push(payload);
       return sendResult ? sendResult(payload) : { sent: subscribers, failed: 0, removed: 0 };
     },
+    sendToOwner: async (_owner, payload) => ({ sent: 0, failed: 0, removed: 0 }),
+    subscriptionsOf: () => [],
     addSubscription() {},
     removeSubscription() {},
+    removeOwner() {},
   };
 }
 

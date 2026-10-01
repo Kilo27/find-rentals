@@ -341,7 +341,7 @@ test("API: /api/state carries the areas, /api/map serves the map background, and
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     assert.equal((await fetch(`${base}/api/map`)).status, 401);
-    const login = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: "pw" }) });
+    const login = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: "admin", password: "pw" }) });
     const headers = { Cookie: login.headers.get("set-cookie").split(";")[0] };
 
     const state = await (await fetch(`${base}/api/state`, { headers })).json();

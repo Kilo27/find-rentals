@@ -1,4 +1,5 @@
 import { isSafeUrl } from "./html.js";
+import { campusById } from "./transit/campuses.js";
 
 export const SECTIONS = {
   "residential-to-rent": "Houses & apartments",
@@ -51,6 +52,12 @@ export const DEFAULT_CONFIG = Object.freeze({
   unverifiedDistance: "locality",
   localityHints: ["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry"],
   respectRobots: true,
+  transitEnabled: true,
+  transitCampuses: [],
+  transitMaxKm: 5,
+  transitWalkM: 500,
+  transitMaxRideMin: 30,
+  transitMinPerDay: 10,
   maxDetailFetches: 40,
   priceMin: null,
   priceMax: null,
@@ -156,6 +163,12 @@ export function normalizeConfig(input = {}) {
     unverifiedDistance: String(src.unverifiedDistance ?? ""),
     localityHints: parseKeywords(src.localityHints),
     respectRobots: parseBool(errors, "respectRobots", src.respectRobots),
+    transitEnabled: parseBool(errors, "transitEnabled", src.transitEnabled),
+    transitCampuses: [],
+    transitMaxKm: parseNumber(errors, "transitMaxKm", src.transitMaxKm, { min: 0.5, max: 20 }),
+    transitWalkM: parseNumber(errors, "transitWalkM", src.transitWalkM, { min: 100, max: 2000, int: true }),
+    transitMaxRideMin: parseNumber(errors, "transitMaxRideMin", src.transitMaxRideMin, { min: 5, max: 90, int: true }),
+    transitMinPerDay: parseNumber(errors, "transitMinPerDay", src.transitMinPerDay, { min: 1, max: 500, int: true }),
     maxDetailFetches: parseNumber(errors, "maxDetailFetches", src.maxDetailFetches, { min: 0, max: 200, int: true }),
     priceMin: parseNumber(errors, "priceMin", src.priceMin, { min: 0, nullable: true }),
     priceMax: parseNumber(errors, "priceMax", src.priceMax, { min: 0, nullable: true }),
@@ -180,6 +193,10 @@ export function normalizeConfig(input = {}) {
   for (const id of sources) if (!(id in SOURCES)) errors.push(`unknown source "${id}"`);
   out.sources = sources.filter((id) => id in SOURCES);
   if (out.enabled && out.sources.length === 0) errors.push("select at least one source");
+
+  const campuses = Array.isArray(src.transitCampuses) ? src.transitCampuses : [];
+  for (const id of campuses) if (!campusById(id)) errors.push(`unknown campus "${id}"`);
+  out.transitCampuses = [...new Set(campuses.filter((id) => campusById(id)))];
 
   const sections = Array.isArray(src.sections) ? src.sections : [];
   for (const s of sections) {

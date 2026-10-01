@@ -42,12 +42,24 @@ export function fmtDate(iso) {
   return d.toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-export const isNewMatch = (m) => Boolean(m.firstSeenAt) && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
+// New in the last day and not yet looked at.
+export const isNewMatch = (m) => !m.review && Boolean(m.firstSeenAt) && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
+
+export const MODE_ICON = { bus: "🚌", tram: "🚋", rail: "🚆" };
+
+// How a home connects to the campus: the nearest stop of each direct route, shown when the home is far enough
+// from the campus that you'd want to ride (or when that link is the reason it is listed at all).
+function transitLines(m, flags) {
+  const via = flags.includes("transit-access");
+  if (!m.transit?.campuses?.length || !(via || (m.distanceKm ?? 0) >= 1)) return [];
+  const rows = m.transit.campuses.flatMap((c) => c.options.slice(0, via ? 3 : 2).map((o) => ({ c, o }))).slice(0, 4);
+  return rows.map(({ c, o }) => `${MODE_ICON[o.mode] ?? "🚌"} ${o.label} · ${o.stop}, ${o.distM} m${o.mins ? ` · ${o.mins} min to ${c.short}` : ` · to ${c.short}`} · ${o.perDay}/day`);
+}
 
 export const priceText = (m) => (m.priceMonthly !== null && m.priceMonthly !== undefined ? `€${m.priceMonthly.toLocaleString("en-IE")}/mo` : m.priceText || "Price n/a");
 
-// Everything a card shows about a listing, as plain data.
-export function describeMatch(m) {
+// Everything a card shows about a listing, as plain data. `config` is the search settings (for the radius).
+export function describeMatch(m, config) {
   const flags = m.flags ?? [];
   const isNew = isNewMatch(m);
   let dist = null;
@@ -58,11 +70,13 @@ export function describeMatch(m) {
 
   const badges = [];
   if (isNew) badges.push({ cls: "new", text: "NEW" });
+  if (m.review === "seen") badges.push({ text: "seen" });
   if (flags.includes("available-now")) badges.push({ text: "available now" });
   else if (m.availableFrom) badges.push({ text: `from ${fmtDate(m.availableFrom)}` });
   if (flags.includes("ends-early")) badges.push({ cls: "warn", text: `ends ${fmtDate(m.availableTo)}` });
   if (flags.includes("short-term")) badges.push({ text: "short-term friendly" });
   if (flags.includes("owner-occupied-unknown")) badges.push({ cls: "warn", text: "check owner-occupied" });
+  if (flags.includes("transit-access")) badges.push({ cls: "transit", text: `beyond ${config.radiusKm} km · direct route` });
   if (flags.includes("distance-unverified")) badges.push({ cls: "warn", text: "check distance" });
   if (flags.includes("availability-unknown")) badges.push({ cls: "warn", text: "availability not stated" });
   if (m.alsoOn?.length) badges.push({ text: `also on ${m.alsoOn.map((a) => a.label).join(", ")}` });
@@ -72,6 +86,7 @@ export function describeMatch(m) {
     isNew,
     price: priceText(m),
     meta: [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean).join(" · "),
+    transit: transitLines(m, flags),
     badges,
   };
 }

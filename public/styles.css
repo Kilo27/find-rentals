@@ -50,8 +50,21 @@ nav.tabs button.active { color: var(--accent); }
   display: block; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   margin: 10px 0; overflow: hidden; color: inherit; text-decoration: none;
 }
+.card-link { display: block; color: inherit; text-decoration: none; }
 .card .body { padding: 12px 14px; }
 .card img { width: 100%; height: 160px; object-fit: cover; display: block; background: var(--line); }
+.card.seen .card-link, .card.rejected .card-link, .card.unavailable .card-link { opacity: 0.6; }
+/* Two columns with hairlines between cells; an odd last button takes the whole row. */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+.act {
+  min-height: 44px; padding: 10px 8px; border: 0; background: var(--card); color: var(--accent);
+  font: inherit; font-size: 14px; font-weight: 600;
+}
+.act:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.act.bad { color: var(--bad); }
+.card-msg { margin: 0; padding: 8px 14px; border-top: 1px solid var(--line); }
+details.dismissed { margin-top: 16px; }
+details.dismissed > summary { color: var(--muted); }
 .price { font-size: 20px; font-weight: 700; }
 .title { margin: 2px 0 4px; }
 .meta { color: var(--muted); font-size: 14px; }
@@ -77,7 +90,15 @@ button.primary, button.secondary {
 }
 button.primary { background: var(--accent); color: var(--accent-text); }
 button.secondary { background: transparent; color: var(--accent); }
+button.secondary.danger { border-color: var(--bad); color: var(--bad); }
 button:disabled { opacity: 0.5; }
+.viewing {
+  position: sticky; top: env(safe-area-inset-top); z-index: 5; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 8px 16px; background: var(--warn); color: var(--bg); font-weight: 700;
+}
+.viewing button.secondary { margin: 0; padding: 6px 14px; color: inherit; border-color: currentColor; }
+.panel h3 { margin: 16px 0 0; font-size: 14px; }
+.panel form input + input { margin-top: 8px; }
 .msg { margin-top: 10px; font-size: 14px; }
 .msg.ok { color: var(--ok); }
 .msg.err { color: var(--bad); }
@@ -147,7 +168,7 @@ button.linklike { font: inherit; color: var(--accent); background: none; border:
 .mcard.compact { display: flex; gap: 8px; border-top: 1px solid var(--line); }
 .mcard.compact img { width: 72px; height: 72px; flex: none; }
 .mcard.compact .price { font-size: 16px; }
-.mcard.compact .badges { display: none; }
+.mcard.compact .badges, .mcard.compact .transit { display: none; }
 .mcard:hover { background: var(--bg); }
 
 .sheet-backdrop { position: fixed; inset: 0; z-index: 59; background: rgb(0 0 0 / .45); }
@@ -159,3 +180,11 @@ button.linklike { font: inherit; color: var(--accent); background: none; border:
 .sheet-item + .sheet-item { border-top: 1px solid var(--line); }
 .btn { display: block; text-align: center; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--accent); color: var(--accent-text); font-weight: 700; text-decoration: none; }
 body.sheet-open { overflow: hidden; }
+.transit { margin-top: 4px; font-size: 13px; }
+.badge.transit { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+details.route { border-top: 1px solid var(--line); margin-top: 8px; }
+details.route summary { margin: 8px 0 4px; }
+.stoprow { padding: 5px 0; font-size: 13px; border-top: 1px solid var(--line); }
+.stoprow span:last-child { display: block; color: var(--muted); }
+.stops a, .hint a { color: var(--accent); }
+details .check { margin-left: 4px; }

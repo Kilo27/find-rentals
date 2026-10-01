@@ -85,12 +85,12 @@ export function createMapView({ api, onShowList }) {
   // --- listing details ---------------------------------------------------------------------------------------
 
   function listingLink(m, compact) {
-    const d = describeMatch(m);
+    const d = describeMatch(m, current.config);
     return h(
       "a",
       { class: compact ? "mcard compact" : "mcard", href: m.url, target: "_blank", rel: "noopener noreferrer" },
       listingImage(m),
-      h("div", { class: "body" }, h("div", { class: "price" }, d.price), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), badgeRow(d.badges)),
+      h("div", { class: "body" }, h("div", { class: "price" }, d.price), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
     );
   }
 
@@ -145,7 +145,7 @@ export function createMapView({ api, onShowList }) {
   }
 
   function sheetItem(m) {
-    const d = describeMatch(m);
+    const d = describeMatch(m, current.config);
     return h(
       "div",
       { class: "sheet-item" },
@@ -157,6 +157,7 @@ export function createMapView({ api, onShowList }) {
         h("div", { class: "title" }, m.title),
         m.address && m.address !== m.title ? h("div", { class: "meta" }, m.address) : null,
         h("div", { class: "meta" }, d.meta),
+        d.transit.map((t) => h("div", { class: "transit" }, t)),
         badgeRow(d.badges),
         h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer" }, "View listing ↗"),
       ),

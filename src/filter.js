@@ -72,7 +72,15 @@ export function evaluateLocation(listing, config) {
   if (listing.lat !== null && listing.lng !== null) {
     const distanceKm = haversineKm(config.center.lat, config.center.lng, listing.lat, listing.lng);
     const coarse = listing.distanceSource === "geocoded-area";
-    if (distanceKm > config.radiusKm + (coarse ? 1 : 0)) return { ok: false, reason: "too far", distanceKm, flags };
+    if (distanceKm > config.radiusKm + (coarse ? 1 : 0)) {
+      // A little further out is fine if a direct bus, tram or train runs from within walking distance to the campus.
+      // An area-level location can't say which stop is a short walk away, so it never qualifies.
+      if (!coarse && config.transitEnabled && listing.transit?.good && distanceKm <= config.transitMaxKm) {
+        flags.push("transit-access");
+        return { ok: true, reason: null, distanceKm, flags };
+      }
+      return { ok: false, reason: "too far", distanceKm, flags };
+    }
     if (coarse) flags.push("distance-approx");
     return { ok: true, reason: null, distanceKm, flags };
   }

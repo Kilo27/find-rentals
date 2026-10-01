@@ -47,16 +47,16 @@ test("health and static shell are public", async () => {
 });
 
 test("API requires auth", async () => {
-  for (const [m, p] of [["GET", "/api/state"], ["PUT", "/api/config"], ["POST", "/api/scan"], ["POST", "/api/test-push"], ["GET", "/api/debug"]]) {
+  for (const [m, p] of [["GET", "/api/state"], ["PUT", "/api/config"], ["PUT", "/api/review"], ["POST", "/api/scan"], ["POST", "/api/test-push"], ["GET", "/api/debug"]]) {
     const { res } = await call(m, p, m === "GET" ? undefined : {}, false);
     assert.equal(res.status, 401, `${m} ${p}`);
   }
 });
 
 test("wrong password is rejected; right password sets an httpOnly cookie", async () => {
-  const bad = await call("POST", "/api/login", { password: "nope" }, false);
+  const bad = await call("POST", "/api/login", { username: "admin", password: "nope" }, false);
   assert.equal(bad.res.status, 401);
-  const good = await call("POST", "/api/login", { password: "hunter2" }, false);
+  const good = await call("POST", "/api/login", { username: "admin", password: "hunter2" }, false);
   assert.equal(good.res.status, 200);
   assert.match(good.set, /fr_session=/);
   assert.match(good.set, /HttpOnly/i);
@@ -90,6 +90,83 @@ test("config can be updated, is validated, and persists to disk", async () => {
   assert.equal(reloaded.config.radiusKm, 1.5);
 });
 
+test("transit: the state lists the campuses, and a campus's stops can be read as JSON, CSV or GeoJSON", async () => {
+  const { data: state } = await call("GET", "/api/state");
+  assert.ok(state.campuses.some((c) => c.id === "ul" && c.short === "UL"));
+  assert.deepEqual(state.autoCampuses, ["ul"]);
+  assert.ok(state.transit.attribution);
+
+  const json = await call("GET", "/api/transit/ul?routes=304,310");
+  assert.equal(json.res.status, 200);
+  assert.deepEqual(json.data.routes.map((r) => r.label), ["304", "310"]);
+  const stop = json.data.routes[0].stops.find((s) => s.name === "Plassey Village");
+  assert.deepEqual([stop.code, stop.lat, stop.lng], ["607611", 52.66898, -8.57495]);
+
+  const csv = await fetch(base + "/api/transit/ul?format=csv&routes=304A", { headers: { Cookie: cookie } });
+  assert.match(csv.headers.get("content-type"), /text\/csv/);
+  const lines = (await csv.text()).trim().split("\n");
+  assert.equal(lines[0], "route,operator,mode,stop_code,stop_name,latitude,longitude,trips_per_weekday,minutes_to_campus");
+  assert.ok(lines.length > 20 && lines.slice(1).every((l) => l.startsWith("304A,Bus Éireann,bus,")));
+
+  const geo = await call("GET", "/api/transit/ul?format=geojson&routes=310");
+  assert.equal(geo.data.type, "FeatureCollection");
+  assert.deepEqual(Object.keys(geo.data.features[0].properties).sort(), ["code", "minutesToCampus", "mode", "operator", "route", "stop", "tripsPerWeekday"]);
+  assert.ok(geo.data.features.every((f) => f.geometry.coordinates[0] < -8 && f.geometry.coordinates[1] > 52), "GeoJSON is [longitude, latitude]");
+
+  assert.equal((await call("GET", "/api/transit/nowhere")).res.status, 404);
+  assert.equal((await call("GET", "/api/transit/ul", undefined, false)).res.status, 401);
+});
+
+const reviewOf = async (id) => (await call("GET", "/api/state")).data.matches.find((m) => m.id === id).review;
+
+test("a listing can be marked seen or not a fit; the mark survives a rescan and can be cleared", async () => {
+  assert.equal(await reviewOf("daft:1"), null);
+
+  const seen = await call("PUT", "/api/review", { id: "daft:1", status: "seen" });
+  assert.equal(seen.res.status, 200);
+  assert.equal(await reviewOf("daft:1"), "seen");
+
+  await call("POST", "/api/scan");
+  assert.equal(await reviewOf("daft:1"), "seen", "a fresh scan rebuilds the matches but not your verdicts");
+
+  await call("PUT", "/api/review", { id: "daft:1", status: "rejected" });
+  assert.equal(await reviewOf("daft:1"), "rejected");
+  assert.equal(JSON.parse((await import("node:fs")).readFileSync(store.file, "utf8")).reviews["daft:1"].status, "rejected", "saved to disk");
+
+  const gone = await call("PUT", "/api/review", { id: "daft:1", status: "unavailable" });
+  assert.equal(gone.res.status, 200);
+  assert.equal(await reviewOf("daft:1"), "unavailable", "replaces the earlier verdict");
+  await call("POST", "/api/scan");
+  assert.equal(await reviewOf("daft:1"), "unavailable", "and survives a rescan too");
+
+  await call("PUT", "/api/review", { id: "daft:1", status: null });
+  assert.equal(await reviewOf("daft:1"), null);
+  assert.deepEqual(store.data.reviews, {});
+});
+
+test("review requests are validated", async () => {
+  for (const body of [{}, { id: "daft:1" }, { id: "daft:1", status: "liked" }, { id: 1, status: "seen" }]) {
+    assert.equal((await call("PUT", "/api/review", body)).res.status, 400, JSON.stringify(body));
+  }
+  assert.equal((await call("PUT", "/api/review", { id: "daft:404", status: "seen" })).res.status, 404);
+  assert.deepEqual(store.data.reviews, {}, "nothing was stored for bad requests");
+});
+
+test("a verdict on one copy of a property covers the other copies", async () => {
+  store.data.matches[0].memberIds = ["daft:1", "rent:9"];
+  const { res, data } = await call("PUT", "/api/review", { id: "rent:9", status: "rejected" });
+  assert.equal(res.status, 200);
+  assert.equal(data.id, "daft:1");
+  assert.deepEqual(Object.keys(store.data.reviews).sort(), ["daft:1", "rent:9"]);
+
+  await call("POST", "/api/scan");
+  assert.deepEqual(store.data.matches[0].memberIds, ["daft:1"], "the rescan no longer sees the Rent.ie copy");
+  const state = (await call("GET", "/api/state")).data;
+  assert.equal(state.matches[0].review, "rejected", "the Daft copy still carries the verdict");
+  assert.equal(state.matches[0].memberIds, undefined, "member ids stay on the server");
+  await call("PUT", "/api/review", { id: "daft:1", status: null });
+});
+
 test("logout clears the session", async () => {
   const out = await call("POST", "/api/logout");
   assert.equal(out.res.status, 200);
@@ -99,6 +176,6 @@ test("logout clears the session", async () => {
 
 test("login is rate limited", async () => {
   let last;
-  for (let i = 0; i < 12; i++) last = await call("POST", "/api/login", { password: "wrong" }, false);
+  for (let i = 0; i < 12; i++) last = await call("POST", "/api/login", { username: "admin", password: "wrong" }, false);
   assert.equal(last.res.status, 429);
 });

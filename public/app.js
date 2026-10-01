@@ -1,4 +1,4 @@
-import { h, timeAgo, describeMatch, badgeRow, listingImage } from "./ui.js";
+import { h, timeAgo, MODE_ICON, describeMatch, badgeRow, listingImage } from "./ui.js";
 import { createMapView } from "./map.js";
 
 const root = document.getElementById("app");
@@ -8,6 +8,16 @@ let view = "list";
 try {
   if (localStorage.getItem("rw.view") === "map") view = "map";
 } catch {}
+let usersList = [];
+let usersNote = null;
+// Verdicts that take a listing out of the main list, each with its own collapsed section and way back.
+const DISMISSED = [
+  { status: "rejected", title: "Not a fit", undo: "Restore" },
+  { status: "unavailable", title: "No longer available", undo: "Still available" },
+];
+const dismissedStatuses = new Set(DISMISSED.map((d) => d.status));
+const isDismissed = (m) => dismissedStatuses.has(m.review);
+const openSections = {};
 
 const mapView = createMapView({
   api: (...args) => api(...args),
@@ -50,6 +60,8 @@ function inFuture(iso) {
   return s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${Math.round(s / 3600)} h`;
 }
 
+const kv = (k, v) => h("div", { class: "kv" }, h("span", {}, k), h("span", {}, v));
+
 const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
 
@@ -85,6 +97,7 @@ function render() {
 
 function renderLogin() {
   const msg = h("div", { class: "msg err" });
+  const name = h("input", { type: "text", placeholder: "Username", autocomplete: "username", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
   const input = h("input", { type: "password", placeholder: "Password", autocomplete: "current-password" });
   const form = h(
     "form",
@@ -93,16 +106,19 @@ function renderLogin() {
       onsubmit: async (e) => {
         e.preventDefault();
         try {
-          await api("POST", "/api/login", { password: input.value });
+          await api("POST", "/api/login", { username: name.value, password: input.value });
           await loadState();
+          tab = "matches";
           render();
+          syncSubscription();
         } catch (err) {
           msg.textContent = err.message;
         }
       },
     },
     h("h1", {}, "Rental Watch"),
-    h("p", { class: "hint" }, "Enter the access password. You only need to do this once per device."),
+    h("p", { class: "hint" }, "Sign in with your username and password. You only need to do this once per device."),
+    name,
     input,
     h("button", { class: "primary", type: "submit" }, "Log in"),
     msg,
@@ -110,17 +126,39 @@ function renderLogin() {
   return form;
 }
 
+async function loadUsers() {
+  usersList = (await api("GET", "/api/users")).users;
+}
+
+async function stopViewing() {
+  try {
+    await api("DELETE", "/api/view-as");
+    await loadState();
+    render();
+  } catch {}
+}
+
 function renderMain() {
-  const tabs = [
-    ["matches", `Matches (${state.matches.length})`],
-    ["settings", "Settings"],
-    ["status", "Status"],
-  ];
-  const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : renderStatus();
+  // Only the admin can change the one shared search or manage users.
+  const admin = state.user.isAdmin;
+  const tabs = [["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`]];
+  if (admin) tabs.push(["settings", "Settings"]);
+  tabs.push(["status", "Status"]);
+  if (admin) tabs.push(["users", "Users"]);
+  if ((tab === "users" || tab === "settings") && !admin) tab = "matches";
+  const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : tab === "users" ? renderUsers() : renderStatus();
   const c = state.config;
   return h(
     "div",
     {},
+    state.viewingAs
+      ? h(
+          "div",
+          { class: "viewing" },
+          h("span", {}, `Viewing as ${state.viewingAs.username}`),
+          h("button", { class: "secondary", onclick: stopViewing }, "Exit"),
+        )
+      : null,
     h(
       "header",
       {},
@@ -136,8 +174,12 @@ function renderMain() {
           "button",
           {
             class: tab === id ? "active" : "",
-            onclick: () => {
+            onclick: async () => {
               tab = id;
+              if (id === "users") {
+                usersNote = null;
+                await loadUsers().catch((err) => (usersNote = { text: err.message, ok: false }));
+              }
               render();
               window.scrollTo(0, 0);
             },
@@ -158,10 +200,25 @@ function renderMatches() {
     ),
   );
   if (view === "map") {
-    mapView.update(state);
+    mapView.update({ ...state, matches: state.matches.filter((m) => !isDismissed(m)) });
     return [toggle, mapView.el];
   }
   return [toggle, ...[renderList()].flat()];
+}
+
+// Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server says no.
+async function setReview(m, status) {
+  const before = m.review;
+  m.review = status;
+  m.reviewError = null;
+  render();
+  try {
+    await api("PUT", "/api/review", { id: m.id, status });
+  } catch (err) {
+    m.review = before;
+    m.reviewError = err.message;
+    render();
+  }
 }
 
 function renderList() {
@@ -169,15 +226,57 @@ function renderList() {
     const ran = state.lastRun;
     return h("div", { class: "empty" }, ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...");
   }
-  return state.matches.map((m) => {
-    const d = describeMatch(m);
-    return h(
+  const active = state.matches.filter((m) => !isDismissed(m));
+  return [
+    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Nothing left to look at: everything here has been dismissed.")]),
+    ...DISMISSED.map(({ status, title }) => {
+      const group = state.matches.filter((m) => m.review === status);
+      return group.length
+        ? h(
+            "details",
+            { class: "dismissed", open: openSections[status] === true, ontoggle: (e) => (openSections[status] = e.target.open) },
+            h("summary", {}, `${title} (${group.length})`),
+            group.map(renderCard),
+          )
+        : null;
+    }),
+  ];
+}
+
+function renderCard(m) {
+  const seen = m.review === "seen";
+  const dismissed = DISMISSED.find((d) => d.status === m.review);
+  const d = describeMatch(m, state.config);
+  return h(
+    "div",
+    { class: `card${m.review ? ` ${m.review}` : ""}` },
+    h(
       "a",
-      { class: "card", href: m.url, target: "_blank", rel: "noopener noreferrer" },
+      { class: "card-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
       listingImage(m),
-      h("div", { class: "body" }, h("div", { class: "price" }, d.price), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), badgeRow(d.badges)),
-    );
-  });
+      h(
+        "div",
+        { class: "body" },
+        h("div", { class: "price" }, d.price),
+        h("div", { class: "title" }, m.title),
+        h("div", { class: "meta" }, d.meta),
+        d.transit.map((t) => h("div", { class: "transit" }, t)),
+        badgeRow(d.badges),
+      ),
+    ),
+    h(
+      "div",
+      { class: "actions" },
+      dismissed
+        ? h("button", { class: "act", onclick: () => setReview(m, "seen") }, dismissed.undo)
+        : [
+            h("button", { class: "act", onclick: () => setReview(m, seen ? null : "seen") }, seen ? "Mark as unseen" : "Mark as seen"),
+            h("button", { class: "act bad", onclick: () => setReview(m, "rejected") }, "Not a fit"),
+            h("button", { class: "act bad", onclick: () => setReview(m, "unavailable") }, "No longer available"),
+          ],
+    ),
+    m.reviewError ? h("div", { class: "msg err card-msg" }, `Couldn't save that: ${m.reviewError}`) : null,
+  );
 }
 
 function renderSettings() {
@@ -234,6 +333,12 @@ function renderSettings() {
     intervalMinutes: Number(f.intervalMinutes.value),
     center: { label: f.centerLabel.value, lat: Number(f.lat.value), lng: Number(f.lng.value) },
     radiusKm: Number(f.radiusKm.value),
+    transitEnabled: f.transitEnabled.checked,
+    transitCampuses: state.campuses.filter((c) => f[`campus:${c.id}`].checked).map((c) => c.id),
+    transitMaxKm: Number(f.transitMaxKm.value),
+    transitWalkM: Number(f.transitWalkM.value),
+    transitMaxRideMin: Number(f.transitMaxRideMin.value),
+    transitMinPerDay: Number(f.transitMinPerDay.value),
     sources: Object.keys(state.sources).filter((id) => f[`source:${id}`].checked),
     sections: Object.keys(state.sections).filter((id) => f[`section:${id}`].checked),
     ulUrls: f.ulUrls.value,
@@ -302,6 +407,7 @@ function renderSettings() {
       num("radiusKm", "Max distance (km)", c.radiusKm, { min: "0.1", max: "20" }),
       h("div", { class: "hint" }, "Exact straight-line distance from the centre point."),
     ),
+    renderTransitSettings(c, f, num, check),
     h(
       "div",
       { class: "panel" },
@@ -370,6 +476,103 @@ function renderSettings() {
   );
 }
 
+const mapLink = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+// "Public transport": accept homes beyond the radius that have a direct route to the campus, and browse
+// the stops that go there (with coordinates, to open in a maps app or export).
+function renderTransitSettings(c, f, num, check) {
+  const byRegion = new Map();
+  for (const campus of state.campuses) {
+    if (!byRegion.has(campus.region)) byRegion.set(campus.region, []);
+    byRegion.get(campus.region).push(campus);
+  }
+  const auto = state.autoCampuses.map((id) => state.campuses.find((x) => x.id === id)?.name).filter(Boolean);
+  const campusBoxes = [...byRegion].map(([region, list]) =>
+    h(
+      "details",
+      { open: list.some((x) => c.transitCampuses.includes(x.id)) },
+      h("summary", {}, region),
+      list.map((x) => {
+        f[`campus:${x.id}`] = h("input", { type: "checkbox", checked: c.transitCampuses.includes(x.id) });
+        return h("label", { class: "check" }, f[`campus:${x.id}`], x.name);
+      }),
+    ),
+  );
+
+  const result = h("div", { class: "stops" });
+  const pick = h(
+    "select",
+    {},
+    state.campuses.map((x) => h("option", { value: x.id, selected: x.id === (c.transitCampuses[0] ?? state.autoCampuses[0]) }, x.name)),
+  );
+  const show = h(
+    "button",
+    {
+      class: "secondary",
+      type: "button",
+      onclick: async () => {
+        result.replaceChildren(h("div", { class: "hint" }, "Loading..."));
+        try {
+          const d = await api("GET", `/api/transit/${pick.value}`);
+          const base = `/api/transit/${pick.value}`;
+          result.replaceChildren(
+            h("div", { class: "hint" }, `${d.routes.length} routes with a direct service to ${d.campus.name}. Trips are on a typical weekday; times are the ride to the campus.`),
+            h(
+              "div",
+              { class: "hint" },
+              h("a", { href: `${base}?format=csv`, download: `${pick.value}-stops.csv` }, "Download CSV"),
+              " · ",
+              h("a", { href: `${base}?format=geojson`, download: `${pick.value}-stops.geojson` }, "Download GeoJSON"),
+            ),
+            ...d.routes.map((r) =>
+              h(
+                "details",
+                { class: "route" },
+                h("summary", {}, `${MODE_ICON[r.mode] ?? ""} ${r.label} · ${r.operator} · ${r.stops.length} stops`),
+                h("div", { class: "hint" }, r.name),
+                r.stops.map((s) =>
+                  h(
+                    "div",
+                    { class: "stoprow" },
+                    h("span", {}, `${s.name}${s.code ? ` (${s.code})` : ""}`),
+                    h("span", {}, `${s.mins ?? "?"} min · ${s.perDay}/day · `, h("a", { href: mapLink(s.lat, s.lng), target: "_blank", rel: "noopener noreferrer" }, `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`)),
+                  ),
+                ),
+              ),
+            ),
+          );
+        } catch (err) {
+          result.replaceChildren(h("div", { class: "msg err" }, err.message));
+        }
+      },
+    },
+    "Show stops",
+  );
+
+  return h(
+    "div",
+    { class: "panel" },
+    h("h2", {}, "Public transport"),
+    check("transitEnabled", "Also accept homes beyond the distance above that are on a direct bus, tram or train route to the campus", c.transitEnabled),
+    h("div", { class: "hint" }, "Uses the National Transport Authority's timetables for Bus Éireann, Dublin Bus, Go-Ahead, Luas and Irish Rail. Only services that go straight to the campus count, and only the stops on the side of the road that heads there."),
+    h("div", { class: "row" }, num("transitMaxKm", "Furthest from the centre (km)", c.transitMaxKm, { min: "0.5", max: "20" }), num("transitWalkM", "Walk to the stop (m)", c.transitWalkM, { step: "50", min: "100", max: "2000" })),
+    h("div", { class: "row" }, num("transitMaxRideMin", "Longest ride (minutes)", c.transitMaxRideMin, { step: "1", min: "5", max: "90" }), num("transitMinPerDay", "Fewest trips per weekday", c.transitMinPerDay, { step: "1", min: "1" })),
+    h("div", { class: "hint" }, "The walk is a straight line to the stop, so allow about a quarter more on the ground."),
+    h("label", {}, "Campuses"),
+    h("div", { class: "hint" }, auto.length ? `Leave all unticked to use the campus at your search centre (now: ${auto.join(", ")}).` : "Nothing is near your search centre, so tick the campus you want."),
+    campusBoxes,
+    h(
+      "details",
+      {},
+      h("summary", {}, "Stops that go to a campus"),
+      pick,
+      show,
+      result,
+      state.transit ? h("div", { class: "hint" }, `Timetables from ${state.transit.generated}. ${state.transit.attribution}`) : h("div", { class: "msg err" }, "Transport data is not installed on this server (run npm run transit)."),
+    ),
+  );
+}
+
 function renderStatus() {
   const r = state.lastRun;
   const perm = "Notification" in window ? Notification.permission : "unsupported";
@@ -431,7 +634,7 @@ function renderStatus() {
     "Scan now",
   );
 
-  const kv = (k, v) => h("div", { class: "kv" }, h("span", {}, k), h("span", {}, v));
+  const viewing = Boolean(state.viewingAs);
 
   return h(
     "div",
@@ -440,14 +643,15 @@ function renderStatus() {
       "div",
       { class: "panel" },
       h("h2", {}, "Notifications"),
-      isIos && !isStandalone
+      !viewing && isIos && !isStandalone
         ? h("div", { class: "hint" }, "On iPhone: tap Share, then Add to Home Screen, then open Rental Watch from your Home Screen and come back here. (Needs iOS 16.4 or later.)")
         : null,
-      kv("Permission on this device", perm),
+      viewing ? null : kv("Permission on this device", perm),
       kv("Devices subscribed", String(state.subscriptions.length)),
       state.subscriptions.map((s) => (s.lastError ? kv("Last push error", s.lastError) : null)),
-      enable,
-      test,
+      viewing
+        ? h("div", { class: "hint" }, `Devices and passwords can't be changed while viewing as ${state.viewingAs.username}. Exit to change yours.`)
+        : [enable, test],
       msg,
     ),
     h(
@@ -480,18 +684,185 @@ function renderStatus() {
           })
         : h("div", { class: "hint" }, "No scan yet."),
     ),
+    renderAccount(),
+  );
+}
+
+function renderAccount() {
+  const msg = h("div", { class: "msg" });
+  const { user, viewingAs } = state;
+  const current = h("input", { type: "password", placeholder: "Current password", autocomplete: "current-password" });
+  const next = h("input", { type: "password", placeholder: "New password (8+ characters)", autocomplete: "new-password" });
+  const change = h(
+    "form",
+    {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          await api("POST", "/api/account/password", { current: current.value, next: next.value });
+          current.value = next.value = "";
+          msg.className = "msg ok";
+          msg.textContent = "Password changed. Your other devices have been signed out.";
+        } catch (err) {
+          msg.className = "msg err";
+          msg.textContent = err.message;
+        }
+      },
+    },
+    h("h3", {}, "Change password"),
+    current,
+    next,
+    h("button", { class: "secondary", type: "submit" }, "Change password"),
+    msg,
+  );
+
+  return h(
+    "div",
+    { class: "panel" },
+    h("h2", {}, "Account"),
+    kv("Signed in as", viewingAs ? viewingAs.by : `${user.username}${user.isAdmin ? " (admin)" : ""}`),
+    viewingAs ? kv("Viewing as", viewingAs.username) : null,
+    !viewingAs && user.isAdmin ? h("div", { class: "hint" }, "The admin password is the ACCESS_PASSWORD variable on the server. Add people under Users.") : null,
+    !viewingAs && !user.isAdmin ? change : null,
     h(
-      "div",
-      { class: "panel" },
-      h("button", {
+      "button",
+      {
         class: "secondary",
         onclick: async () => {
           await api("POST", "/api/logout").catch(() => {});
           state = null;
           render();
         },
-      }, "Log out"),
+      },
+      "Log out",
     ),
+  );
+}
+
+const deviceName = (ua = "") =>
+  /iphone|ipad/i.test(ua) ? "iPhone / iPad" : /android/i.test(ua) ? "Android" : /windows/i.test(ua) ? "Windows" : /macintosh/i.test(ua) ? "Mac" : "Device";
+
+function randomPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => chars[b % chars.length]).join("");
+}
+
+function renderUsers() {
+  const note = h("div", { class: `msg ${usersNote ? (usersNote.ok ? "ok" : "err") : ""}` }, usersNote?.text ?? "");
+  const say = (text, ok = true) => {
+    usersNote = { text, ok };
+    note.className = `msg ${ok ? "ok" : "err"}`;
+    note.textContent = text;
+  };
+  // Runs an admin action, then reloads the list so the page shows what the server now has.
+  const act = (fn) => async () => {
+    try {
+      await fn();
+      await loadUsers();
+      render();
+    } catch (err) {
+      say(err.message, false);
+    }
+  };
+
+  const name = h("input", { type: "text", placeholder: "Username", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const pass = h("input", { type: "text", placeholder: "Password (8+ characters)", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const add = h(
+    "form",
+    {
+      onsubmit: (e) => {
+        e.preventDefault();
+        act(async () => {
+          const username = name.value.trim().toLowerCase();
+          const password = pass.value;
+          await api("POST", "/api/users", { username, password });
+          say(`Created ${username}. Give them this password: ${password}. They can change it under Status.`);
+        })();
+      },
+    },
+    name,
+    pass,
+    h("button", { class: "secondary", type: "button", onclick: () => (pass.value = randomPassword()) }, "Generate password"),
+    h("button", { class: "primary", type: "submit" }, "Create user"),
+  );
+
+  const userPanel = (u) =>
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, u.username),
+      kv("Last signed in", u.lastLoginAt ? timeAgo(u.lastLoginAt) : "never"),
+      kv("Last active", u.lastSeenAt ? timeAgo(u.lastSeenAt) : "never"),
+      kv("Devices subscribed", String(u.devices.length)),
+      u.devices.map((d) => kv(deviceName(d.userAgent), d.lastError ? `error: ${d.lastError}` : `added ${timeAgo(d.addedAt)}`)),
+      h(
+        "button",
+        {
+          class: "primary",
+          onclick: async () => {
+            try {
+              await api("POST", "/api/view-as", { username: u.username });
+              await loadState();
+              tab = "matches";
+              render();
+              window.scrollTo(0, 0);
+            } catch (err) {
+              say(err.message, false);
+            }
+          },
+        },
+        "View as",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary",
+          onclick: act(async () => {
+            const r = await api("POST", `/api/users/${encodeURIComponent(u.username)}/test-push`);
+            say(r.sent ? `Test sent to ${r.sent} of ${u.username}'s device(s).` : `${u.username} has no device that received it.`, r.sent > 0);
+          }),
+        },
+        "Send test",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary",
+          onclick: act(async () => {
+            const password = prompt(`New password for ${u.username} (8+ characters). They will be signed out everywhere.`);
+            if (!password) return;
+            await api("PUT", `/api/users/${encodeURIComponent(u.username)}/password`, { password });
+            say(`Password for ${u.username} changed. Give them: ${password}`);
+          }),
+        },
+        "Reset password",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary danger",
+          onclick: act(async () => {
+            if (!confirm(`Remove ${u.username}? They are signed out and their devices stop getting alerts.`)) return;
+            await api("DELETE", `/api/users/${encodeURIComponent(u.username)}`);
+            say(`Removed ${u.username}.`);
+          }),
+        },
+        "Remove",
+      ),
+    );
+
+  return h(
+    "div",
+    {},
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, "Add a user"),
+      h("div", { class: "hint" }, "Only you can add people. Everyone sees the same listings from one search that only you can change, and each person gets alerts on their own devices."),
+      add,
+      note,
+    ),
+    usersList.length ? usersList.map(userPanel) : h("div", { class: "empty" }, "No other users yet."),
   );
 }
 

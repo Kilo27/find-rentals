@@ -1,5 +1,6 @@
 import { areaRadiusM, createGeocoder } from "./geocode.js";
 import { fetchTransit, transitHalfKm } from "./transit-lines.js";
+import { searchRadiusKm } from "./transit.js";
 
 const TRANSIT_TTL_MS = 7 * 24 * 3600_000;
 const CAMPUS_TTL_MS = 30 * 24 * 3600_000;
@@ -34,7 +35,8 @@ export function createMapData({ store, fetchImpl = fetch, now = () => Date.now()
   const mirror = { url: null };
 
   const centreKey = (c) => `${c.lat.toFixed(3)},${c.lng.toFixed(3)}`;
-  const transitKey = (config) => `${centreKey(config.center)},${transitHalfKm(config.radiusKm)}`;
+  // Homes beyond the radius with a direct route are matches too, so the lines are fetched as far out as they can be.
+  const transitKey = (config) => `${centreKey(config.center)},${transitHalfKm(searchRadiusKm(config))}`;
   const campusKey = (config) => `${config.center.label.toLowerCase()}|${centreKey(config.center)}`;
 
   const isFresh = (entry, ttl) => entry && now() - Date.parse(entry.at) < ttl;
@@ -58,7 +60,7 @@ export function createMapData({ store, fetchImpl = fetch, now = () => Date.now()
   }
 
   const loadTransit = (config, key) => async () => {
-    const data = await fetchTransit(config.center, config.radiusKm, { fetchImpl, preferred: mirror });
+    const data = await fetchTransit(config.center, searchRadiusKm(config), { fetchImpl, preferred: mirror });
     const { transit } = buckets();
     transit[key] = { at: new Date(now()).toISOString(), routes: data.routes, stops: data.stops };
     prune(transit);
