@@ -317,10 +317,16 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     };
     const currentIds = new Set(matches.flatMap((m) => m.memberIds));
     const kept = d.matches.filter((m) => failedFor(m) && !currentIds.has(m.id));
+    // memberIds stay on the stored match so a verdict on any copy of a property still applies when another copy wins.
     d.matches = [
-      ...matches.map(({ text, memberIds, ...m }) => ({ ...m, firstSeenAt: seen[memberIds[0]]?.firstSeenAt ?? null })),
+      ...matches.map(({ text, ...m }) => ({ ...m, firstSeenAt: seen[m.memberIds[0]]?.firstSeenAt ?? null })),
       ...kept,
     ].slice(0, MAX_STORED_MATCHES);
+
+    const storedIds = new Set(d.matches.flatMap((m) => m.memberIds ?? [m.id]));
+    for (const [id, v] of Object.entries(d.reviews)) {
+      if (!storedIds.has(id) && Date.parse(v.at) < cutoff) delete d.reviews[id];
+    }
 
     d.lastRun = {
       at: nowIso,

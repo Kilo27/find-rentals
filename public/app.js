@@ -1,6 +1,7 @@
 const root = document.getElementById("app");
 let state = null;
 let tab = "matches";
+let showRejected = false;
 
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -113,7 +114,7 @@ function renderLogin() {
 
 function renderMain() {
   const tabs = [
-    ["matches", `Matches (${state.matches.length})`],
+    ["matches", `Matches (${state.matches.filter((m) => m.review !== "rejected").length})`],
     ["settings", "Settings"],
     ["status", "Status"],
   ];
@@ -156,6 +157,21 @@ function fmtDate(iso) {
   return d.toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+// Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server says no.
+async function setReview(m, status) {
+  const before = m.review;
+  m.review = status;
+  m.reviewError = null;
+  render();
+  try {
+    await api("PUT", "/api/review", { id: m.id, status });
+  } catch (err) {
+    m.review = before;
+    m.reviewError = err.message;
+    render();
+  }
+}
+
 function renderMatches() {
   if (!state.matches.length) {
     const ran = state.lastRun;
@@ -165,18 +181,38 @@ function renderMatches() {
       ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...",
     );
   }
-  return state.matches.map((m) => {
-    const isNew = m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
-    const flags = m.flags ?? [];
-    let dist = null;
-    if (m.distanceKm !== null && m.distanceKm !== undefined) {
-      const how = m.distanceSource === "geocoded" ? " (from address)" : m.distanceSource === "geocoded-area" ? " (approx, area only)" : "";
-      dist = `${flags.includes("distance-approx") ? "~" : ""}${m.distanceKm.toFixed(1)} km${how}`;
-    } else if (flags.includes("distance-unverified")) dist = "distance unverified";
-    const meta = [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean);
-    return h(
+  const active = state.matches.filter((m) => m.review !== "rejected");
+  const rejected = state.matches.filter((m) => m.review === "rejected");
+  return [
+    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Everything here is marked as not a fit.")]),
+    rejected.length
+      ? h(
+          "details",
+          { class: "dismissed", open: showRejected, ontoggle: (e) => (showRejected = e.target.open) },
+          h("summary", {}, `Not a fit (${rejected.length})`),
+          rejected.map(renderCard),
+        )
+      : null,
+  ];
+}
+
+function renderCard(m) {
+  const seen = m.review === "seen";
+  const rejected = m.review === "rejected";
+  const isNew = !m.review && m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
+  const flags = m.flags ?? [];
+  let dist = null;
+  if (m.distanceKm !== null && m.distanceKm !== undefined) {
+    const how = m.distanceSource === "geocoded" ? " (from address)" : m.distanceSource === "geocoded-area" ? " (approx, area only)" : "";
+    dist = `${flags.includes("distance-approx") ? "~" : ""}${m.distanceKm.toFixed(1)} km${how}`;
+  } else if (flags.includes("distance-unverified")) dist = "distance unverified";
+  const meta = [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean);
+  return h(
+    "div",
+    { class: `card${m.review ? ` ${m.review}` : ""}` },
+    h(
       "a",
-      { class: "card", href: m.url, target: "_blank", rel: "noopener noreferrer" },
+      { class: "card-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
       m.image ? h("img", { src: m.image, loading: "lazy", alt: "", referrerpolicy: "no-referrer" }) : null,
       h(
         "div",
@@ -188,6 +224,7 @@ function renderMatches() {
           "div",
           { class: "badges" },
           isNew ? h("span", { class: "badge new" }, "NEW") : null,
+          seen ? h("span", { class: "badge" }, "seen") : null,
           flags.includes("available-now") ? h("span", { class: "badge" }, "available now") : m.availableFrom ? h("span", { class: "badge" }, `from ${fmtDate(m.availableFrom)}`) : null,
           flags.includes("ends-early") ? h("span", { class: "badge warn" }, `ends ${fmtDate(m.availableTo)}`) : null,
           flags.includes("short-term") ? h("span", { class: "badge" }, "short-term friendly") : null,
@@ -198,8 +235,19 @@ function renderMatches() {
           m.publishedAt ? h("span", { class: "badge" }, `listed ${timeAgo(m.publishedAt)}`) : null,
         ),
       ),
-    );
-  });
+    ),
+    h(
+      "div",
+      { class: "actions" },
+      rejected
+        ? h("button", { class: "act", onclick: () => setReview(m, "seen") }, "Restore")
+        : [
+            h("button", { class: "act", onclick: () => setReview(m, seen ? null : "seen") }, seen ? "Mark as unseen" : "Mark as seen"),
+            h("button", { class: "act bad", onclick: () => setReview(m, "rejected") }, "Not a fit"),
+          ],
+    ),
+    m.reviewError ? h("div", { class: "msg err card-msg" }, `Couldn't save that: ${m.reviewError}`) : null,
+  );
 }
 
 function renderSettings() {

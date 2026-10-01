@@ -32,6 +32,19 @@ test("scan: first run is a baseline - one summary push, listings marked seen", a
   assert.equal(store.data.matches[0].text, undefined);
 });
 
+test("scan: year-old verdicts on listings that are gone are pruned; current and recent ones stay", async () => {
+  const { store, pusher } = setup();
+  const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage([rawListing({ id: 1 })]) }) });
+  const old = "2020-01-01T00:00:00.000Z";
+  store.data.reviews = {
+    "daft:1": { status: "seen", at: old },
+    "daft:98": { status: "rejected", at: new Date().toISOString() },
+    "daft:99": { status: "rejected", at: old },
+  };
+  await scanner.run();
+  assert.deepEqual(Object.keys(store.data.reviews).sort(), ["daft:1", "daft:98"]);
+});
+
 test("scan: later runs push only brand-new matches, once", async () => {
   const { store, pusher } = setup();
   let items = [rawListing({ id: 1 })];
