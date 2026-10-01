@@ -201,6 +201,21 @@ test("the admin sees every user's devices and activity, and can test one user's 
   assert.equal((await call(admin, "POST", "/api/users/nobody/test-push")).status, 404);
 });
 
+test("marks on listings (seen, not a fit) are shared by every account", async () => {
+  const admin = (await login("kyle", "admin-pass-1")).j;
+  const bob = (await login("bob", "bobs-password")).j;
+  store.data.matches = [{ id: "daft:1", title: "Room 1", memberIds: ["daft:1"], flags: [] }];
+  try {
+    assert.equal((await call(bob, "PUT", "/api/review", { id: "daft:1", status: "rejected" })).status, 200);
+    assert.equal((await call(admin, "GET", "/api/state")).data.matches[0].review, "rejected");
+    assert.equal((await call(admin, "PUT", "/api/review", { id: "daft:1", status: null })).status, 200);
+    assert.equal((await call(bob, "GET", "/api/state")).data.matches[0].review, null);
+  } finally {
+    store.data.matches = [];
+    store.data.reviews = {};
+  }
+});
+
 test("the admin can view the app as a user, and only the admin", async () => {
   const admin = (await login("kyle", "admin-pass-1")).j;
   const bob = (await login("bob", "bobs-password")).j;

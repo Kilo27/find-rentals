@@ -10,6 +10,20 @@ const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", 
 
 const publicDevice = (s) => ({ endpoint: s.endpoint.slice(-12), userAgent: s.userAgent, addedAt: s.addedAt, lastError: s.lastError });
 
+const REVIEW_STATUSES = new Set(["seen", "rejected", "unavailable"]);
+
+const memberIds = (m) => m.memberIds ?? [m.id];
+
+// The newest verdict on any copy of this property, or null.
+function reviewFor(reviews, m) {
+  let latest = null;
+  for (const id of memberIds(m)) {
+    const r = reviews[id];
+    if (r && (!latest || r.at > latest.at)) latest = r;
+  }
+  return latest;
+}
+
 export function createApp({ store, scanner, pusher, scheduler, agentHub = null, adminUsername = "admin", password, secret }) {
   const app = express();
   const admin = normalizeUsername(adminUsername);
@@ -55,7 +69,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       sections: SECTIONS,
       sources: SOURCES,
       sourceHealth: store.data.sourceHealth,
-      matches: store.data.matches,
+      matches: store.data.matches.map(({ memberIds: _ids, ...m }) => ({ ...m, review: reviewFor(store.data.reviews, m)?.status ?? null })),
       lastRun: store.data.lastRun,
       failureCount: store.data.failureCount,
       scanning: scanner.isRunning(),
@@ -77,6 +91,24 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     store.save();
     scheduler.reschedule();
     res.json({ config: store.data.config });
+  });
+
+  // Mark a listing "seen", "rejected" (doesn't fit the requirements) or "unavailable" (no longer on offer); null clears the mark.
+  // These marks are shared by every account, like the matches themselves.
+  api.put("/review", (req, res) => {
+    const { id, status } = req.body ?? {};
+    if (typeof id !== "string" || !(status === null || REVIEW_STATUSES.has(status))) {
+      return res.status(400).json({ error: "id and status (seen, rejected, unavailable or null) are required" });
+    }
+    const match = store.data.matches.find((m) => memberIds(m).includes(id));
+    if (!match) return res.status(404).json({ error: "that listing is no longer in your matches" });
+    const at = new Date().toISOString();
+    for (const memberId of memberIds(match)) {
+      if (status === null) delete store.data.reviews[memberId];
+      else store.data.reviews[memberId] = { status, at };
+    }
+    store.save();
+    res.json({ id: match.id, review: status });
   });
 
   // A device belongs to whoever signed in on it last. Notifications for shared alerts go to every account's devices.
