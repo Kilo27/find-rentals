@@ -45,7 +45,6 @@ export function problemLines(run) {
       }
       else if (n.warning) out.push(`[scan] ${where}: WARNING ${n.warning}`);
       else if (n.skipped) out.push(`[scan] ${where}: skipped, ${n.skipped}`);
-      else if (n.degraded) out.push(`[scan] ${where}: server filters rejected, ran unfiltered`);
     }
     if (!s.ok && s.notes.length === 0) out.push(`[scan] ${s.id}: ERROR ${s.error}`);
   }

@@ -1,27 +1,26 @@
-import { DaftError, fetchSection } from "../daft.js";
+import { fetchSection } from "../daft.js";
 import { ID_IN_PATH, scrapePages } from "./web.js";
 
 const daft = {
   id: "daft",
   label: "Daft.ie",
-  async fetch(config, { fetchImpl }) {
+  async fetch(config, { fetcher }) {
     const listings = [];
     const notes = [];
     let first = null;
     for (const section of config.sections) {
       try {
-        const r = await fetchSection(config, section, { fetchImpl });
+        const r = await fetchSection(config, section, { fetcher });
         listings.push(...r.listings);
-        notes.push({ group: section, ok: true, fetched: r.listings.length, total: r.total, degraded: r.degraded, debug: { sample: r.rawSample } });
+        notes.push({ group: section, ok: true, fetched: r.listings.length, total: r.total, debug: { sample: r.rawSample } });
       } catch (err) {
         first ??= err;
         notes.push({ group: section, ok: false, error: err.message, status: err.status ?? null, body: err.body ?? "" });
       }
     }
     if (notes.length && notes.every((n) => !n.ok)) {
-      const err = first instanceof DaftError ? first : new Error(first?.message ?? "Daft failed");
-      err.notes = notes;
-      throw err;
+      first.notes = notes;
+      throw first;
     }
     return { listings, notes };
   },

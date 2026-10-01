@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createScanner, problemLines, summarizeRun } from "../src/scan.js";
-import { gatewayResponse, httpError, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
+import { daftPage, httpError, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
 
 const UL_LIST = "https://www.accommodation.ul.ie/SearchResults/Print/All";
-const DAFT = "https://gateway.daft.ie/api/v2/ads/listings";
+const DAFT = /^https:\/\/www\.daft\.ie\/sharing\//;
 
 function capture() {
   const lines = { log: [], warn: [] };
@@ -20,7 +20,7 @@ function setup(sources, fetchImpl, log) {
 
 test("a successful scan logs exactly one summary line with counts", async () => {
   const { lines, log } = capture();
-  const { scanner } = setup(["daft"], router([[DAFT, gatewayResponse([rawListing({ id: 1 })])]]), log);
+  const { scanner } = setup(["daft"], router([[DAFT, daftPage([rawListing({ id: 1 })])]]), log);
   await scanner.run();
   assert.equal(lines.log.length, 1);
   assert.match(lines.log[0], /^\[scan\] ok mode=baseline \d+ms \| daft=1 \| candidates=1 rejected=0 pending=0 matches=1 new=1 notified=0$/);
@@ -31,7 +31,7 @@ test("a failing source is named in the summary and gets its own warning line", a
   const { lines, log } = capture();
   const fetchImpl = router([
     ["https://www.accommodation.ul.ie/robots.txt", "User-agent: *\nDisallow: /SearchResults/"],
-    [DAFT, gatewayResponse([rawListing({ id: 1 })])],
+    [DAFT, daftPage([rawListing({ id: 1 })])],
   ]);
   const { scanner } = setup(["daft", "ul"], fetchImpl, log);
   await scanner.run();
@@ -44,8 +44,8 @@ test("when every source fails the summary says FAILED", async () => {
   const { lines, log } = capture();
   const { scanner } = setup(["daft"], router([[DAFT, () => httpError(403, "blocked")]]), log);
   await scanner.run();
-  assert.match(lines.log[0], /^\[scan\] FAILED in \d+ms: Daft API returned HTTP 403 \| daft=ERROR\(Daft API returned HTTP 403\)$/);
-  assert.match(lines.warn[0], /^\[scan\] daft sharing: ERROR Daft API returned HTTP 403 \[blocked\]$/);
+  assert.match(lines.log[0], /^\[scan\] FAILED in \d+ms: HTTP 403 from www\.daft\.ie \| daft=ERROR\(HTTP 403 from www\.daft\.ie\)$/);
+  assert.match(lines.warn[0], /^\[scan\] daft sharing: ERROR HTTP 403 from www\.daft\.ie \[blocked\]$/);
 });
 
 test("an unrecognised page layout is flagged with ! and a WARNING line", async () => {
@@ -68,7 +68,7 @@ test("skipped (404) pages are reported as skipped, not errors", () => {
 test("logs never contain listing titles or URLs", async () => {
   const { lines, log } = capture();
   const item = rawListing({ id: 7, title: "Room 14, Secret Street, Castletroy", price: "€650 per month" });
-  const { scanner } = setup(["daft"], router([[DAFT, gatewayResponse([item])]]), log);
+  const { scanner } = setup(["daft"], router([[DAFT, daftPage([item])]]), log);
   await scanner.run();
   const all = [...lines.log, ...lines.warn].join("\n");
   assert.ok(!all.includes("Secret Street") && !all.includes("daft.ie/share"), all);
@@ -76,7 +76,7 @@ test("logs never contain listing titles or URLs", async () => {
 
 test("a logger that throws never breaks a scan", async () => {
   const boom = { log() { throw new Error("log sink down"); }, warn() { throw new Error("log sink down"); } };
-  const { scanner, store } = setup(["daft"], router([[DAFT, gatewayResponse([rawListing({ id: 1 })])]]), boom);
+  const { scanner, store } = setup(["daft"], router([[DAFT, daftPage([rawListing({ id: 1 })])]]), boom);
   const run = await scanner.run();
   assert.equal(run.ok, true);
   assert.equal(store.data.matches.length, 1);
@@ -88,7 +88,7 @@ test("the scanner is silent by default (library use and tests)", async () => {
   console.log = (...a) => seen.push(a.join(" "));
   console.warn = (...a) => seen.push(a.join(" "));
   try {
-    const { scanner } = setup(["daft"], router([[DAFT, gatewayResponse([])]]), undefined);
+    const { scanner } = setup(["daft"], router([[DAFT, daftPage([])]]), undefined);
     await scanner.run();
   } finally {
     console.log = origLog;

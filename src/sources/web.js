@@ -94,7 +94,7 @@ export async function scrapePages({ source, label, urls, hrefRe = ID_IN_PATH, pa
         res = await fetcher.get(page === 1 ? url : withPage(url, page));
       } catch (err) {
         if (err.status === 404 && page === 1) note.skipped = "404: page not found (URL may have changed)";
-        else if (page === 1) Object.assign(note, { ok: false, error: err.message, code: err.code, status: err.status });
+        else if (page === 1) Object.assign(note, { ok: false, error: err.message, code: err.code, status: err.status, body: err.body ?? "" });
         break;
       }
 

@@ -100,6 +100,20 @@ test("fetcher: per-host politeness delay and HTTP errors", async () => {
   await assert.rejects(f.get("http://x.example.ie/p1"), (e) => e.code === "unsafe-url");
 });
 
+test("fetcher: names itself honestly, never as Chrome (Cloudflare refuses a fake browser from any network)", async () => {
+  const fetchImpl = router([[/x\.example\.ie/, "<html></html>"]]);
+  await createFetcher({ politenessMs: 0, respectRobots: false, fetchImpl }).get("https://x.example.ie/p");
+  const ua = fetchImpl.calls[0].opts.headers["User-Agent"];
+  assert.match(ua, /RentalWatch\/1\.0/);
+  assert.doesNotMatch(ua, /Chrome\/|Safari\/|AppleWebKit/);
+});
+
+test("fetcher: an HTTP error keeps the start of the page, so a bot wall can be told apart", async () => {
+  const fetchImpl = router([[/x\.example\.ie/, () => new Response(`<html><title>Security Check | Rent.ie</title>${"x".repeat(1000)}</html>`, { status: 403 })]]);
+  const f = createFetcher({ politenessMs: 0, respectRobots: false, fetchImpl });
+  await assert.rejects(f.get("https://x.example.ie/p"), (e) => e.status === 403 && /Security Check/.test(e.body) && e.body.length === 300);
+});
+
 const CARDS = `<html><body>
 <ul class="results">
   <li class="r"><a href="/rooms-to-rent/limerick/castletroy/14-plassey-park/555001"><img src="/img/1.jpg"></a>

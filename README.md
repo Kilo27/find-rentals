@@ -6,13 +6,13 @@ Watches several Irish rental sources every 30 minutes for places near a point (d
 
 | Source | How | Notes |
 |---|---|---|
-| **Daft.ie** | Daft's gateway API (same as the open-source `daftlistings` client) | Real coordinates, server-side owner-occupied filter for rooms. Daft may answer HTTP 403 to cloud hosts such as Railway; two header styles are tried and the Status tab shows the result |
+| **Daft.ie** | Daft's own search pages, which carry their results as page data (the same listing data as Daft's gateway API) | Real coordinates, server-side owner-occupied filter for rooms. Daft's gateway API refuses every client that isn't a browser, so it is no longer used. An area name Daft doesn't know is reported as an error rather than searching all of Ireland |
 | **UL Accommodation** (accommodation.ul.ie, Studentpad) | Reads the all-adverts list page only: address (the title), price, availability and landlord type are all on it | UL's own noticeboard. The individual advert pages are an empty JavaScript shell, so they are not fetched. Many adverts are "Resident Landlord/Host Family" or weekday-only, which the filters catch. Distance comes from geocoding the address |
-| **Rent.ie** | Scrapes the Castletroy / University of Limerick search pages | Often answers HTTP 403 to cloud hosts. Houses/apartments URLs are best guesses; a 404 is reported as "skipped" |
+| **Rent.ie** | Scrapes the Castletroy / University of Limerick search pages | Houses/apartments URLs are best guesses; a 404 is reported as "skipped" |
 | **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Status tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page you add under Settings → Advanced | JSON-LD, embedded JSON or HTML cards |
 
-The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached.
+The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached. They identify themselves honestly as `RentalWatch/1.0`: a user agent that pretends to be Chrome is refused by Cloudflare (Daft, Rent.ie) with a "Security Check" page from any network.
 
 ## How accuracy is kept
 
@@ -80,13 +80,13 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 | Listings with no coordinates | only if the area name matches (`castletroy`, `plassey`, `dromroe`, ...) |
 | Geocode addresses, respect robots.txt | on / on |
 | Scan interval | 30 min |
-| Source page URLs, Daft location ID | see Advanced |
+| Source page URLs, Daft area | see Advanced |
 
-To search somewhere else: change the centre, radius, area names, the source page URLs and the Daft location ID (IDs are in the open-source [`daftlistings`](https://pypi.org/project/daftlistings/) package, `location.py`).
+To search somewhere else: change the centre, radius, area names, the source page URLs and the Daft area (the name in a Daft search URL, e.g. `castletroy-limerick` from `daft.ie/sharing/castletroy-limerick`).
 
 ## When a site blocks cloud hosts (proxy)
 
-Daft and Rent.ie refuse requests from cloud providers' IP addresses (HTTP 403, or Daft's "Service Unavailable" page). **This was tested: a relay running in Railway's EU West (Amsterdam) region is refused too**, so moving regions or adding another cloud service does not help. The request has to leave from an ordinary (residential or ISP) IP address. Two ways, using the same setting:
+Daft and Rent.ie sit behind Cloudflare. Two causes of HTTP 403 that had nothing to do with the server's address are fixed: Daft's gateway API (which refuses every non-browser client, home connections included) is no longer used, and the scrapers no longer send a user agent that claims to be Chrome. If a source still shows `ERROR(HTTP 403 ...)` in the scan log, the site is refusing the server's IP address. The error line shows the start of the refusal page, and "Security Check" there is Cloudflare. Moving regions or another cloud provider is unlikely to help; the request has to leave from an ordinary (residential or ISP) IP address. Two ways, using the same setting:
 
 1. **A paid residential/ISP proxy service.** Any HTTP(S) proxy URL works.
 2. **A relay on your own home connection.** The same image can run as a minimal relay (`PROXY_MODE=1 PROXY_PASSWORD=<long random> PORT=3128 node src/server.js`) on a PC or Raspberry Pi at home. It only allows password-protected HTTPS tunnels (CONNECT) to `daft.ie` and `rent.ie` (`PROXY_ALLOW`), on port 443, never to private addresses. You must make it reachable from Railway (router port-forward or a tunnel). Plain HTTP to the relay exposes only its password, so use a long random one; the traffic to the sites inside the tunnel is HTTPS.
@@ -102,7 +102,7 @@ Other sources and the geocoder stay direct. The scan log line ends with `via-pro
 
 ## Limitations
 
-- Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's gateway is unofficial. If Railway's IPs are blocked you will get a "looks broken" notification.
+- Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's search pages are not an API and can change (the Daft source then reports "no listing data" rather than guessing). If Railway's IPs are blocked you will get a "looks broken" notification.
 - Daft search results rarely include availability dates or descriptions, so Daft listings are not date-filtered and their owner-occupied check relies on Daft's own filter.
 - Airbnb/Booking-style furnished monthly stays and Facebook groups are not covered (terms and login walls).
 - Single user, single password.

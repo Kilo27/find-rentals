@@ -281,7 +281,7 @@ function renderSettings() {
     stayUntil: f.stayUntil.value,
     includeKeywords: f.includeKeywords.value,
     excludeKeywords: f.excludeKeywords.value,
-    daftLocationId: f.daftLocationId.value.trim(),
+    daftLocation: f.daftLocation.value.trim(),
     maxPages: Number(f.maxPages.value),
   });
 
@@ -382,9 +382,9 @@ function renderSettings() {
         check("geocode", "Look up coordinates from addresses (OpenStreetMap)", c.geocode),
         check("respectRobots", "Respect robots.txt on scraped sites", c.respectRobots),
         num("maxDetailFetches", "Max detail pages fetched per scan", c.maxDetailFetches, { step: "1", min: "0" }),
-        text("daftLocationId", "Daft location ID", c.daftLocationId, { inputmode: "numeric" }),
-        h("div", { class: "hint" }, "4342 = University of Limerick. Other IDs: see the location list in the daftlistings package."),
-        num("maxPages", "Max result pages (50 per page)", c.maxPages, { min: "1", max: "10", step: "1" }),
+        text("daftLocation", "Daft area", c.daftLocation, { autocapitalize: "off", spellcheck: "false" }),
+        h("div", { class: "hint" }, "The area name in a Daft search URL: daft.ie/sharing/<this>. Search the area on daft.ie and copy it from the address bar."),
+        num("maxPages", "Max result pages per search (Daft: 20 per page)", c.maxPages, { min: "1", max: "10", step: "1" }),
       ),
     ),
     save,
