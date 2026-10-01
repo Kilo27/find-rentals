@@ -5,23 +5,27 @@ export function proxyFetch(proxyUrl) {
   return (url, opts = {}) => undiciFetch(url, { ...opts, dispatcher: agent });
 }
 
-const NONE = Object.freeze({ fetch: null, sources: new Set() });
+const NONE = Object.freeze({ kind: null, fetch: null, sources: new Set(), online: () => true });
 
-// SCRAPER_PROXY_URL routes the listed sources (default daft and rent) through an HTTP proxy.
-export function proxyFromEnv(env = process.env, warn = console.warn) {
-  const raw = env.SCRAPER_PROXY_URL;
-  if (!raw) return NONE;
-  let u;
-  try {
-    u = new URL(raw);
-  } catch {
-    warn("SCRAPER_PROXY_URL is not a valid URL; ignoring it");
-    return NONE;
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") {
-    warn("SCRAPER_PROXY_URL must be an http(s):// proxy URL; ignoring it");
-    return NONE;
-  }
+// The sources in SCRAPER_PROXY_SOURCES (default daft and rent) go out through SCRAPER_PROXY_URL, an HTTP
+// proxy such as a paid residential one, or else through the laptop agent when the server has one.
+// Everything else, the geocoder included, stays direct.
+export function proxyFromEnv(env = process.env, warn = console.warn, agent = null) {
   const sources = new Set(String(env.SCRAPER_PROXY_SOURCES ?? "daft,rent").split(/[\s,]+/).filter(Boolean));
-  return { fetch: proxyFetch(raw), sources };
+  const raw = env.SCRAPER_PROXY_URL;
+  if (raw) {
+    let u = null;
+    try {
+      u = new URL(raw);
+    } catch {
+      warn("SCRAPER_PROXY_URL is not a valid URL; ignoring it");
+    }
+    if (u && u.protocol !== "http:" && u.protocol !== "https:") {
+      warn("SCRAPER_PROXY_URL must be an http(s):// proxy URL; ignoring it");
+      u = null;
+    }
+    if (u) return { kind: "proxy", fetch: proxyFetch(raw), sources, online: () => true };
+  }
+  if (agent) return { kind: "laptop", fetch: agent.fetch, sources, online: agent.online };
+  return NONE;
 }

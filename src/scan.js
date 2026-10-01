@@ -16,8 +16,10 @@ const MAX_PENDING_SCANS = 5;
 const MAX_BASELINE_SCANS = 6;
 const GEOCODE_BUDGET = 60;
 const SOURCE_ALERT_AFTER = 6;
+const LAPTOP_ALERT_AFTER_MS = 24 * 3600_000;
 
 const srcBrief = (s) => {
+  if (s.skipped) return `${s.id}=skipped`;
   if (!s.ok) return `${s.id}=ERROR(${s.error})`;
   const flagged = s.notes.some((n) => n.warning || !n.ok);
   return `${s.id}=${s.fetched}${flagged ? "!" : ""}`;
@@ -30,7 +32,8 @@ export function summarizeRun(run) {
   return (
     `[scan] ok mode=${run.mode} ${run.durationMs}ms | ${sources} | candidates=${run.candidates} rejected=${run.rejected}` +
     ` pending=${run.pending} matches=${run.matches} new=${run.newCount} notified=${run.notified}` +
-    (run.proxied?.length ? ` | via-proxy=${run.proxied.join(",")}` : "")
+    (run.proxied?.length ? ` | via-${run.via ?? "proxy"}=${run.proxied.join(",")}` : "") +
+    (run.laptopOffline ? " | laptop=offline" : "")
   );
 }
 
@@ -64,6 +67,31 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     return inflight;
   }
 
+  // One push when the laptop agent has been away for a day, and one when it is back.
+  async function noteLaptop(d, offline, t0, labels) {
+    const lap = (d.laptop ??= { lastOnlineAt: null, offlineNotified: false });
+    const names = labels.join(" and ");
+    const plural = labels.length > 1;
+    if (!offline) {
+      if (lap.offlineNotified) {
+        await pusher.sendToAll({ title: "Laptop agent is back", body: `${names} ${plural ? "are" : "is"} being checked again.`, url: "/", tag: "laptop" });
+      }
+      lap.lastOnlineAt = t0.toISOString();
+      lap.offlineNotified = false;
+      return;
+    }
+    lap.lastOnlineAt ??= t0.toISOString();
+    if (!lap.offlineNotified && t0.getTime() - Date.parse(lap.lastOnlineAt) >= LAPTOP_ALERT_AFTER_MS) {
+      await pusher.sendToAll({
+        title: "Laptop agent offline",
+        body: `${names} ${plural ? "haven't" : "hasn't"} been checked for a day. Wake the laptop or start npm run agent.`,
+        url: "/",
+        tag: "laptop",
+      });
+      lap.offlineNotified = true;
+    }
+  }
+
   async function doScan() {
     const result = await scanOnce();
     try {
@@ -94,19 +122,27 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     };
     const geocoder = createGeocoder({ store, fetchImpl, sleep, minIntervalMs: geocodeDelayMs });
 
-    // Sources listed in SCRAPER_PROXY_SOURCES go out through the proxy; everything else (and the geocoder) stays direct.
+    // Sources listed in SCRAPER_PROXY_SOURCES go out through the proxy or laptop agent; everything else
+    // (and the geocoder) stays direct.
     const proxiedFetcher = proxy.fetch
       ? createFetcher({ fetchImpl: proxy.fetch, sleep, politenessMs, respectRobots: config.respectRobots })
       : null;
     const depsFor = (id) =>
       proxy.fetch && proxy.sources.has(id) ? { ...deps, fetchImpl: proxy.fetch, fetcher: proxiedFetcher } : deps;
-    const proxied = proxy.fetch ? config.sources.filter((id) => proxy.sources.has(id)) : [];
+    const routed = proxy.fetch ? config.sources.filter((id) => proxy.sources.has(id)) : [];
+    // A sleeping laptop is not a broken source: its sources are skipped for this scan, not failed.
+    const laptopOffline = proxy.kind === "laptop" && routed.length > 0 && !proxy.online();
+    const proxied = laptopOffline ? [] : routed;
 
     const results = [];
     const candidates = new Map();
     for (const id of config.sources) {
       const adapter = ADAPTERS[id];
       if (!adapter) continue;
+      if (laptopOffline && proxy.sources.has(id)) {
+        results.push({ id, label: adapter.label, ok: true, skipped: "laptop agent offline", fetched: 0, notes: [] });
+        continue;
+      }
       try {
         const r = await adapter.fetch(config, depsFor(id));
         results.push({ id, label: adapter.label, ok: true, fetched: r.listings.length, notes: r.notes });
@@ -125,11 +161,15 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       }
     }
 
+    if (proxy.kind === "laptop" && routed.length) {
+      await noteLaptop(d, laptopOffline, t0, routed.map((id) => ADAPTERS[id]?.label ?? id));
+    }
+
     const okSources = results.filter((r) => r.ok);
     if (okSources.length === 0) {
       const firstError = results[0]?.error ?? "No sources enabled";
       d.failureCount += 1;
-      d.lastRun = { at: nowIso, durationMs: now() - t0, ok: false, error: firstError, sources: results };
+      d.lastRun = { at: nowIso, durationMs: now() - t0, ok: false, error: firstError, sources: results, laptopOffline };
       store.save();
       const n = d.failureCount;
       if (n === 3 || n % 48 === 0) {
@@ -148,6 +188,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
 
     // Per-source health: a source that keeps failing or recognising nothing gets flagged.
     for (const r of results) {
+      if (r.skipped) continue;
       const h = (d.sourceHealth[r.id] ??= { failures: 0, lastOkAt: null, lastError: null });
       const warning = r.notes.find((n) => n.warning)?.warning;
       const badNote = r.notes.find((n) => !n.ok);
@@ -227,7 +268,8 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       mode = "baseline";
       d.baselineScans += 1;
       for (const m of fresh) markSeen(m);
-      if (pendingCount === 0 || d.baselineScans >= MAX_BASELINE_SCANS) {
+      // Wait for the laptop's sources too, or everything they list would later alert as new.
+      if ((pendingCount === 0 && !laptopOffline) || d.baselineScans >= MAX_BASELINE_SCANS) {
         d.baselineDone = true;
         await pusher.sendToAll({
           title: matches.length ? `Watching started: ${matches.length} current matches` : "Watching started",
@@ -271,7 +313,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
 
     const failedFor = (m) => {
       const r = results.find((x) => x.id === m.source);
-      return r && (!r.ok || r.notes.some((n) => !n.ok && n.group === m.group));
+      return r && (!r.ok || r.skipped || r.notes.some((n) => !n.ok && n.group === m.group));
     };
     const currentIds = new Set(matches.flatMap((m) => m.memberIds));
     const kept = d.matches.filter((m) => failedFor(m) && !currentIds.has(m.id));
@@ -290,6 +332,8 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       rejected,
       pending: pendingCount,
       proxied,
+      via: proxy.kind,
+      laptopOffline,
       coordsIgnored,
       matches: matches.length,
       newCount: fresh.length,

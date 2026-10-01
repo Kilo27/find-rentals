@@ -84,21 +84,36 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 
 To search somewhere else: change the centre, radius, area names, the source page URLs and the Daft area (the name in a Daft search URL, e.g. `castletroy-limerick` from `daft.ie/sharing/castletroy-limerick`).
 
-## When a site blocks cloud hosts (proxy)
+## When a site blocks cloud hosts (laptop agent or proxy)
 
-Daft and Rent.ie sit behind Cloudflare. Two causes of HTTP 403 that had nothing to do with the server's address are fixed: Daft's gateway API (which refuses every non-browser client, home connections included) is no longer used, and the scrapers no longer send a user agent that claims to be Chrome. If a source still shows `ERROR(HTTP 403 ...)` in the scan log, the site is refusing the server's IP address. The error line shows the start of the refusal page, and "Security Check" there is Cloudflare. Moving regions or another cloud provider is unlikely to help; the request has to leave from an ordinary (residential or ISP) IP address. Two ways, using the same setting:
+Daft and Rent.ie sit behind Cloudflare. Two causes of HTTP 403 that had nothing to do with the server's address are fixed: Daft's gateway API (which refuses every non-browser client, home connections included) is no longer used, and the scrapers no longer send a user agent that claims to be Chrome. If a source still shows `ERROR(HTTP 403 ...)` in the scan log, the site is refusing the server's IP address, as Daft and Rent.ie do with Railway's. The error line shows the start of the refusal page, and "Security Check" there is Cloudflare. Moving regions or another cloud provider is unlikely to help; the request has to leave from an ordinary (residential or ISP) connection. There are two ways to do that. Either way only the sources in `SCRAPER_PROXY_SOURCES` (default `daft,rent`) use it; the other sources and the geocoder stay direct.
 
-1. **A paid residential/ISP proxy service.** Any HTTP(S) proxy URL works.
-2. **A relay on your own home connection.** The same image can run as a minimal relay (`PROXY_MODE=1 PROXY_PASSWORD=<long random> PORT=3128 node src/server.js`) on a PC or Raspberry Pi at home. It only allows password-protected HTTPS tunnels (CONNECT) to `daft.ie` and `rent.ie` (`PROXY_ALLOW`), on port 443, never to private addresses. You must make it reachable from Railway (router port-forward or a tunnel). Plain HTTP to the relay exposes only its password, so use a long random one; the traffic to the sites inside the tunnel is HTTPS.
+### A computer at home (laptop agent)
 
-Then set on the app service:
+A small agent runs on a computer at home and connects *out* to the app over HTTPS, so there is nothing to open on your router and no tunnel service. The app hands it the Daft and Rent.ie page requests; it fetches them from your home connection and sends the pages back.
+
+1. Make a long random token: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+2. Railway → service → **Variables**: `AGENT_TOKEN=<token>`.
+3. On the home computer, in a clone of this repo (after `npm install`), create `.env`:
+   ```
+   AGENT_SERVER_URL=https://<your-app>.up.railway.app
+   AGENT_TOKEN=<the same token>
+   ```
+4. Run `npm run agent` to try it; it logs every page it fetches. To start it automatically and hidden whenever you log in to Windows, logging to `agent.log`: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-agent-task.ps1` (remove with `Unregister-ScheduledTask -TaskName RentalWatchAgent`).
+
+The agent only makes HTTPS requests to `daft.ie` and `rent.ie` (`AGENT_ALLOW`). It re-checks every redirect, never connects to private (home network) addresses and is never sent cookies, so the server can't use it for anything else. The scan log line ends with `via-laptop=daft,rent` while it is in use.
+
+While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Status tab says "not checked", they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. If it has been gone for a day you get one notification, and another when it is back.
+
+### A paid residential proxy
+
+Any HTTP(S) proxy URL works, for example a pay-as-you-go residential proxy. Daft and Rent.ie use roughly 1–2 GB a month at the default 30-minute interval.
 
 ```
-SCRAPER_PROXY_URL=http://relay:<PROXY_PASSWORD>@<relay-host>:3128
-SCRAPER_PROXY_SOURCES=daft,rent      # default; only these go through the proxy
+SCRAPER_PROXY_URL=http://<user>:<password>@<proxy-host>:<port>
 ```
 
-Other sources and the geocoder stay direct. The scan log line ends with `via-proxy=daft,rent` when it is active. On start the relay logs `[relay] selftest daft ...` and `[relay] selftest rent.ie ...`, which tells you straight away whether its connection is let in.
+It takes precedence over the laptop agent, so switching is just setting this variable (and stopping the agent). The scan log line ends with `via-proxy=daft,rent`.
 
 ## Limitations
 
