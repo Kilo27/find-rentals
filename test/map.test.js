@@ -5,7 +5,7 @@ import { createScanner } from "../src/scan.js";
 import { createScheduler } from "../src/scheduler.js";
 import { createGeocoder, resolveArea } from "../src/geocode.js";
 import { areasForMatches, createMapData } from "../src/mapdata.js";
-import { OVERPASS_MIRRORS, buildRoutes, buildStops, overpass, simplify, stitch, transitBounds } from "../src/transit.js";
+import { OVERPASS_MIRRORS, buildRoutes, buildStops, overpass, simplify, stitch, transitBounds } from "../src/transit-lines.js";
 import { clusterSpots, pinLabel, placeMatches } from "../public/map-model.js";
 import { UL, fakePusher, kmNorth, noSleep, router, tempStore } from "./helpers.js";
 

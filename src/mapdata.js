@@ -1,5 +1,5 @@
 import { areaRadiusM, createGeocoder } from "./geocode.js";
-import { fetchTransit, transitHalfKm } from "./transit.js";
+import { fetchTransit, transitHalfKm } from "./transit-lines.js";
 
 const TRANSIT_TTL_MS = 7 * 24 * 3600_000;
 const CAMPUS_TTL_MS = 30 * 24 * 3600_000;
