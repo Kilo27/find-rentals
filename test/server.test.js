@@ -1,3 +1,4 @@
+import http from "node:http";
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
@@ -44,6 +45,20 @@ test("health and static shell are public", async () => {
   const manifest = await fetch(`${base}/manifest.webmanifest`);
   assert.equal((await manifest.json()).display, "standalone");
   assert.equal((await fetch(`${base}/icons/apple-touch-icon.png`)).headers.get("content-type"), "image/png");
+});
+
+test("the app's code is revalidated on every load, so a deploy shows up straight away; images are still cached", async () => {
+  for (const file of ["", "app.js", "styles.css"]) {
+    assert.equal((await fetch(`${base}/${file}`)).headers.get("cache-control"), "no-cache", file || "index.html");
+  }
+  assert.match((await fetch(`${base}/icons/icon-192.png`)).headers.get("cache-control"), /max-age=3600/);
+
+  // fetch() manages conditional headers itself, so ask the way a browser revalidating its copy does.
+  const etag = (await fetch(`${base}/app.js`)).headers.get("etag");
+  const status = await new Promise((resolve, reject) => {
+    http.get(`${base}/app.js`, { headers: { "If-None-Match": etag } }, (res) => (res.resume(), resolve(res.statusCode))).on("error", reject);
+  });
+  assert.equal(status, 304, "an unchanged file costs only a 304");
 });
 
 test("API requires auth", async () => {

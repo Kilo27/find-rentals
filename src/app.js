@@ -56,7 +56,18 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"), { dotfiles: "allow" });
   });
   app.use("/vendor/leaflet", express.static(leafletDir, { maxAge: "7d", index: false }));
-  app.use(express.static(publicDir, { maxAge: "1h", index: "index.html" }));
+  // The app's own code has no build step and no versioned file names, so a browser has to check with the server before
+  // reusing a copy: otherwise a deploy goes unseen until the old file's hour is up (and a new app.js can meet an old
+  // module it imports). A check that finds nothing new costs a small 304. Images and the manifest may be kept an hour.
+  app.use(
+    express.static(publicDir, {
+      maxAge: "1h",
+      index: "index.html",
+      setHeaders: (res, file) => {
+        if (/\.(?:html|js|css)$/.test(file)) res.set("Cache-Control", "no-cache");
+      },
+    }),
+  );
 
   app.post("/api/login", auth.login);
   app.post("/api/logout", auth.logout);
