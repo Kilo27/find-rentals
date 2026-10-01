@@ -106,6 +106,12 @@ test("a listing can be marked seen or not a fit; the mark survives a rescan and 
   assert.equal(await reviewOf("daft:1"), "rejected");
   assert.equal(JSON.parse((await import("node:fs")).readFileSync(store.file, "utf8")).reviews["daft:1"].status, "rejected", "saved to disk");
 
+  const gone = await call("PUT", "/api/review", { id: "daft:1", status: "unavailable" });
+  assert.equal(gone.res.status, 200);
+  assert.equal(await reviewOf("daft:1"), "unavailable", "replaces the earlier verdict");
+  await call("POST", "/api/scan");
+  assert.equal(await reviewOf("daft:1"), "unavailable", "and survives a rescan too");
+
   await call("PUT", "/api/review", { id: "daft:1", status: null });
   assert.equal(await reviewOf("daft:1"), null);
   assert.deepEqual(store.data.reviews, {});

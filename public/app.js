@@ -1,7 +1,14 @@
 const root = document.getElementById("app");
 let state = null;
 let tab = "matches";
-let showRejected = false;
+// Verdicts that take a listing out of the main list, each with its own collapsed section and way back.
+const DISMISSED = [
+  { status: "rejected", title: "Not a fit", undo: "Restore" },
+  { status: "unavailable", title: "No longer available", undo: "Still available" },
+];
+const dismissedStatuses = new Set(DISMISSED.map((d) => d.status));
+const isDismissed = (m) => dismissedStatuses.has(m.review);
+const openSections = {};
 
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -114,7 +121,7 @@ function renderLogin() {
 
 function renderMain() {
   const tabs = [
-    ["matches", `Matches (${state.matches.filter((m) => m.review !== "rejected").length})`],
+    ["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`],
     ["settings", "Settings"],
     ["status", "Status"],
   ];
@@ -181,24 +188,26 @@ function renderMatches() {
       ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...",
     );
   }
-  const active = state.matches.filter((m) => m.review !== "rejected");
-  const rejected = state.matches.filter((m) => m.review === "rejected");
+  const active = state.matches.filter((m) => !isDismissed(m));
   return [
-    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Everything here is marked as not a fit.")]),
-    rejected.length
-      ? h(
-          "details",
-          { class: "dismissed", open: showRejected, ontoggle: (e) => (showRejected = e.target.open) },
-          h("summary", {}, `Not a fit (${rejected.length})`),
-          rejected.map(renderCard),
-        )
-      : null,
+    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Nothing left to look at: everything here has been dismissed.")]),
+    ...DISMISSED.map(({ status, title }) => {
+      const group = state.matches.filter((m) => m.review === status);
+      return group.length
+        ? h(
+            "details",
+            { class: "dismissed", open: openSections[status] === true, ontoggle: (e) => (openSections[status] = e.target.open) },
+            h("summary", {}, `${title} (${group.length})`),
+            group.map(renderCard),
+          )
+        : null;
+    }),
   ];
 }
 
 function renderCard(m) {
   const seen = m.review === "seen";
-  const rejected = m.review === "rejected";
+  const dismissed = DISMISSED.find((d) => d.status === m.review);
   const isNew = !m.review && m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
   const flags = m.flags ?? [];
   let dist = null;
@@ -239,11 +248,12 @@ function renderCard(m) {
     h(
       "div",
       { class: "actions" },
-      rejected
-        ? h("button", { class: "act", onclick: () => setReview(m, "seen") }, "Restore")
+      dismissed
+        ? h("button", { class: "act", onclick: () => setReview(m, "seen") }, dismissed.undo)
         : [
             h("button", { class: "act", onclick: () => setReview(m, seen ? null : "seen") }, seen ? "Mark as unseen" : "Mark as seen"),
             h("button", { class: "act bad", onclick: () => setReview(m, "rejected") }, "Not a fit"),
+            h("button", { class: "act bad", onclick: () => setReview(m, "unavailable") }, "No longer available"),
           ],
     ),
     m.reviewError ? h("div", { class: "msg err card-msg" }, `Couldn't save that: ${m.reviewError}`) : null,

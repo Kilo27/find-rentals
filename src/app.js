@@ -6,7 +6,7 @@ import { createAuth } from "./auth.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 
-const REVIEW_STATUSES = new Set(["seen", "rejected"]);
+const REVIEW_STATUSES = new Set(["seen", "rejected", "unavailable"]);
 
 const memberIds = (m) => m.memberIds ?? [m.id];
 
@@ -87,11 +87,11 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     res.json({ config: store.data.config });
   });
 
-  // Mark a listing "seen" or "rejected" (doesn't fit the requirements); null clears the mark.
+  // Mark a listing "seen", "rejected" (doesn't fit the requirements) or "unavailable" (no longer on offer); null clears the mark.
   api.put("/review", (req, res) => {
     const { id, status } = req.body ?? {};
     if (typeof id !== "string" || !(status === null || REVIEW_STATUSES.has(status))) {
-      return res.status(400).json({ error: "id and status (seen, rejected or null) are required" });
+      return res.status(400).json({ error: "id and status (seen, rejected, unavailable or null) are required" });
     }
     const match = store.data.matches.find((m) => memberIds(m).includes(id));
     if (!match) return res.status(404).json({ error: "that listing is no longer in your matches" });
