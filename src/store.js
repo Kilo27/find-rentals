@@ -22,6 +22,7 @@ const freshState = () => ({
   reviews: {},
   matches: [],
   subscriptions: [],
+  users: [],
   vapid: null,
   baselineDone: false,
   failureCount: 0,

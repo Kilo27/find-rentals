@@ -54,9 +54,9 @@ test("API requires auth", async () => {
 });
 
 test("wrong password is rejected; right password sets an httpOnly cookie", async () => {
-  const bad = await call("POST", "/api/login", { password: "nope" }, false);
+  const bad = await call("POST", "/api/login", { username: "admin", password: "nope" }, false);
   assert.equal(bad.res.status, 401);
-  const good = await call("POST", "/api/login", { password: "hunter2" }, false);
+  const good = await call("POST", "/api/login", { username: "admin", password: "hunter2" }, false);
   assert.equal(good.res.status, 200);
   assert.match(good.set, /fr_session=/);
   assert.match(good.set, /HttpOnly/i);
@@ -176,6 +176,6 @@ test("logout clears the session", async () => {
 
 test("login is rate limited", async () => {
   let last;
-  for (let i = 0; i < 12; i++) last = await call("POST", "/api/login", { password: "wrong" }, false);
+  for (let i = 0; i < 12; i++) last = await call("POST", "/api/login", { username: "admin", password: "wrong" }, false);
   assert.equal(last.res.status, 429);
 });

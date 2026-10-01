@@ -1,5 +1,10 @@
 import webpushLib from "web-push";
 
+// Every push subscription belongs to one account. Subscriptions saved before accounts existed have no owner and
+// belong to the admin.
+export const ADMIN_OWNER = "@admin";
+export const ownerOf = (sub) => sub.owner ?? ADMIN_OWNER;
+
 export function resolveSubject(env = process.env) {
   if (env.VAPID_SUBJECT) return env.VAPID_SUBJECT;
   if (env.RAILWAY_PUBLIC_DOMAIN) return `https://${env.RAILWAY_PUBLIC_DOMAIN}`;
@@ -19,14 +24,14 @@ export function createPusher({ store, webpush = webpushLib, env = process.env })
 
   const subs = () => store.data.subscriptions;
 
-  async function sendToAll(payload) {
+  async function send(targets, payload) {
     const body = JSON.stringify(payload);
     let sent = 0;
     let failed = 0;
     const dead = new Set();
 
     await Promise.all(
-      subs().map(async (sub) => {
+      targets.map(async (sub) => {
         try {
           await webpush.sendNotification(sub, body, {
             TTL: 60 * 60 * 24,
@@ -51,7 +56,10 @@ export function createPusher({ store, webpush = webpushLib, env = process.env })
     return { sent, failed, removed: dead.size };
   }
 
-  function addSubscription(sub, userAgent = "") {
+  const sendToAll = (payload) => send(subs(), payload);
+  const sendToOwner = (owner, payload) => send(subs().filter((s) => ownerOf(s) === owner), payload);
+
+  function addSubscription(sub, userAgent = "", owner = ADMIN_OWNER) {
     if (!sub || typeof sub.endpoint !== "string" || !sub.keys?.p256dh || !sub.keys?.auth) {
       throw new Error("Invalid push subscription");
     }
@@ -62,17 +70,35 @@ export function createPusher({ store, webpush = webpushLib, env = process.env })
       userAgent: String(userAgent).slice(0, 200),
       addedAt: new Date().toISOString(),
       lastError: null,
+      owner,
     };
     store.data.subscriptions = [...subs().filter((s) => s.endpoint !== entry.endpoint), entry];
     store.save();
   }
 
-  function removeSubscription(endpoint) {
-    store.data.subscriptions = subs().filter((s) => s.endpoint !== endpoint);
+  // With an owner, only that account's own device can be removed.
+  function removeSubscription(endpoint, owner) {
+    store.data.subscriptions = subs().filter((s) => s.endpoint !== endpoint || (owner !== undefined && ownerOf(s) !== owner));
     store.save();
   }
 
-  return { publicKey, sendToAll, addSubscription, removeSubscription, count: () => subs().length };
+  function removeOwner(owner) {
+    store.data.subscriptions = subs().filter((s) => ownerOf(s) !== owner);
+    store.save();
+  }
+
+  const subscriptionsOf = (owner) => subs().filter((s) => ownerOf(s) === owner);
+
+  return {
+    publicKey,
+    sendToAll,
+    sendToOwner,
+    addSubscription,
+    removeSubscription,
+    removeOwner,
+    subscriptionsOf,
+    count: (owner) => (owner === undefined ? subs().length : subscriptionsOf(owner).length),
+  };
 }
 
 // "304A 250 m, 14 min to UL": the nearest way to the campus, for a notification or a card.

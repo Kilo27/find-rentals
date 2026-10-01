@@ -1,6 +1,8 @@
 const root = document.getElementById("app");
 let state = null;
 let tab = "matches";
+let usersList = [];
+let usersNote = null;
 // Verdicts that take a listing out of the main list, each with its own collapsed section and way back.
 const DISMISSED = [
   { status: "rejected", title: "Not a fit", undo: "Restore" },
@@ -63,6 +65,8 @@ function inFuture(iso) {
   return s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${Math.round(s / 3600)} h`;
 }
 
+const kv = (k, v) => h("div", { class: "kv" }, h("span", {}, k), h("span", {}, v));
+
 const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
 
@@ -94,6 +98,7 @@ function render() {
 
 function renderLogin() {
   const msg = h("div", { class: "msg err" });
+  const name = h("input", { type: "text", placeholder: "Username", autocomplete: "username", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
   const input = h("input", { type: "password", placeholder: "Password", autocomplete: "current-password" });
   const form = h(
     "form",
@@ -102,16 +107,19 @@ function renderLogin() {
       onsubmit: async (e) => {
         e.preventDefault();
         try {
-          await api("POST", "/api/login", { password: input.value });
+          await api("POST", "/api/login", { username: name.value, password: input.value });
           await loadState();
+          tab = "matches";
           render();
+          syncSubscription();
         } catch (err) {
           msg.textContent = err.message;
         }
       },
     },
     h("h1", {}, "Rental Watch"),
-    h("p", { class: "hint" }, "Enter the access password. You only need to do this once per device."),
+    h("p", { class: "hint" }, "Sign in with your username and password. You only need to do this once per device."),
+    name,
     input,
     h("button", { class: "primary", type: "submit" }, "Log in"),
     msg,
@@ -119,17 +127,39 @@ function renderLogin() {
   return form;
 }
 
+async function loadUsers() {
+  usersList = (await api("GET", "/api/users")).users;
+}
+
+async function stopViewing() {
+  try {
+    await api("DELETE", "/api/view-as");
+    await loadState();
+    render();
+  } catch {}
+}
+
 function renderMain() {
-  const tabs = [
-    ["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`],
-    ["settings", "Settings"],
-    ["status", "Status"],
-  ];
-  const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : renderStatus();
+  // Only the admin can change the one shared search or manage users.
+  const admin = state.user.isAdmin;
+  const tabs = [["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`]];
+  if (admin) tabs.push(["settings", "Settings"]);
+  tabs.push(["status", "Status"]);
+  if (admin) tabs.push(["users", "Users"]);
+  if ((tab === "users" || tab === "settings") && !admin) tab = "matches";
+  const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : tab === "users" ? renderUsers() : renderStatus();
   const c = state.config;
   return h(
     "div",
     {},
+    state.viewingAs
+      ? h(
+          "div",
+          { class: "viewing" },
+          h("span", {}, `Viewing as ${state.viewingAs.username}`),
+          h("button", { class: "secondary", onclick: stopViewing }, "Exit"),
+        )
+      : null,
     h(
       "header",
       {},
@@ -145,8 +175,12 @@ function renderMain() {
           "button",
           {
             class: tab === id ? "active" : "",
-            onclick: () => {
+            onclick: async () => {
               tab = id;
+              if (id === "users") {
+                usersNote = null;
+                await loadUsers().catch((err) => (usersNote = { text: err.message, ok: false }));
+              }
               render();
               window.scrollTo(0, 0);
             },
@@ -636,7 +670,7 @@ function renderStatus() {
     "Scan now",
   );
 
-  const kv = (k, v) => h("div", { class: "kv" }, h("span", {}, k), h("span", {}, v));
+  const viewing = Boolean(state.viewingAs);
 
   return h(
     "div",
@@ -645,14 +679,15 @@ function renderStatus() {
       "div",
       { class: "panel" },
       h("h2", {}, "Notifications"),
-      isIos && !isStandalone
+      !viewing && isIos && !isStandalone
         ? h("div", { class: "hint" }, "On iPhone: tap Share, then Add to Home Screen, then open Rental Watch from your Home Screen and come back here. (Needs iOS 16.4 or later.)")
         : null,
-      kv("Permission on this device", perm),
+      viewing ? null : kv("Permission on this device", perm),
       kv("Devices subscribed", String(state.subscriptions.length)),
       state.subscriptions.map((s) => (s.lastError ? kv("Last push error", s.lastError) : null)),
-      enable,
-      test,
+      viewing
+        ? h("div", { class: "hint" }, `Devices and passwords can't be changed while viewing as ${state.viewingAs.username}. Exit to change yours.`)
+        : [enable, test],
       msg,
     ),
     h(
@@ -685,18 +720,185 @@ function renderStatus() {
           })
         : h("div", { class: "hint" }, "No scan yet."),
     ),
+    renderAccount(),
+  );
+}
+
+function renderAccount() {
+  const msg = h("div", { class: "msg" });
+  const { user, viewingAs } = state;
+  const current = h("input", { type: "password", placeholder: "Current password", autocomplete: "current-password" });
+  const next = h("input", { type: "password", placeholder: "New password (8+ characters)", autocomplete: "new-password" });
+  const change = h(
+    "form",
+    {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          await api("POST", "/api/account/password", { current: current.value, next: next.value });
+          current.value = next.value = "";
+          msg.className = "msg ok";
+          msg.textContent = "Password changed. Your other devices have been signed out.";
+        } catch (err) {
+          msg.className = "msg err";
+          msg.textContent = err.message;
+        }
+      },
+    },
+    h("h3", {}, "Change password"),
+    current,
+    next,
+    h("button", { class: "secondary", type: "submit" }, "Change password"),
+    msg,
+  );
+
+  return h(
+    "div",
+    { class: "panel" },
+    h("h2", {}, "Account"),
+    kv("Signed in as", viewingAs ? viewingAs.by : `${user.username}${user.isAdmin ? " (admin)" : ""}`),
+    viewingAs ? kv("Viewing as", viewingAs.username) : null,
+    !viewingAs && user.isAdmin ? h("div", { class: "hint" }, "The admin password is the ACCESS_PASSWORD variable on the server. Add people under Users.") : null,
+    !viewingAs && !user.isAdmin ? change : null,
     h(
-      "div",
-      { class: "panel" },
-      h("button", {
+      "button",
+      {
         class: "secondary",
         onclick: async () => {
           await api("POST", "/api/logout").catch(() => {});
           state = null;
           render();
         },
-      }, "Log out"),
+      },
+      "Log out",
     ),
+  );
+}
+
+const deviceName = (ua = "") =>
+  /iphone|ipad/i.test(ua) ? "iPhone / iPad" : /android/i.test(ua) ? "Android" : /windows/i.test(ua) ? "Windows" : /macintosh/i.test(ua) ? "Mac" : "Device";
+
+function randomPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => chars[b % chars.length]).join("");
+}
+
+function renderUsers() {
+  const note = h("div", { class: `msg ${usersNote ? (usersNote.ok ? "ok" : "err") : ""}` }, usersNote?.text ?? "");
+  const say = (text, ok = true) => {
+    usersNote = { text, ok };
+    note.className = `msg ${ok ? "ok" : "err"}`;
+    note.textContent = text;
+  };
+  // Runs an admin action, then reloads the list so the page shows what the server now has.
+  const act = (fn) => async () => {
+    try {
+      await fn();
+      await loadUsers();
+      render();
+    } catch (err) {
+      say(err.message, false);
+    }
+  };
+
+  const name = h("input", { type: "text", placeholder: "Username", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const pass = h("input", { type: "text", placeholder: "Password (8+ characters)", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const add = h(
+    "form",
+    {
+      onsubmit: (e) => {
+        e.preventDefault();
+        act(async () => {
+          const username = name.value.trim().toLowerCase();
+          const password = pass.value;
+          await api("POST", "/api/users", { username, password });
+          say(`Created ${username}. Give them this password: ${password}. They can change it under Status.`);
+        })();
+      },
+    },
+    name,
+    pass,
+    h("button", { class: "secondary", type: "button", onclick: () => (pass.value = randomPassword()) }, "Generate password"),
+    h("button", { class: "primary", type: "submit" }, "Create user"),
+  );
+
+  const userPanel = (u) =>
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, u.username),
+      kv("Last signed in", u.lastLoginAt ? timeAgo(u.lastLoginAt) : "never"),
+      kv("Last active", u.lastSeenAt ? timeAgo(u.lastSeenAt) : "never"),
+      kv("Devices subscribed", String(u.devices.length)),
+      u.devices.map((d) => kv(deviceName(d.userAgent), d.lastError ? `error: ${d.lastError}` : `added ${timeAgo(d.addedAt)}`)),
+      h(
+        "button",
+        {
+          class: "primary",
+          onclick: async () => {
+            try {
+              await api("POST", "/api/view-as", { username: u.username });
+              await loadState();
+              tab = "matches";
+              render();
+              window.scrollTo(0, 0);
+            } catch (err) {
+              say(err.message, false);
+            }
+          },
+        },
+        "View as",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary",
+          onclick: act(async () => {
+            const r = await api("POST", `/api/users/${encodeURIComponent(u.username)}/test-push`);
+            say(r.sent ? `Test sent to ${r.sent} of ${u.username}'s device(s).` : `${u.username} has no device that received it.`, r.sent > 0);
+          }),
+        },
+        "Send test",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary",
+          onclick: act(async () => {
+            const password = prompt(`New password for ${u.username} (8+ characters). They will be signed out everywhere.`);
+            if (!password) return;
+            await api("PUT", `/api/users/${encodeURIComponent(u.username)}/password`, { password });
+            say(`Password for ${u.username} changed. Give them: ${password}`);
+          }),
+        },
+        "Reset password",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary danger",
+          onclick: act(async () => {
+            if (!confirm(`Remove ${u.username}? They are signed out and their devices stop getting alerts.`)) return;
+            await api("DELETE", `/api/users/${encodeURIComponent(u.username)}`);
+            say(`Removed ${u.username}.`);
+          }),
+        },
+        "Remove",
+      ),
+    );
+
+  return h(
+    "div",
+    {},
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, "Add a user"),
+      h("div", { class: "hint" }, "Only you can add people. Everyone sees the same listings from one search that only you can change, and each person gets alerts on their own devices."),
+      add,
+      note,
+    ),
+    usersList.length ? usersList.map(userPanel) : h("div", { class: "empty" }, "No other users yet."),
   );
 }
 
