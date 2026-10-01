@@ -112,3 +112,11 @@ select {
   width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--line); border-radius: 10px;
 }
+.transit { margin-top: 4px; font-size: 13px; }
+.badge.transit { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+details.route { border-top: 1px solid var(--line); margin-top: 8px; }
+details.route summary { margin: 8px 0 4px; }
+.stoprow { padding: 5px 0; font-size: 13px; border-top: 1px solid var(--line); }
+.stoprow span:last-child { display: block; color: var(--muted); }
+.stops a, .hint a { color: var(--accent); }
+details .check { margin-left: 4px; }
