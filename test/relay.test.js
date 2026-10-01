@@ -5,7 +5,7 @@ import net from "node:net";
 import { createRelay, guardedLookup, isPrivateAddress, parseAllow } from "../src/relay.js";
 import { proxyFromEnv } from "../src/proxy.js";
 import { createScanner } from "../src/scan.js";
-import { gatewayResponse, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
+import { daftPage, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
 
 const token = crypto.randomBytes(9).toString("hex");
 const basic = (t) => `Basic ${Buffer.from(`relay:${t}`).toString("base64")}`;
@@ -141,10 +141,10 @@ test("scanner: only the listed sources go through the proxy; others and the geoc
   const UL_LIST = "https://www.accommodation.ul.ie/SearchResults/Print/All";
   const ulPage = `<html><body><div id="r"><div class="advert"><a href="/Advert/3001">Dromroe Village, Castletroy</a>
     Available: Now €500 Per person per month Room in House / Apartment with other tenants Rent: €500 Available Now</div></div></body></html>`;
-  const DAFT = "https://gateway.daft.ie/api/v2/ads/listings";
+  const DAFT = /^https:\/\/www\.daft\.ie\/sharing\//;
 
   const direct = router([[UL_LIST, ulPage], [DAFT, () => new Response("blocked", { status: 403 })], [/nominatim/, []]]);
-  const viaProxy = router([[DAFT, gatewayResponse([rawListing({ id: 9, km: 0.9 })])]]);
+  const viaProxy = router([[DAFT, daftPage([rawListing({ id: 9, km: 0.9 })])]]);
 
   const { store } = tempStore();
   store.data.config = { ...store.data.config, sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] };
@@ -160,8 +160,8 @@ test("scanner: only the listed sources go through the proxy; others and the geoc
   const run = await scanner.run();
 
   assert.deepEqual(run.proxied, ["daft"]);
-  assert.equal(direct.count(/gateway\.daft\.ie/), 0, "Daft never goes direct");
-  assert.ok(viaProxy.count(/gateway\.daft\.ie/) >= 1);
+  assert.equal(direct.count(/www\.daft\.ie/), 0, "Daft never goes direct");
+  assert.ok(viaProxy.count(/www\.daft\.ie\/sharing\//) >= 1);
   assert.equal(viaProxy.count(/accommodation\.ul\.ie/), 0, "UL never goes through the proxy");
   assert.ok(direct.count(/SearchResults/) >= 1);
   assert.ok(store.data.matches.some((m) => m.id === "daft:9"), "the Daft listing arrived via the proxy");
@@ -170,7 +170,7 @@ test("scanner: only the listed sources go through the proxy; others and the geoc
 test("scanner: with no proxy configured nothing is proxied", async () => {
   const { store } = tempStore();
   store.data.config = { ...store.data.config, sources: ["daft"], sections: ["sharing"] };
-  const direct = router([["https://gateway.daft.ie/api/v2/ads/listings", gatewayResponse([])]]);
+  const direct = router([[/^https:\/\/www\.daft\.ie\/sharing\//, daftPage([])]]);
   const scanner = createScanner({ store, pusher: fakePusher(), fetchImpl: direct, sleep: noSleep, politenessMs: 0, geocodeDelayMs: 0, proxy: { fetch: null, sources: new Set() } });
   const run = await scanner.run();
   assert.deepEqual(run.proxied, []);

@@ -1,5 +1,6 @@
 import { createRelay, parseAllow } from "./relay.js";
 import { fetchSection } from "./daft.js";
+import { createFetcher } from "./html.js";
 import { DEFAULT_CONFIG, normalizeConfig } from "./config.js";
 
 const password = process.env.PROXY_PASSWORD;
@@ -13,24 +14,27 @@ const port = Number(process.env.PORT || 3128);
 
 const relay = createRelay({ user, password, allow, log: console });
 
-// Logs whether this region's egress can reach the sites, so a proxy can be judged before it is used.
+const titleOf = (err) => {
+  const title = /<title>([^<]{0,80})/i.exec(err.body ?? "")?.[1]?.trim();
+  return title ? ` (page title: ${title})` : "";
+};
+
+// Logs whether this region's egress can reach the sites, making the same requests the app makes,
+// so a proxy can be judged before it is used.
 async function selfTest() {
+  const fetcher = createFetcher();
   try {
     const cfg = { ...normalizeConfig(DEFAULT_CONFIG), maxPages: 1 };
-    const r = await fetchSection(cfg, "sharing", { fetchImpl: fetch });
+    const r = await fetchSection(cfg, "sharing", { fetcher });
     console.log(`[relay] selftest daft OK: ${r.listings.length} listing(s), ${r.total} total`);
   } catch (err) {
-    const title = /<title>([^<]{0,80})/i.exec(err.body ?? "")?.[1]?.trim();
-    console.log(`[relay] selftest daft FAILED: ${err.message}${title ? ` (page title: ${title})` : ""}`);
+    console.log(`[relay] selftest daft FAILED: ${err.message}${titleOf(err)}`);
   }
   try {
-    const res = await fetch("https://www.rent.ie/rooms-to-rent/limerick/castletroy/", {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; RentalWatch/1.0; personal rental monitor)" },
-      signal: AbortSignal.timeout(15_000),
-    });
-    console.log(`[relay] selftest rent.ie HTTP ${res.status}`);
+    const r = await fetcher.get(DEFAULT_CONFIG.rentUrls[0]);
+    console.log(`[relay] selftest rent.ie HTTP ${r.status}`);
   } catch (err) {
-    console.log(`[relay] selftest rent.ie FAILED: ${err.message}`);
+    console.log(`[relay] selftest rent.ie FAILED: ${err.message}${titleOf(err)}`);
   }
 }
 

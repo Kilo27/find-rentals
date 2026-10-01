@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
 import { createScanner } from "../src/scan.js";
 import { createScheduler } from "../src/scheduler.js";
-import { gatewayResponse, makeFetch, rawListing, tempStore, fakePusher } from "./helpers.js";
+import { daftPage, makeFetch, noSleep, rawListing, tempStore, fakePusher } from "./helpers.js";
 
 let server;
 let base;
@@ -24,8 +24,8 @@ before(async () => {
   ({ store } = tempStore());
   store.data.config = { ...store.data.config, sections: ["sharing"], sources: ["daft"] };
   const pusher = fakePusher();
-  const fetchImpl = makeFetch(() => gatewayResponse([rawListing({ id: 1 })]));
-  const scanner = createScanner({ store, pusher, fetchImpl });
+  const fetchImpl = makeFetch(() => daftPage([rawListing({ id: 1 })]));
+  const scanner = createScanner({ store, pusher, fetchImpl, sleep: noSleep, politenessMs: 0 });
   const scheduler = createScheduler({ store, scanner, startDelayMs: 3_600_000 });
   const app = createApp({ store, scanner, pusher, scheduler, password: "hunter2", secret: "s3cret" });
   await new Promise((r) => (server = app.listen(0, "127.0.0.1", r)));

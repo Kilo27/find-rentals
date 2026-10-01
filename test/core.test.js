@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { haversineKm } from "../src/geo.js";
 import { DEFAULT_CONFIG, ConfigError, normalizeConfig } from "../src/config.js";
-import { buildPayload, fetchSection, normalizeListing, parsePriceMonthly, resetHeaderProfiles, shapeIdFor } from "../src/daft.js";
+import { fetchSection, normalizeListing, parsePriceMonthly, parseSearchPage, radiusParam, searchUrl } from "../src/daft.js";
+import { createFetcher } from "../src/html.js";
 import { evaluateListing } from "../src/filter.js";
-import { UL, gatewayResponse, httpError, kmNorth, makeFetch, rawListing } from "./helpers.js";
+import { UL, daftPage, daftQuery, httpError, kmNorth, makeFetch, noSleep, rawListing } from "./helpers.js";
 
 const config = (over = {}) => normalizeConfig({ ...DEFAULT_CONFIG, ...over });
 
@@ -45,33 +46,106 @@ test("config: invalid values are all reported", () => {
   assert.throws(() => config({ needFrom: "2027-07-01", stayUntil: "2027-06-30" }), ConfigError);
 });
 
-test("daft: radius maps to the smallest covering stored shape", () => {
-  assert.equal(shapeIdFor("4342", 0.5), "4342_1000");
-  assert.equal(shapeIdFor("4342", 2), "4342_3000");
-  assert.equal(shapeIdFor("4342", 3), "4342_3000");
-  assert.equal(shapeIdFor("4342", 4), "4342_5000");
-  assert.equal(shapeIdFor("4342", 20), "4342_20000");
+const daftFetcher = (fetchImpl) => createFetcher({ fetchImpl, sleep: noSleep, politenessMs: 0, respectRobots: false });
+
+test("config: the Daft area must look like a Daft URL name; a saved legacy location ID falls back to the default", () => {
+  assert.equal(config({ daftLocation: " Castletroy-Limerick " }).daftLocation, "castletroy-limerick");
+  assert.throws(() => config({ daftLocation: "../admin" }), ConfigError);
+  assert.throws(() => config({ daftLocation: "" }), ConfigError);
+  const legacy = normalizeConfig({ daftLocationId: "4342" });
+  assert.equal(legacy.daftLocation, "university-of-limerick-limerick");
+  assert.equal(legacy.daftLocationId, undefined);
+});
+
+test("daft: radius maps to the smallest covering stored radius", () => {
+  assert.equal(radiusParam(0.5), 1000);
+  assert.equal(radiusParam(2), 3000);
+  assert.equal(radiusParam(3), 3000);
+  assert.equal(radiusParam(4), 5000);
+  assert.equal(radiusParam(20), 20000);
 });
 
 test("daft: owner-occupied server filter applies to room sections only", () => {
-  const c = config();
-  assert.deepEqual(buildPayload(c, "sharing").filters, [{ name: "ownerOccupied", values: [false] }]);
-  assert.deepEqual(buildPayload(c, "student-accommodation-to-share").filters, [{ name: "ownerOccupied", values: [false] }]);
-  assert.equal(buildPayload(c, "residential-to-rent").filters, undefined);
-  assert.equal(buildPayload(config({ excludeOwnerOccupied: false }), "sharing").filters, undefined);
+  const owner = (cfg, section) => new URL(searchUrl(cfg, section)).searchParams.get("ownerOccupied");
+  assert.equal(owner(config(), "sharing"), "false");
+  assert.equal(owner(config(), "student-accommodation-to-share"), "false");
+  assert.equal(owner(config(), "residential-to-rent"), null);
+  assert.equal(owner(config({ excludeOwnerOccupied: false }), "sharing"), null);
 });
 
-test("daft: payload matches the gateway format", () => {
-  const p = buildPayload(config({ priceMin: 300, priceMax: 700, bedsMax: 3 }), "residential-to-rent", 50);
-  assert.equal(p.section, "residential-to-rent");
-  assert.deepEqual(p.geoFilter, { storedShapeIds: ["4342_3000"], geoSearchType: "STORED_SHAPES" });
-  assert.deepEqual(p.paging, { from: "50", pagesize: "50" });
-  assert.equal(p.sort, "publishDateDesc");
-  assert.deepEqual(p.ranges, [
-    { name: "rentalPrice", from: "300", to: "700" },
-    { name: "numBeds", from: "0", to: "3" },
-  ]);
-  assert.equal(buildPayload(config({ bedsMax: 3 }), "sharing").ranges, undefined);
+test("daft: search URL matches Daft's website format", () => {
+  const u = new URL(searchUrl(config({ priceMin: 300, priceMax: 700, bedsMax: 3, leaseMinMonths: 6 }), "residential-to-rent", 3));
+  assert.equal(u.origin + u.pathname, "https://www.daft.ie/property-for-rent/university-of-limerick-limerick");
+  assert.deepEqual(Object.fromEntries(u.searchParams), {
+    radius: "3000",
+    sort: "publishDateDesc",
+    page: "3",
+    rentalPrice_from: "300",
+    rentalPrice_to: "700",
+    numBeds_to: "3",
+    leaseLength_from: "6",
+  });
+  const sharing = new URL(searchUrl(config({ bedsMax: 3 }), "sharing"));
+  assert.equal(sharing.pathname, "/sharing/university-of-limerick-limerick");
+  assert.equal(sharing.searchParams.get("numBeds_to"), null, "beds only filter houses & apartments");
+  assert.equal(sharing.searchParams.get("page"), null, "page 1 is the bare search URL");
+});
+
+test("daft: parseSearchPage reads the Next.js page data and rejects anything else", () => {
+  assert.equal(parseSearchPage(daftPage([rawListing({ id: 1 })])).listings.length, 1);
+  assert.equal(parseSearchPage("<html><title>Security Check | Daft</title></html>"), null);
+  assert.equal(parseSearchPage('<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{}}}</script>'), null);
+  assert.equal(parseSearchPage('<script id="__NEXT_DATA__" type="application/json">{not json</script>'), null);
+});
+
+test("daft: fetchSection pages by page number and expands grouped sub-units", async () => {
+  const page1 = Array.from({ length: 20 }, (_, i) => rawListing({ id: i + 1 }));
+  const grouped = rawListing({ id: 900, extra: { prs: { subUnits: [{ id: 901, price: "€700 per month" }, { id: 902, price: "€800 per month" }] } } });
+  const page2 = [grouped, rawListing({ id: 21 })];
+  const fetchImpl = makeFetch((q) => (q.page === 1 ? daftPage(page1, 22) : daftPage(page2, 22)));
+  const r = await fetchSection(config({ maxPages: 4 }), "sharing", { fetcher: daftFetcher(fetchImpl) });
+  assert.deepEqual(fetchImpl.calls.map((c) => daftQuery(c.url).page), [1, 2]);
+  assert.equal(r.total, 22);
+  assert.equal(r.listings.length, 20 + 2 + 1);
+  assert.ok(r.listings.some((l) => l.id === "daft:901" && l.priceMonthly === 700));
+  assert.ok(r.listings.some((l) => l.id === "daft:902" && l.priceMonthly === 800));
+});
+
+test("daft: paging stops when Daft answers with page 1 again (it ignores paging it doesn't understand)", async () => {
+  const items = Array.from({ length: 20 }, (_, i) => rawListing({ id: i }));
+  const fetchImpl = makeFetch(() => daftPage(items, 80, { paging: { totalResults: 80, currentPage: 1 } }));
+  const r = await fetchSection(config({ maxPages: 4 }), "sharing", { fetcher: daftFetcher(fetchImpl) });
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(r.listings.length, 20, "the repeated page is not counted twice");
+});
+
+test("daft: maxPages caps pagination", async () => {
+  const fetchImpl = makeFetch(() => daftPage(Array.from({ length: 20 }, (_, i) => rawListing({ id: i })), 500));
+  await fetchSection(config({ maxPages: 2 }), "sharing", { fetcher: daftFetcher(fetchImpl) });
+  assert.equal(fetchImpl.calls.length, 2);
+});
+
+test("daft: a refused page fails with its status and the start of the page", async () => {
+  const fetchImpl = makeFetch(() => httpError(403, "<html><head><title>Security Check | Daft</title></head></html>"));
+  await assert.rejects(
+    fetchSection(config(), "sharing", { fetcher: daftFetcher(fetchImpl) }),
+    (e) => e.status === 403 && /HTTP 403 from www\.daft\.ie/.test(e.message) && /Security Check/.test(e.body),
+  );
+});
+
+test("daft: a page without listing data fails closed and names the page", async () => {
+  const fetchImpl = makeFetch(() => "<html><head><title>Just a moment...</title></head><body></body></html>");
+  await assert.rejects(fetchSection(config(), "sharing", { fetcher: daftFetcher(fetchImpl) }), /no listing data .*Just a moment/);
+});
+
+test("daft: an area Daft doesn't recognise is an error, not a search of all of Ireland", async () => {
+  const fallback = makeFetch(() => daftPage([rawListing({ id: 1 })], 2523, { canonicalUrl: "https://www.daft.ie/sharing/ireland" }));
+  await assert.rejects(
+    fetchSection(config({ daftLocation: "nowhere-limerick" }), "sharing", { fetcher: daftFetcher(fallback) }),
+    /doesn't recognise the area "nowhere-limerick"/,
+  );
+  const known = makeFetch(() => daftPage([rawListing({ id: 1 })], 1, { canonicalUrl: "https://www.daft.ie/sharing/university-of-limerick-limerick" }));
+  assert.equal((await fetchSection(config(), "sharing", { fetcher: daftFetcher(known) })).listings.length, 1);
 });
 
 test("daft: price parsing handles weekly, ranges of text and POA", () => {
@@ -101,63 +175,6 @@ test("daft: nested ownerOccupied field is detected, absent is null", () => {
   assert.equal(normalizeListing({ id: 1, sharing: { ownerOccupied: "Yes" } }, "sharing").ownerOccupied, true);
   assert.equal(normalizeListing({ id: 1, sharing: { owner_occupied: false } }, "sharing").ownerOccupied, false);
   assert.equal(normalizeListing({ id: 1 }, "sharing").ownerOccupied, null);
-});
-
-test("daft: fetchSection paginates and expands grouped sub-units", async () => {
-  const page1 = Array.from({ length: 50 }, (_, i) => rawListing({ id: i + 1 }));
-  const grouped = rawListing({ id: 900, extra: { prs: { subUnits: [{ id: 901, price: "€700 per month" }, { id: 902, price: "€800 per month" }] } } });
-  const page2 = [grouped, rawListing({ id: 51 })];
-  const fetchImpl = makeFetch((body) => (body.paging.from === "0" ? gatewayResponse(page1, 52) : gatewayResponse(page2, 52)));
-  const r = await fetchSection(config({ maxPages: 4 }), "sharing", { fetchImpl });
-  assert.equal(fetchImpl.calls.length, 2);
-  assert.equal(r.listings.length, 50 + 2 + 1);
-  assert.ok(r.listings.some((l) => l.id === "daft:901" && l.priceMonthly === 700));
-  assert.ok(r.listings.some((l) => l.id === "daft:902" && l.priceMonthly === 800));
-  assert.equal(fetchImpl.calls[0].opts.headers.brand, "daft");
-});
-
-test("daft: maxPages caps pagination", async () => {
-  const fetchImpl = makeFetch(() => gatewayResponse(Array.from({ length: 50 }, (_, i) => rawListing({ id: i })), 500));
-  await fetchSection(config({ maxPages: 2 }), "sharing", { fetchImpl });
-  assert.equal(fetchImpl.calls.length, 2);
-});
-
-test("daft: retries without server filters on a 4xx and reports degraded", async () => {
-  const fetchImpl = makeFetch((body) => (body.filters ? httpError(400, "bad filter") : gatewayResponse([rawListing({ id: 1 })])));
-  const r = await fetchSection(config(), "sharing", { fetchImpl });
-  assert.equal(r.degraded, true);
-  assert.equal(r.listings.length, 1);
-  assert.equal(fetchImpl.calls.length, 2);
-  assert.equal(fetchImpl.calls[1].body.filters, undefined);
-});
-
-test("daft: 429 and 5xx are not retried; 403 tries both header sets once, then fails with the body", async () => {
-  for (const status of [429, 500]) {
-    const fetchImpl = makeFetch(() => httpError(status));
-    await assert.rejects(fetchSection(config(), "sharing", { fetchImpl }), (e) => e.status === status);
-    assert.equal(fetchImpl.calls.length, 1);
-  }
-  resetHeaderProfiles();
-  const blocked = makeFetch(() => httpError(403, "Attention Required | Cloudflare"));
-  await assert.rejects(fetchSection(config(), "sharing", { fetchImpl: blocked }), (e) => e.status === 403 && /Cloudflare/.test(e.body));
-  assert.equal(blocked.calls.length, 2, "library-style headers, then browser-style headers");
-});
-
-test("daft: falls back to browser-style headers when library-style ones are refused, and remembers", async () => {
-  resetHeaderProfiles();
-  const fetchImpl = makeFetch((body, n) => (n === 1 ? httpError(403) : gatewayResponse([rawListing({ id: 1 })])));
-  const r = await fetchSection(config(), "sharing", { fetchImpl });
-  assert.equal(r.listings.length, 1);
-  const [first, second] = fetchImpl.calls;
-  assert.equal(first.opts.headers["User-Agent"], "", "library profile sends a blank User-Agent like daftlistings");
-  assert.equal(first.opts.headers.Origin, undefined);
-  assert.match(second.opts.headers["User-Agent"], /Mozilla/);
-  assert.equal(second.opts.headers.Origin, "https://www.daft.ie");
-
-  const next = makeFetch(() => gatewayResponse([]));
-  await fetchSection(config(), "sharing", { fetchImpl: next });
-  assert.match(next.calls[0].opts.headers["User-Agent"], /Mozilla/, "the working profile is tried first next time");
-  resetHeaderProfiles();
 });
 
 const ev = (over, cfg) => {

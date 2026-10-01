@@ -11,8 +11,9 @@ export class SourceError extends Error {
   }
 }
 
-const DEFAULT_UA =
-  "Mozilla/5.0 (compatible; RentalWatch/1.0; personal rental monitor) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+// An honest bot name. A user agent claiming to be Chrome from a client that isn't gets Cloudflare's
+// "Security Check" 403 on Daft and Rent.ie from any network, home connections included.
+const DEFAULT_UA = "Mozilla/5.0 (compatible; RentalWatch/1.0; personal rental monitor)";
 const UA_TOKEN = "rentalwatch";
 const MAX_HTML = 3_000_000;
 
@@ -140,7 +141,10 @@ export function createFetcher({
     } catch (err) {
       throw new SourceError(`Network error fetching ${u.host}: ${err.message}`, { code: "network" });
     }
-    if (!res.ok) throw new SourceError(`HTTP ${res.status} from ${u.host}`, { status: res.status, code: "http" });
+    if (!res.ok) {
+      const body = (await res.text().catch(() => "")).slice(0, 300);
+      throw new SourceError(`HTTP ${res.status} from ${u.host}`, { status: res.status, code: "http", body });
+    }
     const html = (await res.text()).slice(0, MAX_HTML);
     return { html, url: res.url || url, status: res.status };
   }

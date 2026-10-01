@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Store } from "../src/store.js";
+import { SECTION_PATHS } from "../src/daft.js";
 
 export const UL = { lat: 52.6733, lng: -8.5739 };
 
@@ -27,20 +28,33 @@ export function rawListing(over = {}) {
   };
 }
 
-export function gatewayResponse(items, total = items.length) {
-  return { listings: items, paging: { totalResults: total } };
+// A Daft search results page: the listings travel as Next.js page data.
+export function daftPage(items, total = items.length, extra = {}) {
+  const data = { props: { pageProps: { listings: items, paging: { totalResults: total }, ...extra } } };
+  return `<!doctype html><html><head><title>Daft.ie</title></head><body><div id="__next"></div>` +
+    `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></body></html>`;
+}
+
+const SECTION_OF_PATH = Object.fromEntries(Object.entries(SECTION_PATHS).map(([section, p]) => [p, section]));
+
+// What a Daft search URL asks for: section, page number and query parameters.
+export function daftQuery(url) {
+  const u = new URL(url);
+  return { section: SECTION_OF_PATH[u.pathname.split("/")[1]] ?? null, page: Number(u.searchParams.get("page") ?? 1), params: u.searchParams };
 }
 
 export function makeFetch(handler) {
   const calls = [];
   const fn = async (url, opts = {}) => {
-    const body = opts.body ? JSON.parse(opts.body) : null;
-    calls.push({ url, opts, body });
-    const out = await handler(body, calls.length, url);
+    calls.push({ url, opts });
+    if (url.endsWith("/robots.txt")) return new Response("not found", { status: 404 });
+    const out = await handler(daftQuery(url), calls.length, url);
     if (out instanceof Response) return out;
+    if (typeof out === "string") return new Response(out, { status: 200, headers: { "Content-Type": "text/html" } });
     return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
   };
   fn.calls = calls;
+  fn.pages = () => calls.filter((c) => !c.url.endsWith("/robots.txt"));
   return fn;
 }
 

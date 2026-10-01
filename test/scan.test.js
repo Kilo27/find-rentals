@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createScanner } from "../src/scan.js";
 import { createPusher, buildListingPayload } from "../src/push.js";
-import { gatewayResponse, httpError, makeFetch, rawListing, tempStore, fakePusher } from "./helpers.js";
+import { daftPage, httpError, makeFetch, noSleep, rawListing, tempStore, fakePusher } from "./helpers.js";
 
-const bySection = (map) => makeFetch((body) => {
-  const out = map[body.section];
-  return typeof out === "function" ? out(body) : out ?? gatewayResponse([]);
+const bySection = (map) => makeFetch((q) => {
+  const out = map[q.section];
+  return typeof out === "function" ? out(q) : out ?? daftPage([]);
 });
+
+const newScanner = (opts) => createScanner({ sleep: noSleep, politenessMs: 0, geocodeDelayMs: 0, ...opts });
 
 function setup({ pusher = fakePusher(), sections = ["sharing"] } = {}) {
   const { store } = tempStore();
@@ -17,8 +19,8 @@ function setup({ pusher = fakePusher(), sections = ["sharing"] } = {}) {
 
 test("scan: first run is a baseline - one summary push, listings marked seen", async () => {
   const { store, pusher } = setup();
-  const fetchImpl = bySection({ sharing: gatewayResponse([rawListing({ id: 1 }), rawListing({ id: 2 })]) });
-  const scanner = createScanner({ store, pusher, fetchImpl });
+  const fetchImpl = bySection({ sharing: daftPage([rawListing({ id: 1 }), rawListing({ id: 2 })]) });
+  const scanner = newScanner({ store, pusher, fetchImpl });
 
   const run = await scanner.run();
   assert.equal(run.mode, "baseline");
@@ -33,7 +35,7 @@ test("scan: first run is a baseline - one summary push, listings marked seen", a
 test("scan: later runs push only brand-new matches, once", async () => {
   const { store, pusher } = setup();
   let items = [rawListing({ id: 1 })];
-  const scanner = createScanner({ store, pusher, fetchImpl: bySection({ sharing: () => gatewayResponse(items) }) });
+  const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage(items) }) });
   await scanner.run();
   pusher.sent.length = 0;
 
@@ -55,7 +57,7 @@ test("scan: later runs push only brand-new matches, once", async () => {
 test("scan: non-matching listings never notify, but reappear if settings widen", async () => {
   const { store, pusher } = setup();
   const items = [rawListing({ id: 1 })];
-  const scanner = createScanner({ store, pusher, fetchImpl: bySection({ sharing: () => gatewayResponse(items) }) });
+  const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage(items) }) });
   await scanner.run();
   pusher.sent.length = 0;
 
@@ -74,7 +76,7 @@ test("scan: non-matching listings never notify, but reappear if settings widen",
 test("scan: more than 5 new listings sends 5 individual pushes plus a digest", async () => {
   const { store, pusher } = setup();
   let items = [rawListing({ id: 1 })];
-  const scanner = createScanner({ store, pusher, fetchImpl: bySection({ sharing: () => gatewayResponse(items) }) });
+  const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage(items) }) });
   await scanner.run();
   pusher.sent.length = 0;
 
@@ -92,7 +94,7 @@ test("scan: listings stay unseen if delivery fails to every device, then retry",
   const pusher = fakePusher({ sendResult: () => (delivering ? { sent: 1, failed: 0, removed: 0 } : { sent: 0, failed: 1, removed: 0 }) });
   const { store } = setup({ pusher });
   let items = [rawListing({ id: 1 })];
-  const scanner = createScanner({ store, pusher, fetchImpl: bySection({ sharing: () => gatewayResponse(items) }) });
+  const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage(items) }) });
   await scanner.run();
 
   items = [rawListing({ id: 1 }), rawListing({ id: 2 })];
@@ -110,7 +112,7 @@ test("scan: with no subscribers listings are still marked seen", async () => {
   const pusher = fakePusher({ subscribers: 0, sendResult: () => ({ sent: 0, failed: 0, removed: 0 }) });
   const { store } = setup({ pusher });
   let items = [];
-  const scanner = createScanner({ store, pusher, fetchImpl: bySection({ sharing: () => gatewayResponse(items) }) });
+  const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage(items) }) });
   await scanner.run();
   items = [rawListing({ id: 9 })];
   await scanner.run();
@@ -120,10 +122,10 @@ test("scan: with no subscribers listings are still marked seen", async () => {
 test("scan: duplicate ids across sections are collapsed", async () => {
   const { store, pusher } = setup({ sections: ["sharing", "student-accommodation-to-share"] });
   const item = rawListing({ id: 5 });
-  const scanner = createScanner({
+  const scanner = newScanner({
     store,
     pusher,
-    fetchImpl: bySection({ sharing: gatewayResponse([item]), "student-accommodation-to-share": gatewayResponse([item]) }),
+    fetchImpl: bySection({ sharing: daftPage([item]), "student-accommodation-to-share": daftPage([item]) }),
   });
   const run = await scanner.run();
   assert.equal(run.matches, 1);
@@ -131,7 +133,7 @@ test("scan: duplicate ids across sections are collapsed", async () => {
 
 test("scan: total failure records error and alerts on 3rd consecutive failure only", async () => {
   const { store, pusher } = setup();
-  const scanner = createScanner({ store, pusher, fetchImpl: makeFetch(() => httpError(403, "blocked")) });
+  const scanner = newScanner({ store, pusher, fetchImpl: makeFetch(() => httpError(403, "blocked")) });
   for (let i = 1; i <= 4; i++) {
     const run = await scanner.run();
     assert.equal(run.ok, false);
@@ -146,10 +148,10 @@ test("scan: total failure records error and alerts on 3rd consecutive failure on
 test("scan: recovery after 3+ failures sends a recovery push", async () => {
   const { store, pusher } = setup();
   let ok = false;
-  const scanner = createScanner({
+  const scanner = newScanner({
     store,
     pusher,
-    fetchImpl: makeFetch(() => (ok ? gatewayResponse([]) : httpError(500))),
+    fetchImpl: makeFetch(() => (ok ? daftPage([]) : httpError(500))),
   });
   for (let i = 0; i < 3; i++) await scanner.run();
   pusher.sent.length = 0;
@@ -162,12 +164,12 @@ test("scan: recovery after 3+ failures sends a recovery push", async () => {
 test("scan: partial failure keeps previous matches for the failed section", async () => {
   const { store, pusher } = setup({ sections: ["sharing", "residential-to-rent"] });
   let failRent = false;
-  const scanner = createScanner({
+  const scanner = newScanner({
     store,
     pusher,
     fetchImpl: bySection({
-      sharing: gatewayResponse([rawListing({ id: 1 })]),
-      "residential-to-rent": () => (failRent ? httpError(500) : gatewayResponse([rawListing({ id: 2 })])),
+      sharing: daftPage([rawListing({ id: 1 })]),
+      "residential-to-rent": () => (failRent ? httpError(500) : daftPage([rawListing({ id: 2 })])),
     }),
   });
   await scanner.run();
@@ -182,11 +184,11 @@ test("scan: partial failure keeps previous matches for the failed section", asyn
 
 test("scan: concurrent run() calls share one scan", async () => {
   const { store, pusher } = setup();
-  const fetchImpl = bySection({ sharing: gatewayResponse([]) });
-  const scanner = createScanner({ store, pusher, fetchImpl });
+  const fetchImpl = bySection({ sharing: daftPage([]) });
+  const scanner = newScanner({ store, pusher, fetchImpl });
   const [a, b] = await Promise.all([scanner.run(), scanner.run()]);
   assert.equal(a, b);
-  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.pages().length, 1);
 });
 
 test("push: dead subscriptions (410) are pruned, failures recorded", async () => {
