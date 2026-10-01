@@ -7,6 +7,7 @@ import { dedupe } from "./dedupe.js";
 import { stripSharedCoords } from "./coords.js";
 import { proxyFromEnv } from "./proxy.js";
 import { buildListingPayload } from "./push.js";
+import { attachTransit, defaultTransit } from "./transit.js";
 
 const MAX_INDIVIDUAL_PUSHES = 5;
 const MAX_STORED_MATCHES = 200;
@@ -59,7 +60,7 @@ export function problemLines(run) {
 
 const SILENT = { log() {}, warn() {} };
 
-export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT, proxy = proxyFromEnv() }) {
+export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT, proxy = proxyFromEnv(), transit = defaultTransit(log.warn) }) {
   let inflight = null;
 
   function run() {
@@ -241,6 +242,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
         pendingCount++;
         continue;
       }
+      attachTransit(listing, config, transit);
       const b = evaluateLocation(listing, config);
       if (!b.ok) {
         rejected++;

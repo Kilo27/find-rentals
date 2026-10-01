@@ -164,6 +164,25 @@ function fmtDate(iso) {
   return d.toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+const MODE_ICON = { bus: "🚌", tram: "🚋", rail: "🚆" };
+
+// How a home connects to the campus: the nearest stop of each direct route, shown when the home is far enough
+// from the campus that you'd want to ride (or when that link is the reason it is listed at all).
+function transitLines(m, flags) {
+  const via = flags.includes("transit-access");
+  if (!m.transit?.campuses?.length || !(via || (m.distanceKm ?? 0) >= 1)) return null;
+  const rows = m.transit.campuses.flatMap((c) => c.options.slice(0, via ? 3 : 2).map((o) => ({ c, o }))).slice(0, 4);
+  return rows.map(({ c, o }) =>
+    h(
+      "div",
+      { class: "transit" },
+      `${MODE_ICON[o.mode] ?? "🚌"} ${o.label} · ${o.stop}, ${o.distM} m`,
+      o.mins ? ` · ${o.mins} min to ${c.short}` : ` · to ${c.short}`,
+      ` · ${o.perDay}/day`,
+    ),
+  );
+}
+
 // Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server says no.
 async function setReview(m, status) {
   const before = m.review;
@@ -229,6 +248,7 @@ function renderCard(m) {
         h("div", { class: "price" }, m.priceMonthly !== null ? `€${m.priceMonthly.toLocaleString("en-IE")}/mo` : m.priceText || "Price n/a"),
         h("div", { class: "title" }, m.title),
         h("div", { class: "meta" }, meta.join(" · ")),
+        transitLines(m, flags),
         h(
           "div",
           { class: "badges" },
@@ -238,6 +258,7 @@ function renderCard(m) {
           flags.includes("ends-early") ? h("span", { class: "badge warn" }, `ends ${fmtDate(m.availableTo)}`) : null,
           flags.includes("short-term") ? h("span", { class: "badge" }, "short-term friendly") : null,
           flags.includes("owner-occupied-unknown") ? h("span", { class: "badge warn" }, "check owner-occupied") : null,
+          flags.includes("transit-access") ? h("span", { class: "badge transit" }, `beyond ${state.config.radiusKm} km · direct route`) : null,
           flags.includes("distance-unverified") ? h("span", { class: "badge warn" }, "check distance") : null,
           flags.includes("availability-unknown") ? h("span", { class: "badge warn" }, "availability not stated") : null,
           m.alsoOn?.length ? h("span", { class: "badge" }, `also on ${m.alsoOn.map((a) => a.label).join(", ")}`) : null,
@@ -314,6 +335,12 @@ function renderSettings() {
     intervalMinutes: Number(f.intervalMinutes.value),
     center: { label: f.centerLabel.value, lat: Number(f.lat.value), lng: Number(f.lng.value) },
     radiusKm: Number(f.radiusKm.value),
+    transitEnabled: f.transitEnabled.checked,
+    transitCampuses: state.campuses.filter((c) => f[`campus:${c.id}`].checked).map((c) => c.id),
+    transitMaxKm: Number(f.transitMaxKm.value),
+    transitWalkM: Number(f.transitWalkM.value),
+    transitMaxRideMin: Number(f.transitMaxRideMin.value),
+    transitMinPerDay: Number(f.transitMinPerDay.value),
     sources: Object.keys(state.sources).filter((id) => f[`source:${id}`].checked),
     sections: Object.keys(state.sections).filter((id) => f[`section:${id}`].checked),
     ulUrls: f.ulUrls.value,
@@ -382,6 +409,7 @@ function renderSettings() {
       num("radiusKm", "Max distance (km)", c.radiusKm, { min: "0.1", max: "20" }),
       h("div", { class: "hint" }, "Exact straight-line distance from the centre point."),
     ),
+    renderTransitSettings(c, f, num, check),
     h(
       "div",
       { class: "panel" },
@@ -447,6 +475,103 @@ function renderSettings() {
     ),
     save,
     msg,
+  );
+}
+
+const mapLink = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+// "Public transport": accept homes beyond the radius that have a direct route to the campus, and browse
+// the stops that go there (with coordinates, to open in a maps app or export).
+function renderTransitSettings(c, f, num, check) {
+  const byRegion = new Map();
+  for (const campus of state.campuses) {
+    if (!byRegion.has(campus.region)) byRegion.set(campus.region, []);
+    byRegion.get(campus.region).push(campus);
+  }
+  const auto = state.autoCampuses.map((id) => state.campuses.find((x) => x.id === id)?.name).filter(Boolean);
+  const campusBoxes = [...byRegion].map(([region, list]) =>
+    h(
+      "details",
+      { open: list.some((x) => c.transitCampuses.includes(x.id)) },
+      h("summary", {}, region),
+      list.map((x) => {
+        f[`campus:${x.id}`] = h("input", { type: "checkbox", checked: c.transitCampuses.includes(x.id) });
+        return h("label", { class: "check" }, f[`campus:${x.id}`], x.name);
+      }),
+    ),
+  );
+
+  const result = h("div", { class: "stops" });
+  const pick = h(
+    "select",
+    {},
+    state.campuses.map((x) => h("option", { value: x.id, selected: x.id === (c.transitCampuses[0] ?? state.autoCampuses[0]) }, x.name)),
+  );
+  const show = h(
+    "button",
+    {
+      class: "secondary",
+      type: "button",
+      onclick: async () => {
+        result.replaceChildren(h("div", { class: "hint" }, "Loading..."));
+        try {
+          const d = await api("GET", `/api/transit/${pick.value}`);
+          const base = `/api/transit/${pick.value}`;
+          result.replaceChildren(
+            h("div", { class: "hint" }, `${d.routes.length} routes with a direct service to ${d.campus.name}. Trips are on a typical weekday; times are the ride to the campus.`),
+            h(
+              "div",
+              { class: "hint" },
+              h("a", { href: `${base}?format=csv`, download: `${pick.value}-stops.csv` }, "Download CSV"),
+              " · ",
+              h("a", { href: `${base}?format=geojson`, download: `${pick.value}-stops.geojson` }, "Download GeoJSON"),
+            ),
+            ...d.routes.map((r) =>
+              h(
+                "details",
+                { class: "route" },
+                h("summary", {}, `${MODE_ICON[r.mode] ?? ""} ${r.label} · ${r.operator} · ${r.stops.length} stops`),
+                h("div", { class: "hint" }, r.name),
+                r.stops.map((s) =>
+                  h(
+                    "div",
+                    { class: "stoprow" },
+                    h("span", {}, `${s.name}${s.code ? ` (${s.code})` : ""}`),
+                    h("span", {}, `${s.mins ?? "?"} min · ${s.perDay}/day · `, h("a", { href: mapLink(s.lat, s.lng), target: "_blank", rel: "noopener noreferrer" }, `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`)),
+                  ),
+                ),
+              ),
+            ),
+          );
+        } catch (err) {
+          result.replaceChildren(h("div", { class: "msg err" }, err.message));
+        }
+      },
+    },
+    "Show stops",
+  );
+
+  return h(
+    "div",
+    { class: "panel" },
+    h("h2", {}, "Public transport"),
+    check("transitEnabled", "Also accept homes beyond the distance above that are on a direct bus, tram or train route to the campus", c.transitEnabled),
+    h("div", { class: "hint" }, "Uses the National Transport Authority's timetables for Bus Éireann, Dublin Bus, Go-Ahead, Luas and Irish Rail. Only services that go straight to the campus count, and only the stops on the side of the road that heads there."),
+    h("div", { class: "row" }, num("transitMaxKm", "Furthest from the centre (km)", c.transitMaxKm, { min: "0.5", max: "20" }), num("transitWalkM", "Walk to the stop (m)", c.transitWalkM, { step: "50", min: "100", max: "2000" })),
+    h("div", { class: "row" }, num("transitMaxRideMin", "Longest ride (minutes)", c.transitMaxRideMin, { step: "1", min: "5", max: "90" }), num("transitMinPerDay", "Fewest trips per weekday", c.transitMinPerDay, { step: "1", min: "1" })),
+    h("div", { class: "hint" }, "The walk is a straight line to the stop, so allow about a quarter more on the ground."),
+    h("label", {}, "Campuses"),
+    h("div", { class: "hint" }, auto.length ? `Leave all unticked to use the campus at your search centre (now: ${auto.join(", ")}).` : "Nothing is near your search centre, so tick the campus you want."),
+    campusBoxes,
+    h(
+      "details",
+      {},
+      h("summary", {}, "Stops that go to a campus"),
+      pick,
+      show,
+      result,
+      state.transit ? h("div", { class: "hint" }, `Timetables from ${state.transit.generated}. ${state.transit.attribution}`) : h("div", { class: "msg err" }, "Transport data is not installed on this server (run npm run transit)."),
+    ),
   );
 }
 

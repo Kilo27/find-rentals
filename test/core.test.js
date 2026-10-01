@@ -74,7 +74,7 @@ test("daft: owner-occupied server filter applies to room sections only", () => {
 });
 
 test("daft: search URL matches Daft's website format", () => {
-  const u = new URL(searchUrl(config({ priceMin: 300, priceMax: 700, bedsMax: 3, leaseMinMonths: 6 }), "residential-to-rent", 3));
+  const u = new URL(searchUrl(config({ transitEnabled: false, priceMin: 300, priceMax: 700, bedsMax: 3, leaseMinMonths: 6 }), "residential-to-rent", 3));
   assert.equal(u.origin + u.pathname, "https://www.daft.ie/property-for-rent/university-of-limerick-limerick");
   assert.deepEqual(Object.fromEntries(u.searchParams), {
     radius: "3000",

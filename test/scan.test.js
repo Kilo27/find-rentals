@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createScanner } from "../src/scan.js";
 import { createPusher, buildListingPayload } from "../src/push.js";
-import { daftPage, httpError, makeFetch, noSleep, rawListing, tempStore, fakePusher } from "./helpers.js";
+import { createTransit } from "../src/transit.js";
+import { daftPage, httpError, kmNorth, makeFetch, noSleep, rawListing, tempStore, fakePusher } from "./helpers.js";
 
 const bySection = (map) => makeFetch((q) => {
   const out = map[q.section];
@@ -272,6 +273,46 @@ test("store: a saved config carrying the old 'university of limerick' locality h
   const custom = { ...old, localityHints: ["castletroy", "my own area"] };
   fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: custom }));
   assert.deepEqual(new Store(dir).data.config.localityHints, ["castletroy", "my own area"], "user-edited hints are left alone");
+});
+
+// A 304 stop 3.5 km north of UL (a made-up one: the real data has none there), 15 minutes from the campus.
+const stopAt = kmNorth(3.5);
+const northLine = () =>
+  createTransit({
+    campuses: { ul: { stops: [["999", "Test Stop", stopAt.lat + 0.001, stopAt.lng]], routes: [{ label: "304", mode: "bus", operator: "Bus Éireann", name: "Test", calls: [[0, 40, 15]] }] } },
+  });
+
+test("scan: a home beyond the radius with a direct route to the campus is matched, with the route stored and in the alert", async () => {
+  const { store, pusher } = setup();
+  let items = [rawListing({ id: 1 })];
+  const scanner = newScanner({ store, pusher, transit: northLine(), fetchImpl: bySection({ sharing: () => daftPage(items) }) });
+  await scanner.run();
+  pusher.sent.length = 0;
+
+  items = [rawListing({ id: 1 }), rawListing({ id: 2, km: 3.5 }), rawListing({ id: 3, km: 4.5 }), rawListing({ id: 4, km: 6 })];
+  const run = await scanner.run();
+  assert.equal(run.newCount, 1, "2 km radius + a 500 m walk to the stop; 4.5 km is 1 km from it and 6 km is past the outer limit");
+  assert.equal(run.rejected, 2);
+  assert.match(pusher.sent[0].body, /3\.5 km from University of Limerick · 304 \d+ m away, 15 min to UL/);
+
+  const stored = store.data.matches.find((m) => m.id === "daft:2");
+  assert.ok(stored.flags.includes("transit-access"));
+  assert.equal(stored.transit.campuses[0].options[0].label, "304");
+  assert.equal(stored.transit.campuses[0].options[0].code, "999");
+  assert.equal(store.data.matches.find((m) => m.id === "daft:1").transit, null, "homes inside the radius with no stop nearby carry no transport link");
+});
+
+test("scan: without transport data (or with it switched off) the radius is strict", async () => {
+  for (const setupTransit of [(s) => ({ transit: null }), (s) => { s.store.data.config = { ...s.store.data.config, transitEnabled: false }; return { transit: northLine() }; }]) {
+    const s = setup();
+    let items = [rawListing({ id: 1 })];
+    const scanner = newScanner({ ...s, ...setupTransit(s), fetchImpl: bySection({ sharing: () => daftPage(items) }) });
+    await scanner.run();
+    items = [rawListing({ id: 1 }), rawListing({ id: 2, km: 3.5 })];
+    const run = await scanner.run();
+    assert.equal(run.matches, 1);
+    assert.equal(run.rejected, 1);
+  }
 });
 
 test("store: a saved config carrying the old, mostly broken default Rent.ie URLs is migrated", () => {

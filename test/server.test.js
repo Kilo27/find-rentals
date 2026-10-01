@@ -90,6 +90,33 @@ test("config can be updated, is validated, and persists to disk", async () => {
   assert.equal(reloaded.config.radiusKm, 1.5);
 });
 
+test("transit: the state lists the campuses, and a campus's stops can be read as JSON, CSV or GeoJSON", async () => {
+  const { data: state } = await call("GET", "/api/state");
+  assert.ok(state.campuses.some((c) => c.id === "ul" && c.short === "UL"));
+  assert.deepEqual(state.autoCampuses, ["ul"]);
+  assert.ok(state.transit.attribution);
+
+  const json = await call("GET", "/api/transit/ul?routes=304,310");
+  assert.equal(json.res.status, 200);
+  assert.deepEqual(json.data.routes.map((r) => r.label), ["304", "310"]);
+  const stop = json.data.routes[0].stops.find((s) => s.name === "Plassey Village");
+  assert.deepEqual([stop.code, stop.lat, stop.lng], ["607611", 52.66898, -8.57495]);
+
+  const csv = await fetch(base + "/api/transit/ul?format=csv&routes=304A", { headers: { Cookie: cookie } });
+  assert.match(csv.headers.get("content-type"), /text\/csv/);
+  const lines = (await csv.text()).trim().split("\n");
+  assert.equal(lines[0], "route,operator,mode,stop_code,stop_name,latitude,longitude,trips_per_weekday,minutes_to_campus");
+  assert.ok(lines.length > 20 && lines.slice(1).every((l) => l.startsWith("304A,Bus Éireann,bus,")));
+
+  const geo = await call("GET", "/api/transit/ul?format=geojson&routes=310");
+  assert.equal(geo.data.type, "FeatureCollection");
+  assert.deepEqual(Object.keys(geo.data.features[0].properties).sort(), ["code", "minutesToCampus", "mode", "operator", "route", "stop", "tripsPerWeekday"]);
+  assert.ok(geo.data.features.every((f) => f.geometry.coordinates[0] < -8 && f.geometry.coordinates[1] > 52), "GeoJSON is [longitude, latitude]");
+
+  assert.equal((await call("GET", "/api/transit/nowhere")).res.status, 404);
+  assert.equal((await call("GET", "/api/transit/ul", undefined, false)).res.status, 401);
+});
+
 const reviewOf = async (id) => (await call("GET", "/api/state")).data.matches.find((m) => m.id === id).review;
 
 test("a listing can be marked seen or not a fit; the mark survives a rescan and can be cleared", async () => {
