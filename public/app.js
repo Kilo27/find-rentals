@@ -1,6 +1,14 @@
 const root = document.getElementById("app");
 let state = null;
 let tab = "matches";
+// Verdicts that take a listing out of the main list, each with its own collapsed section and way back.
+const DISMISSED = [
+  { status: "rejected", title: "Not a fit", undo: "Restore" },
+  { status: "unavailable", title: "No longer available", undo: "Still available" },
+];
+const dismissedStatuses = new Set(DISMISSED.map((d) => d.status));
+const isDismissed = (m) => dismissedStatuses.has(m.review);
+const openSections = {};
 
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -113,7 +121,7 @@ function renderLogin() {
 
 function renderMain() {
   const tabs = [
-    ["matches", `Matches (${state.matches.length})`],
+    ["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`],
     ["settings", "Settings"],
     ["status", "Status"],
   ];
@@ -156,6 +164,21 @@ function fmtDate(iso) {
   return d.toLocaleDateString("en-IE", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+// Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server says no.
+async function setReview(m, status) {
+  const before = m.review;
+  m.review = status;
+  m.reviewError = null;
+  render();
+  try {
+    await api("PUT", "/api/review", { id: m.id, status });
+  } catch (err) {
+    m.review = before;
+    m.reviewError = err.message;
+    render();
+  }
+}
+
 function renderMatches() {
   if (!state.matches.length) {
     const ran = state.lastRun;
@@ -165,18 +188,40 @@ function renderMatches() {
       ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...",
     );
   }
-  return state.matches.map((m) => {
-    const isNew = m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
-    const flags = m.flags ?? [];
-    let dist = null;
-    if (m.distanceKm !== null && m.distanceKm !== undefined) {
-      const how = m.distanceSource === "geocoded" ? " (from address)" : m.distanceSource === "geocoded-area" ? " (approx, area only)" : "";
-      dist = `${flags.includes("distance-approx") ? "~" : ""}${m.distanceKm.toFixed(1)} km${how}`;
-    } else if (flags.includes("distance-unverified")) dist = "distance unverified";
-    const meta = [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean);
-    return h(
+  const active = state.matches.filter((m) => !isDismissed(m));
+  return [
+    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Nothing left to look at: everything here has been dismissed.")]),
+    ...DISMISSED.map(({ status, title }) => {
+      const group = state.matches.filter((m) => m.review === status);
+      return group.length
+        ? h(
+            "details",
+            { class: "dismissed", open: openSections[status] === true, ontoggle: (e) => (openSections[status] = e.target.open) },
+            h("summary", {}, `${title} (${group.length})`),
+            group.map(renderCard),
+          )
+        : null;
+    }),
+  ];
+}
+
+function renderCard(m) {
+  const seen = m.review === "seen";
+  const dismissed = DISMISSED.find((d) => d.status === m.review);
+  const isNew = !m.review && m.firstSeenAt && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
+  const flags = m.flags ?? [];
+  let dist = null;
+  if (m.distanceKm !== null && m.distanceKm !== undefined) {
+    const how = m.distanceSource === "geocoded" ? " (from address)" : m.distanceSource === "geocoded-area" ? " (approx, area only)" : "";
+    dist = `${flags.includes("distance-approx") ? "~" : ""}${m.distanceKm.toFixed(1)} km${how}`;
+  } else if (flags.includes("distance-unverified")) dist = "distance unverified";
+  const meta = [m.bedsText, m.propertyType, dist, m.sourceLabel].filter(Boolean);
+  return h(
+    "div",
+    { class: `card${m.review ? ` ${m.review}` : ""}` },
+    h(
       "a",
-      { class: "card", href: m.url, target: "_blank", rel: "noopener noreferrer" },
+      { class: "card-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
       m.image ? h("img", { src: m.image, loading: "lazy", alt: "", referrerpolicy: "no-referrer" }) : null,
       h(
         "div",
@@ -188,6 +233,7 @@ function renderMatches() {
           "div",
           { class: "badges" },
           isNew ? h("span", { class: "badge new" }, "NEW") : null,
+          seen ? h("span", { class: "badge" }, "seen") : null,
           flags.includes("available-now") ? h("span", { class: "badge" }, "available now") : m.availableFrom ? h("span", { class: "badge" }, `from ${fmtDate(m.availableFrom)}`) : null,
           flags.includes("ends-early") ? h("span", { class: "badge warn" }, `ends ${fmtDate(m.availableTo)}`) : null,
           flags.includes("short-term") ? h("span", { class: "badge" }, "short-term friendly") : null,
@@ -198,8 +244,20 @@ function renderMatches() {
           m.publishedAt ? h("span", { class: "badge" }, `listed ${timeAgo(m.publishedAt)}`) : null,
         ),
       ),
-    );
-  });
+    ),
+    h(
+      "div",
+      { class: "actions" },
+      dismissed
+        ? h("button", { class: "act", onclick: () => setReview(m, "seen") }, dismissed.undo)
+        : [
+            h("button", { class: "act", onclick: () => setReview(m, seen ? null : "seen") }, seen ? "Mark as unseen" : "Mark as seen"),
+            h("button", { class: "act bad", onclick: () => setReview(m, "rejected") }, "Not a fit"),
+            h("button", { class: "act bad", onclick: () => setReview(m, "unavailable") }, "No longer available"),
+          ],
+    ),
+    m.reviewError ? h("div", { class: "msg err card-msg" }, `Couldn't save that: ${m.reviewError}`) : null,
+  );
 }
 
 function renderSettings() {

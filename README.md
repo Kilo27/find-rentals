@@ -64,6 +64,7 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 
 - First scan is a *baseline*: one "Watching started: N matches" notification, existing listings marked seen. If detail pages are still being fetched (limit per scan), the baseline waits until they are done.
 - After that, each new match gets one notification showing price, title, distance, source and availability. More than 5 new in one scan: 5 individual pushes plus a digest. Tapping opens the listing.
+- Each listing in the Matches tab has **Mark as seen** (dims it, tap again to undo), **Not a fit** and **No longer available**. The last two move it to a collapsed list of the same name at the bottom, where **Restore** / **Still available** brings it back. These marks are stored on the server with the rest of the state, so they carry across scans and devices, and when the same property is on several sites a mark on one copy covers them all.
 - If every source fails 3 scans in a row you get a notification, and another on recovery.
 
 ## Settings (all editable in the app)

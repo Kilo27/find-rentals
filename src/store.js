@@ -18,6 +18,8 @@ const freshState = () => ({
   version: 1,
   config: normalizeConfig(DEFAULT_CONFIG),
   seen: {},
+  // The user's own verdicts on listings, by listing id: { status: "seen" | "rejected", at }.
+  reviews: {},
   matches: [],
   subscriptions: [],
   vapid: null,
