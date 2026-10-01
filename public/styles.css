@@ -77,7 +77,15 @@ button.primary, button.secondary {
 }
 button.primary { background: var(--accent); color: var(--accent-text); }
 button.secondary { background: transparent; color: var(--accent); }
+button.secondary.danger { border-color: var(--bad); color: var(--bad); }
 button:disabled { opacity: 0.5; }
+.viewing {
+  position: sticky; top: env(safe-area-inset-top); z-index: 5; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 8px 16px; background: var(--warn); color: var(--bg); font-weight: 700;
+}
+.viewing button.secondary { margin: 0; padding: 6px 14px; color: inherit; border-color: currentColor; }
+.panel h3 { margin: 16px 0 0; font-size: 14px; }
+.panel form input + input { margin-top: 8px; }
 .msg { margin-top: 10px; font-size: 14px; }
 .msg.ok { color: var(--ok); }
 .msg.err { color: var(--bad); }

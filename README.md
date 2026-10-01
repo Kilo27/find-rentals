@@ -28,14 +28,29 @@ The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", 
 
 1. Railway: **New Project → Deploy from GitHub repo → `Kilo27/find-rentals`** (builds from the `Dockerfile`; choose your branch under Service → Settings → Source).
 2. **Add a Volume** to the service, mount path `/data`. Without it, settings, the seen-list, caches and your phone's push registration are wiped on every deploy.
-3. Service → **Variables**: `ACCESS_PASSWORD` (required), and optionally `VAPID_SUBJECT` (e.g. `mailto:you@example.com`).
+3. Service → **Variables**: `ACCESS_PASSWORD` (required, the admin's password), and optionally `ADMIN_USERNAME` (default `admin`) and `VAPID_SUBJECT` (e.g. `mailto:you@example.com`).
 4. Service → Settings → Networking → **Generate Domain**.
 
 ## Set up your iPhone
 
 1. Open the Railway URL in **Safari** → Share → **Add to Home Screen**.
-2. Open **Rental Watch from the Home Screen**, log in.
+2. Open **Rental Watch from the Home Screen**, log in with your username and password.
 3. **Status → Enable notifications on this device → Allow**, then **Send test notification**. (Needs iOS 16.4+.)
+
+## Accounts
+
+There is one **admin** account, and only the admin can create others. The admin is not stored in the app: its username is `ADMIN_USERNAME` (default `admin`) and its password is `ACCESS_PASSWORD`, so it can't be created, changed or removed from inside the app, and you can always get back in by changing the variable. Changing `ACCESS_PASSWORD` signs the admin out of every device.
+
+The admin gets a **Users** tab:
+
+- **Add a user**: pick a username and a password (or press Generate) and give them both. They can change their own password under **Status**.
+- **View as**: opens the app exactly as that user sees it (their devices, no Users tab), with a banner and an **Exit** button. While viewing as someone you can't change their devices or password, and it doesn't count as them being active. Signing in again ends it.
+- **Send test**, **Reset password** and **Remove**. Resetting a password or removing a user signs them out everywhere at once; removing a user also deletes their devices, so they stop getting alerts.
+- Each user's last sign-in, last activity and subscribed devices (including push errors) are listed, for working out why someone isn't getting alerts.
+
+Everyone shares **one search**: the same listings, the same settings and the same scan, and the centre point (campus) and radius are part of it. So only the admin can change the search settings (the Settings tab is admin-only); otherwise one person's change would replace everyone's. Each person gets the alerts on their own devices, and "Send test notification" only reaches your own. Any signed-in user can press Scan now, and only the admin can open `GET /api/debug`. Separate searches per person (for example different campuses) aren't supported yet. Sign-ins use a per-user password (stored hashed) and are limited to 10 failed attempts per IP per 15 minutes.
+
+Upgrading from the single-password version: sign in once more on each device, with the old `ACCESS_PASSWORD` and username `admin` (or your `ADMIN_USERNAME`). Devices already registered for notifications become the admin's.
 
 ## First thing to do after deploying: verify the scrapers
 
@@ -120,13 +135,13 @@ It takes precedence over the laptop agent, so switching is just setting this var
 - Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's search pages are not an API and can change (the Daft source then reports "no listing data" rather than guessing). If Railway's IPs are blocked you will get a "looks broken" notification.
 - Daft search results rarely include availability dates or descriptions, so Daft listings are not date-filtered and their owner-occupied check relies on Daft's own filter.
 - Airbnb/Booking-style furnished monthly stays and Facebook groups are not covered (terms and login walls).
-- Single user, single password.
+- One shared search for all accounts; per-person search settings aren't supported.
 
 ## Local development
 
 ```bash
 npm install
-ALLOW_NO_AUTH=1 npm run dev        # or ACCESS_PASSWORD=secret npm start
+ALLOW_NO_AUTH=1 npm run dev        # sign in as `admin` with an empty password; or ACCESS_PASSWORD=secret npm start
 npm test
 ```
 

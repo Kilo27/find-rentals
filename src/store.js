@@ -20,6 +20,7 @@ const freshState = () => ({
   seen: {},
   matches: [],
   subscriptions: [],
+  users: [],
   vapid: null,
   baselineDone: false,
   failureCount: 0,
