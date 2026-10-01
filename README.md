@@ -6,13 +6,13 @@ Watches several Irish rental sources every 30 minutes for places near a point (d
 
 | Source | How | Notes |
 |---|---|---|
-| **Daft.ie** | Daft's gateway API (same as the open-source `daftlistings` client) | Real coordinates, server-side owner-occupied filter for rooms. Daft may answer HTTP 403 to cloud hosts such as Railway; two header styles are tried and the Status tab shows the result |
+| **Daft.ie** | Daft's own search pages, which carry their results as page data (the same listing data as Daft's gateway API) | Real coordinates, server-side owner-occupied filter for rooms. Daft's gateway API refuses every client that isn't a browser, so it is no longer used. An area name Daft doesn't know is reported as an error rather than searching all of Ireland |
 | **UL Accommodation** (accommodation.ul.ie, Studentpad) | Reads the all-adverts list page only: address (the title), price, availability and landlord type are all on it | UL's own noticeboard. The individual advert pages are an empty JavaScript shell, so they are not fetched. Many adverts are "Resident Landlord/Host Family" or weekday-only, which the filters catch. Distance comes from geocoding the address |
-| **Rent.ie** | Scrapes the search pages for the areas Rent.ie's own University of Limerick page lists as near-by: `houses-to-let` (houses and apartments) for Castletroy, Monaleen, Rhebogue, Newtown, Singland and Annacotty, and `rooms-to-rent` (shares) for Castletroy, Kilmurry, Kilbane, Monaleen, Rhebogue and Newtown | Checked live 2026-10-01. Rent.ie's student-accommodation pages carry no adverts, only links to these. Only each area's first page (its 20 newest adverts) is read, because its pagination links are disallowed by `robots.txt`. Answers HTTP 403 to any user agent claiming to be Chrome, and often to cloud hosts. Saved settings still holding the old default URLs are updated on start; a 404 is reported as "skipped" |
+| **Rent.ie** | Scrapes the search pages for the areas Rent.ie's own University of Limerick page lists as near-by: `houses-to-let` (houses and apartments) for Castletroy, Monaleen, Rhebogue, Newtown, Singland and Annacotty, and `rooms-to-rent` (shares) for Castletroy, Kilmurry, Kilbane, Monaleen, Rhebogue and Newtown | Checked live 2026-10-01. Rent.ie's student-accommodation pages carry no adverts, only links to these. Only each area's first page (its 20 newest adverts) is read, because its pagination links are disallowed by `robots.txt`. Saved settings still holding the old default URLs are updated on start; a 404 is reported as "skipped" |
 | **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Status tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page you add under Settings → Advanced | JSON-LD, embedded JSON or HTML cards |
 
-The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached.
+The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached. They identify themselves honestly as `RentalWatch/1.0`: a user agent that pretends to be Chrome is refused by Cloudflare (Daft, Rent.ie) with a "Security Check" page from any network.
 
 ## How accuracy is kept
 
@@ -80,29 +80,44 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 | Listings with no coordinates | only if the area name matches (`castletroy`, `plassey`, `dromroe`, ...) |
 | Geocode addresses, respect robots.txt | on / on |
 | Scan interval | 30 min |
-| Source page URLs, Daft location ID | see Advanced |
+| Source page URLs, Daft area | see Advanced |
 
-To search somewhere else: change the centre, radius, area names, the source page URLs and the Daft location ID (IDs are in the open-source [`daftlistings`](https://pypi.org/project/daftlistings/) package, `location.py`).
+To search somewhere else: change the centre, radius, area names, the source page URLs and the Daft area (the name in a Daft search URL, e.g. `castletroy-limerick` from `daft.ie/sharing/castletroy-limerick`).
 
-## When a site blocks cloud hosts (proxy)
+## When a site blocks cloud hosts (laptop agent or proxy)
 
-Daft and Rent.ie refuse requests from cloud providers' IP addresses (HTTP 403, or Daft's "Service Unavailable" page). **This was tested: a relay running in Railway's EU West (Amsterdam) region is refused too**, so moving regions or adding another cloud service does not help. The request has to leave from an ordinary (residential or ISP) IP address. Two ways, using the same setting:
+Daft and Rent.ie sit behind Cloudflare. Two causes of HTTP 403 that had nothing to do with the server's address are fixed: Daft's gateway API (which refuses every non-browser client, home connections included) is no longer used, and the scrapers no longer send a user agent that claims to be Chrome. If a source still shows `ERROR(HTTP 403 ...)` in the scan log, the site is refusing the server's IP address, as Daft and Rent.ie do with Railway's. The error line shows the start of the refusal page, and "Security Check" there is Cloudflare. Moving regions or another cloud provider is unlikely to help; the request has to leave from an ordinary (residential or ISP) connection. There are two ways to do that. Either way only the sources in `SCRAPER_PROXY_SOURCES` (default `daft,rent`) use it; the other sources and the geocoder stay direct.
 
-1. **A paid residential/ISP proxy service.** Any HTTP(S) proxy URL works.
-2. **A relay on your own home connection.** The same image can run as a minimal relay (`PROXY_MODE=1 PROXY_PASSWORD=<long random> PORT=3128 node src/server.js`) on a PC or Raspberry Pi at home. It only allows password-protected HTTPS tunnels (CONNECT) to `daft.ie` and `rent.ie` (`PROXY_ALLOW`), on port 443, never to private addresses. You must make it reachable from Railway (router port-forward or a tunnel). Plain HTTP to the relay exposes only its password, so use a long random one; the traffic to the sites inside the tunnel is HTTPS.
+### A computer at home (laptop agent)
 
-Then set on the app service:
+A small agent runs on a computer at home and connects *out* to the app over HTTPS, so there is nothing to open on your router and no tunnel service. The app hands it the Daft and Rent.ie page requests; it fetches them from your home connection and sends the pages back.
+
+1. Make a long random token: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+2. Railway → service → **Variables**: `AGENT_TOKEN=<token>`.
+3. On the home computer, in a clone of this repo (after `npm install`), create `.env`:
+   ```
+   AGENT_SERVER_URL=https://<your-app>.up.railway.app
+   AGENT_TOKEN=<the same token>
+   ```
+4. Run `npm run agent` to try it; it logs every page it fetches. To start it automatically and hidden whenever you log in to Windows, logging to `agent.log`: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-agent-task.ps1` (remove with `Unregister-ScheduledTask -TaskName RentalWatchAgent`).
+
+The agent only makes HTTPS requests to `daft.ie` and `rent.ie` (`AGENT_ALLOW`). It re-checks every redirect, never connects to private (home network) addresses and is never sent cookies, so the server can't use it for anything else. The scan log line ends with `via-laptop=daft,rent` while it is in use.
+
+While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Status tab says "not checked", they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. If it has been gone for a day you get one notification, and another when it is back.
+
+### A paid residential proxy
+
+Any HTTP(S) proxy URL works, for example a pay-as-you-go residential proxy. Daft and Rent.ie use roughly 1–2 GB a month at the default 30-minute interval.
 
 ```
-SCRAPER_PROXY_URL=http://relay:<PROXY_PASSWORD>@<relay-host>:3128
-SCRAPER_PROXY_SOURCES=daft,rent      # default; only these go through the proxy
+SCRAPER_PROXY_URL=http://<user>:<password>@<proxy-host>:<port>
 ```
 
-Other sources and the geocoder stay direct. The scan log line ends with `via-proxy=daft,rent` when it is active. On start the relay logs `[relay] selftest daft ...` and `[relay] selftest rent.ie ...`, which tells you straight away whether its connection is let in.
+It takes precedence over the laptop agent, so switching is just setting this variable (and stopping the agent). The scan log line ends with `via-proxy=daft,rent`.
 
 ## Limitations
 
-- Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's gateway is unofficial. If Railway's IPs are blocked you will get a "looks broken" notification.
+- Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's search pages are not an API and can change (the Daft source then reports "no listing data" rather than guessing). If Railway's IPs are blocked you will get a "looks broken" notification.
 - Daft search results rarely include availability dates or descriptions, so Daft listings are not date-filtered and their owner-occupied check relies on Daft's own filter.
 - Airbnb/Booking-style furnished monthly stays and Facebook groups are not covered (terms and login walls).
 - Single user, single password.

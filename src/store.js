@@ -29,6 +29,7 @@ const freshState = () => ({
   geocache: {},
   siteConstants: {},
   sourceHealth: {},
+  laptop: { lastOnlineAt: null, offlineNotified: false },
   pendingAttempts: {},
   baselineScans: 0,
 });

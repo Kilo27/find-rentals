@@ -6,7 +6,7 @@ import { createAuth } from "./auth.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 
-export function createApp({ store, scanner, pusher, scheduler, password, secret }) {
+export function createApp({ store, scanner, pusher, scheduler, agentHub = null, password, secret }) {
   const app = express();
   const auth = createAuth({ password, secret });
 
@@ -29,6 +29,12 @@ export function createApp({ store, scanner, pusher, scheduler, password, secret 
 
   app.post("/api/login", (req, res) => auth.login(req, res));
   app.post("/api/logout", (req, res) => auth.logout(req, res));
+
+  // The laptop agent authenticates with its own token, not the app password.
+  if (agentHub) {
+    app.get("/api/agent/next", agentHub.next);
+    app.post("/api/agent/result", express.raw({ type: "application/octet-stream", limit: "4mb" }), agentHub.result);
+  }
 
   const api = express.Router();
   api.use(auth.requireAuth);

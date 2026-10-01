@@ -4,7 +4,7 @@ import { createScanner } from "../src/scan.js";
 import { createGeocoder, addressQueries } from "../src/geocode.js";
 import { dedupe } from "../src/dedupe.js";
 import { makeListing } from "../src/listing.js";
-import { gatewayResponse, noSleep, rawListing, router, tempStore, fakePusher, UL, kmNorth } from "./helpers.js";
+import { daftPage, noSleep, rawListing, router, tempStore, fakePusher, UL, kmNorth } from "./helpers.js";
 
 const UL_LIST = "https://www.accommodation.ul.ie/SearchResults/Print/All";
 const advert = (id) => `https://www.accommodation.ul.ie/Advert/${id}`;
@@ -256,8 +256,8 @@ test("a source that keeps returning nothing usable triggers a health alert, then
   const fetchImpl = router([[UL_LIST, () => (good ? ULPAGES.list : `<html><body>${"<p>blocked</p>".repeat(400)}</body></html>`)], ...ulRoutes().slice(1)]);
   const { store, pusher } = setup(["ul", "daft"], { sections: ["sharing"] });
   fetchImpl.calls.length = 0;
-  const daftOk = router([["https://gateway.daft.ie/api/v2/ads/listings", gatewayResponse([])]]);
-  const combined = async (url, opts) => (url.includes("gateway.daft.ie") ? daftOk(url, opts) : fetchImpl(url, opts));
+  const daftOk = router([[/^https:\/\/www\.daft\.ie\/sharing\//, daftPage([])]]);
+  const combined = async (url, opts) => (url.includes("www.daft.ie") ? daftOk(url, opts) : fetchImpl(url, opts));
   const scanner = scannerFor(store, pusher, combined);
   for (let i = 0; i < 6; i++) await scanner.run();
   assert.equal(pusher.sent.filter((p) => /looks broken/.test(p.title)).length, 1);
@@ -278,7 +278,7 @@ test("same property on Daft and Rent.ie is alerted once, with a cross-link", asy
   const p = kmNorth(0.7);
   const daftItem = rawListing({ id: 77, km: 0.7, title: "Room 14, Plassey Park, Castletroy, Co. Limerick", price: "€650 per month", extra: { seoFriendlyPath: "/share/plassey/77" } });
   const fetchImpl = router([
-    ["https://gateway.daft.ie/api/v2/ads/listings", gatewayResponse([daftItem])],
+    [/^https:\/\/www\.daft\.ie\/sharing\//, daftPage([daftItem])],
     [RENT_LIST, RENT_PAGE],
     [/rent\.ie\/rooms-to-rent\/limerick\/castletroy\/14-plassey-park\/555001/, page(`<meta property="place:location:latitude" content="${p.lat.toFixed(5)}"><meta property="place:location:longitude" content="${p.lng.toFixed(5)}">`, "<h1>14 Plassey Park, Castletroy</h1><p>€650 per month. Available now.</p>")],
     [/rent\.ie\/rooms-to-rent\/limerick\/castletroy\/dromroe-village\/555002/, page(meta(1.5), "<h1>Dromroe Village room</h1><p>€480 per month. Available now.</p>")],
@@ -297,7 +297,7 @@ test("same property on Daft and Rent.ie is alerted once, with a cross-link", asy
   // the Daft copy vanishes: the Rent.ie copy must NOT re-alert as new
   pusher.sent.length = 0;
   const gone = router([
-    ["https://gateway.daft.ie/api/v2/ads/listings", gatewayResponse([])],
+    [/^https:\/\/www\.daft\.ie\/sharing\//, daftPage([])],
     [RENT_LIST, RENT_PAGE],
     [/555001/, page(meta(0.7), "<h1>14 Plassey Park, Castletroy</h1><p>€650 per month. Available now.</p>")],
     [/555002/, page(meta(1.5), "<h1>Dromroe Village room</h1><p>€480 per month</p>")],

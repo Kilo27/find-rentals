@@ -1,147 +1,91 @@
+import { SourceError, createFetcher } from "./html.js";
 import { makeListing } from "./listing.js";
 import { parsePriceMonthly } from "./text.js";
 
 export { parsePriceMonthly };
 export const DAFT_BASE = "https://www.daft.ie";
-export const PAGE_SIZE = 50;
 
 const RADIUS_SHAPES_M = [1000, 3000, 5000, 10000, 20000];
 const OWNER_FILTER_SECTIONS = new Set(["sharing", "student-accommodation-to-share"]);
 const BEDS_SECTIONS = new Set(["residential-to-rent"]);
-const DEFAULT_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-export class DaftError extends Error {
-  constructor(message, { status = null, body = "" } = {}) {
-    super(message);
-    this.name = "DaftError";
-    this.status = status;
-    this.body = body;
-  }
-}
-
-const endpoint = () => process.env.DAFT_API_URL || "https://gateway.daft.ie/api/v2/ads/listings";
-
-// Header sets tried in order. "library" mirrors the open-source daftlistings client (blank User-Agent,
-// no Origin), which Daft's gateway accepts; "browser" is tried if that is refused. The one that
-// works is remembered for later requests.
-const PROFILES = {
-  library: () => ({ "Content-Type": "application/json", "User-Agent": process.env.DAFT_USER_AGENT ?? "", brand: "daft", platform: "web" }),
-  browser: () => ({
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    "User-Agent": process.env.DAFT_USER_AGENT || DEFAULT_UA,
-    Origin: DAFT_BASE,
-    Referer: `${DAFT_BASE}/`,
-    brand: "daft",
-    platform: "web",
-  }),
-};
-let profileOrder = ["library", "browser"];
-export const resetHeaderProfiles = () => {
-  profileOrder = ["library", "browser"];
+// Daft's website path for each section; only houses & apartments is named differently.
+export const SECTION_PATHS = {
+  "residential-to-rent": "property-for-rent",
+  sharing: "sharing",
+  "student-accommodation-to-share": "student-accommodation-to-share",
 };
 
-// Daft only offers stored radius shapes (1/3/5/10/20 km); pick the smallest that
-// covers the requested radius. The exact radius is enforced later via haversine.
-export function shapeIdFor(locationId, radiusKm) {
+// Daft only searches its stored radii (1/3/5/10/20 km; any other value returns nothing), so pick the
+// smallest that covers the requested radius. The exact radius is enforced later via haversine.
+export function radiusParam(radiusKm) {
   const meters = radiusKm * 1000;
-  const shape = RADIUS_SHAPES_M.find((m) => m >= meters) ?? RADIUS_SHAPES_M.at(-1);
-  return `${locationId}_${shape}`;
+  return RADIUS_SHAPES_M.find((m) => m >= meters) ?? RADIUS_SHAPES_M.at(-1);
 }
 
-export function buildPayload(config, section, from = 0, withServerFilters = true) {
-  const payload = {
-    section,
-    geoFilter: {
-      storedShapeIds: [shapeIdFor(config.daftLocationId, config.radiusKm)],
-      geoSearchType: "STORED_SHAPES",
-    },
-    sort: "publishDateDesc",
-    paging: { from: String(from), pagesize: String(PAGE_SIZE) },
+export function searchUrl(config, section, page = 1) {
+  const u = new URL(`/${SECTION_PATHS[section]}/${config.daftLocation}`, DAFT_BASE);
+  const q = u.searchParams;
+  q.set("radius", String(radiusParam(config.radiusKm)));
+  q.set("sort", "publishDateDesc");
+  if (page > 1) q.set("page", String(page));
+  if (config.excludeOwnerOccupied && OWNER_FILTER_SECTIONS.has(section)) q.set("ownerOccupied", "false");
+  const range = (name, lo, hi) => {
+    if (lo !== null) q.set(`${name}_from`, String(lo));
+    if (hi !== null) q.set(`${name}_to`, String(hi));
   };
-  if (!withServerFilters) return payload;
-
-  const filters = [];
-  if (config.excludeOwnerOccupied && OWNER_FILTER_SECTIONS.has(section)) {
-    filters.push({ name: "ownerOccupied", values: [false] });
-  }
-  const ranges = [];
-  const addRange = (name, lo, hi) => {
-    if (lo === null && hi === null) return;
-    ranges.push({ name, from: String(lo ?? 0), to: String(hi ?? 1e9) });
-  };
-  addRange("rentalPrice", config.priceMin, config.priceMax);
-  if (BEDS_SECTIONS.has(section)) addRange("numBeds", config.bedsMin, config.bedsMax);
-  addRange("leaseLength", config.leaseMinMonths, config.leaseMaxMonths);
-
-  if (filters.length) payload.filters = filters;
-  if (ranges.length) payload.ranges = ranges;
-  return payload;
+  range("rentalPrice", config.priceMin, config.priceMax);
+  if (BEDS_SECTIONS.has(section)) range("numBeds", config.bedsMin, config.bedsMax);
+  range("leaseLength", config.leaseMinMonths, config.leaseMaxMonths);
+  return u.href;
 }
 
-async function post(fetchImpl, payload) {
-  let refused = null;
-  for (const name of profileOrder) {
-    let res;
-    try {
-      res = await fetchImpl(endpoint(), {
-        method: "POST",
-        headers: PROFILES[name](),
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(20_000),
-      });
-    } catch (err) {
-      throw new DaftError(`Network error calling Daft: ${err.message}`);
-    }
-    if (res.status === 403) {
-      refused = res;
-      continue;
-    }
-    if (!res.ok) {
-      const body = (await res.text().catch(() => "")).slice(0, 300);
-      throw new DaftError(`Daft API returned HTTP ${res.status}`, { status: res.status, body });
-    }
-    let data;
-    try {
-      data = await res.json();
-    } catch {
-      throw new DaftError("Daft API returned non-JSON response");
-    }
-    profileOrder = [name, ...profileOrder.filter((n) => n !== name)];
-    return data;
+const NEXT_DATA = /<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
+
+// Daft's search pages carry their results as Next.js page data, in the same shape its gateway API
+// returned. (The gateway itself now refuses every client that isn't a browser.)
+export function parseSearchPage(html) {
+  const m = NEXT_DATA.exec(html);
+  if (!m) return null;
+  try {
+    const props = JSON.parse(m[1])?.props?.pageProps;
+    return Array.isArray(props?.listings) ? props : null;
+  } catch {
+    return null;
   }
-  const body = (await refused.text().catch(() => "")).slice(0, 300);
-  throw new DaftError("Daft API returned HTTP 403", { status: 403, body });
 }
 
-const canRetryWithoutFilters = (err) =>
-  err.status !== null && err.status >= 400 && err.status < 500 && ![401, 403, 429].includes(err.status);
+const lastSegment = (url) => {
+  try {
+    return new URL(url, DAFT_BASE).pathname.split("/").filter(Boolean).at(-1) ?? "";
+  } catch {
+    return "";
+  }
+};
 
-export async function fetchSection(config, section, { fetchImpl = fetch } = {}) {
-  let withServerFilters = true;
-  let degraded = false;
+export async function fetchSection(config, section, { fetcher = createFetcher() } = {}) {
   const listings = [];
   let total = 0;
   let rawSample = null;
+  let received = 0;
 
-  for (let page = 0; page < config.maxPages; page++) {
-    const payload = buildPayload(config, section, page * PAGE_SIZE, withServerFilters);
-    let data;
-    try {
-      data = await post(fetchImpl, payload);
-    } catch (err) {
-      const hasFilters = Boolean(payload.filters || payload.ranges);
-      if (withServerFilters && hasFilters && canRetryWithoutFilters(err)) {
-        withServerFilters = false;
-        degraded = true;
-        page--;
-        continue;
-      }
-      throw err;
+  for (let page = 1; page <= config.maxPages; page++) {
+    const res = await fetcher.get(searchUrl(config, section, page));
+    const data = parseSearchPage(res.html);
+    if (!data) {
+      const title = /<title>([^<]{0,80})/i.exec(res.html)?.[1]?.trim();
+      throw new SourceError(`Daft page had no listing data (bot wall or layout change)${title ? `, page title "${title}"` : ""}`, { code: "layout" });
+    }
+    // An area name Daft doesn't know silently becomes a search of all of Ireland.
+    if (config.daftLocation !== "ireland" && lastSegment(data.canonicalUrl ?? "") === "ireland") {
+      throw new SourceError(`Daft doesn't recognise the area "${config.daftLocation}" (check Settings → Advanced → Daft area)`, { code: "location" });
     }
 
-    const items = Array.isArray(data.listings) ? data.listings : [];
+    // Daft answers a paging parameter it doesn't understand with page 1 again; stop rather than re-read it.
+    const current = Number(data.paging?.currentPage);
+    if (page > 1 && Number.isFinite(current) && current !== page) break;
+
+    const items = data.listings;
     total = Number(data.paging?.totalResults ?? total);
     if (!rawSample && items[0]) rawSample = items[0];
     for (const item of items) {
@@ -150,10 +94,11 @@ export async function fetchSection(config, section, { fetchImpl = fetch } = {}) 
         if (normalized) listings.push(normalized);
       }
     }
-    if (items.length === 0 || (page + 1) * PAGE_SIZE >= total) break;
+    received += items.length;
+    if (items.length === 0 || received >= total) break;
   }
 
-  return { listings, total, degraded, rawSample };
+  return { listings, total, rawSample };
 }
 
 function expandGrouped(item) {

@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   intervalMinutes: 30,
   center: Object.freeze({ label: "University of Limerick", lat: 52.6733, lng: -8.5739 }),
   radiusKm: 2,
-  daftLocationId: "4342",
+  daftLocation: "university-of-limerick-limerick",
   sources: ["daft", "ul", "rent", "myhome"],
   sections: Object.keys(SECTIONS),
   ulUrls: ["https://www.accommodation.ul.ie/SearchResults/Print/All"],
@@ -141,7 +141,7 @@ export function normalizeConfig(input = {}) {
       lng: parseNumber(errors, "center.lng", center.lng, { min: -180, max: 180 }),
     },
     radiusKm: parseNumber(errors, "radiusKm", src.radiusKm, { min: 0.1, max: 20 }),
-    daftLocationId: String(src.daftLocationId ?? "").trim(),
+    daftLocation: String(src.daftLocation ?? "").trim().toLowerCase(),
     sources: [],
     sections: [],
     ulUrls: parseUrls(errors, "ulUrls", src.ulUrls),
@@ -170,7 +170,9 @@ export function normalizeConfig(input = {}) {
     maxPages: parseNumber(errors, "maxPages", src.maxPages, { min: 1, max: 10, int: true }),
   };
 
-  if (!/^\d+$/.test(out.daftLocationId)) errors.push("daftLocationId must be a number");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(out.daftLocation)) {
+    errors.push("daftLocation must be the area name from a Daft search URL, like university-of-limerick-limerick");
+  }
 
   if (!UNVERIFIED_MODES.includes(out.unverifiedDistance)) errors.push(`unverifiedDistance must be one of ${UNVERIFIED_MODES.join(", ")}`);
 
