@@ -12,7 +12,8 @@
     "dev": "node --watch src/server.js",
     "test": "node --test \"test/**/*.test.js\"",
     "icons": "node scripts/make-icons.mjs",
-    "probe": "node scripts/probe-sources.mjs"
+    "probe": "node scripts/probe-sources.mjs",
+    "agent": "node --env-file-if-exists=.env src/agent-main.js"
   },
   "license": "MIT",
   "dependencies": {

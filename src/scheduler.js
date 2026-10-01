@@ -27,6 +27,7 @@ export function createScheduler({ store, scanner, startDelayMs = 10_000, log = c
   return {
     start: () => schedule(startDelayMs),
     reschedule: () => schedule(store.data.config.intervalMinutes * 60_000),
+    runSoon: () => schedule(1_000),
     stop() {
       stopped = true;
       if (timer) clearTimeout(timer);

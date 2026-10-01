@@ -493,9 +493,11 @@ function renderStatus() {
             const health = state.sourceHealth?.[src.id];
             const warn = src.notes.find((n) => n.warning)?.warning;
             const skipped = src.notes.filter((n) => n.skipped).length;
-            const detail = src.ok
-              ? `${src.fetched} found${skipped ? `, ${skipped} page(s) not found` : ""}${warn ? " - check layout" : ""}`
-              : `error: ${src.error}`;
+            const detail = src.skipped
+              ? `not checked: ${src.skipped}`
+              : src.ok
+                ? `${src.fetched} found${skipped ? `, ${skipped} page(s) not found` : ""}${warn ? " - check layout" : ""}`
+                : `error: ${src.error}`;
             return kv(src.label, health?.failures >= 3 ? `${detail} (failing x${health.failures})` : detail);
           })
         : h("div", { class: "hint" }, "No scan yet."),
