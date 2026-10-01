@@ -50,8 +50,21 @@ nav.tabs button.active { color: var(--accent); }
   display: block; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   margin: 10px 0; overflow: hidden; color: inherit; text-decoration: none;
 }
+.card-link { display: block; color: inherit; text-decoration: none; }
 .card .body { padding: 12px 14px; }
 .card img { width: 100%; height: 160px; object-fit: cover; display: block; background: var(--line); }
+.card.seen .card-link, .card.rejected .card-link, .card.unavailable .card-link { opacity: 0.6; }
+/* Two columns with hairlines between cells; an odd last button takes the whole row. */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+.act {
+  min-height: 44px; padding: 10px 8px; border: 0; background: var(--card); color: var(--accent);
+  font: inherit; font-size: 14px; font-weight: 600;
+}
+.act:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.act.bad { color: var(--bad); }
+.card-msg { margin: 0; padding: 8px 14px; border-top: 1px solid var(--line); }
+details.dismissed { margin-top: 16px; }
+details.dismissed > summary { color: var(--muted); }
 .price { font-size: 20px; font-weight: 700; }
 .title { margin: 2px 0 4px; }
 .meta { color: var(--muted); font-size: 14px; }

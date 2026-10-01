@@ -37,7 +37,9 @@ export const ADAPTERS = {
   daft,
   // The print page already lists address, price, availability and landlord type per advert; the advert pages are an empty JavaScript shell.
   ul: html("ul", "UL Accommodation", "ulUrls", { hrefRe: /\/Advert\/\d+/i, paginate: false, detail: false, titleIsAddress: true }),
-  rent: html("rent", "Rent.ie", "rentUrls", { hrefRe: ID_IN_PATH, paginate: true }),
+  // Rent.ie ignores ?page= (it serves page 1 again) and its own /renting_*/page_N/ links are disallowed by robots.txt,
+  // so only the first page (its 20 newest adverts) is read.
+  rent: html("rent", "Rent.ie", "rentUrls", { hrefRe: ID_IN_PATH, paginate: false }),
   myhome: html("myhome", "MyHome.ie", "myhomeUrls", { hrefRe: /\/brochure\/.+\/\d+/i, paginate: true }),
   web: html("web", "Custom pages", "webUrls", { hrefRe: /\d{5,}/, paginate: true }),
 };

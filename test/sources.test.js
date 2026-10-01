@@ -444,17 +444,31 @@ test("MyHome-style list JSON with null coordinates falls through to the real one
 });
 
 test("an empty trailing results page is normal, not a layout warning", async () => {
-  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
-  const p1 = `<html><body><ul><li><h3><a href="/rooms-to-rent/limerick/castletroy/a/555701">1 Quiet Road, Castletroy</a></h3><p>€500 per month</p></li></ul></body></html>`;
+  const WEB = "https://lettings.example.ie/rooms/castletroy/";
+  const p1 = `<html><body><ul><li><h3><a href="/rooms/castletroy/a/555701">1 Quiet Road, Castletroy</a></h3><p>€500 per month</p></li></ul></body></html>`;
   const empty = `<html><body>${"<p>That's everything for now, check back soon for more rooms in your area.</p>".repeat(40)}</body></html>`;
   const fetchImpl = router([
-    [RENT, p1],
-    [`${RENT}?page=2`, empty],
+    [WEB, p1],
+    [`${WEB}?page=2`, empty],
     [/555701/, page(meta(0.7), "<h1>Room</h1><p>A nice room in a shared house, available now, with bills included.</p>")],
+  ]);
+  const { store, pusher } = setup(["web"], { webUrls: [WEB] });
+  const run = await scannerFor(store, pusher, fetchImpl).run();
+  assert.equal(fetchImpl.count(/\?page=2$/), 1);
+  assert.equal(run.sources[0].notes[0].warning, undefined);
+  assert.equal(run.matches, 1);
+});
+
+test("Rent.ie reads only its first results page: ?page= is ignored there and its own pagination is robots-disallowed", async () => {
+  const RENT = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";
+  const p1 = `<html><body><ul><li><h3><a href="/rooms-to-rent/1-Quiet-Road-Castletroy-Co-Limerick/6555801/">1 Quiet Road, Castletroy</a></h3><p>€500 per month</p></li></ul></body></html>`;
+  const fetchImpl = router([
+    [RENT, p1],
+    [/6555801/, page(meta(0.7), "<h1>Room</h1><p>A nice room in a shared house, available now, with bills included.</p>")],
   ]);
   const { store, pusher } = setup(["rent"], { rentUrls: [RENT] });
   const run = await scannerFor(store, pusher, fetchImpl).run();
-  assert.equal(run.sources[0].notes[0].warning, undefined);
+  assert.equal(fetchImpl.count(/page/), 0);
   assert.equal(run.matches, 1);
 });
 

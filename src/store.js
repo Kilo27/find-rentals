@@ -5,11 +5,21 @@ import { DEFAULT_CONFIG, normalizeConfig } from "./config.js";
 // Defaults shipped earlier that were wrong: "university of limerick" is the destination, not a nearby area,
 // and matched almost every advert.
 const OLD_LOCALITY_HINTS = JSON.stringify(["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry", "university of limerick"]);
+// Only the first of these was a Rent.ie search page: houses-to-rent redirects to the homepage, apartments-to-rent
+// is a 404 and the student-accommodation page carries no adverts.
+const OLD_RENT_URLS = JSON.stringify([
+  "https://www.rent.ie/rooms-to-rent/limerick/castletroy/",
+  "https://www.rent.ie/student-accommodation/University-of-Limerick/46/",
+  "https://www.rent.ie/houses-to-rent/limerick/castletroy/",
+  "https://www.rent.ie/apartments-to-rent/limerick/castletroy/",
+]);
 
 const freshState = () => ({
   version: 1,
   config: normalizeConfig(DEFAULT_CONFIG),
   seen: {},
+  // The user's own verdicts on listings, by listing id: { status: "seen" | "rejected", at }.
+  reviews: {},
   matches: [],
   subscriptions: [],
   vapid: null,
@@ -48,6 +58,9 @@ export class Store {
         state.config = normalizeConfig(parsed.config ?? {});
         if (JSON.stringify(state.config.localityHints) === OLD_LOCALITY_HINTS) {
           state.config.localityHints = [...DEFAULT_CONFIG.localityHints];
+        }
+        if (JSON.stringify(state.config.rentUrls) === OLD_RENT_URLS) {
+          state.config.rentUrls = [...DEFAULT_CONFIG.rentUrls];
         }
       } catch {
         state.config = normalizeConfig(DEFAULT_CONFIG);

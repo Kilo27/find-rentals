@@ -8,7 +8,7 @@ Watches several Irish rental sources every 30 minutes for places near a point (d
 |---|---|---|
 | **Daft.ie** | Daft's own search pages, which carry their results as page data (the same listing data as Daft's gateway API) | Real coordinates, server-side owner-occupied filter for rooms. Daft's gateway API refuses every client that isn't a browser, so it is no longer used. An area name Daft doesn't know is reported as an error rather than searching all of Ireland |
 | **UL Accommodation** (accommodation.ul.ie, Studentpad) | Reads the all-adverts list page only: address (the title), price, availability and landlord type are all on it | UL's own noticeboard. The individual advert pages are an empty JavaScript shell, so they are not fetched. Many adverts are "Resident Landlord/Host Family" or weekday-only, which the filters catch. Distance comes from geocoding the address |
-| **Rent.ie** | Scrapes the Castletroy / University of Limerick search pages | Houses/apartments URLs are best guesses; a 404 is reported as "skipped" |
+| **Rent.ie** | Scrapes the search pages for the areas Rent.ie's own University of Limerick page lists as near-by: `houses-to-let` (houses and apartments) for Castletroy, Monaleen, Rhebogue, Newtown, Singland and Annacotty, and `rooms-to-rent` (shares) for Castletroy, Kilmurry, Kilbane, Monaleen, Rhebogue and Newtown | Checked live 2026-10-01. Rent.ie's student-accommodation pages carry no adverts, only links to these. Only each area's first page (its 20 newest adverts) is read, because its pagination links are disallowed by `robots.txt`. Saved settings still holding the old default URLs are updated on start; a 404 is reported as "skipped" |
 | **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Status tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page you add under Settings → Advanced | JSON-LD, embedded JSON or HTML cards |
 
@@ -65,6 +65,7 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 
 - First scan is a *baseline*: one "Watching started: N matches" notification, existing listings marked seen. If detail pages are still being fetched (limit per scan), the baseline waits until they are done.
 - After that, each new match gets one notification showing price, title, distance, source and availability. More than 5 new in one scan: 5 individual pushes plus a digest. Tapping opens the listing.
+- Each listing in the Matches tab has **Mark as seen** (dims it, tap again to undo), **Not a fit** and **No longer available**. The last two move it to a collapsed list of the same name at the bottom, where **Restore** / **Still available** brings it back. These marks are stored on the server with the rest of the state, so they carry across scans and devices, and when the same property is on several sites a mark on one copy covers them all.
 - If every source fails 3 scans in a row you get a notification, and another on recovery.
 
 ## Settings (all editable in the app)
