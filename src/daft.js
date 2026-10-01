@@ -1,6 +1,7 @@
 import { SourceError, createFetcher } from "./html.js";
 import { makeListing } from "./listing.js";
 import { parsePriceMonthly } from "./text.js";
+import { searchRadiusKm } from "./transit.js";
 
 export { parsePriceMonthly };
 export const DAFT_BASE = "https://www.daft.ie";
@@ -17,7 +18,8 @@ export const SECTION_PATHS = {
 };
 
 // Daft only searches its stored radii (1/3/5/10/20 km; any other value returns nothing), so pick the
-// smallest that covers the requested radius. The exact radius is enforced later via haversine.
+// smallest that covers the requested radius (widened when homes on a direct bus, tram or train line are accepted
+// beyond it). The exact radius is enforced later via haversine.
 export function radiusParam(radiusKm) {
   const meters = radiusKm * 1000;
   return RADIUS_SHAPES_M.find((m) => m >= meters) ?? RADIUS_SHAPES_M.at(-1);
@@ -26,7 +28,7 @@ export function radiusParam(radiusKm) {
 export function searchUrl(config, section, page = 1) {
   const u = new URL(`/${SECTION_PATHS[section]}/${config.daftLocation}`, DAFT_BASE);
   const q = u.searchParams;
-  q.set("radius", String(radiusParam(config.radiusKm)));
+  q.set("radius", String(radiusParam(searchRadiusKm(config))));
   q.set("sort", "publishDateDesc");
   if (page > 1) q.set("page", String(page));
   if (config.excludeOwnerOccupied && OWNER_FILTER_SECTIONS.has(section)) q.set("ownerOccupied", "false");

@@ -3,10 +3,14 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { ConfigError, SECTIONS, SOURCES, normalizeConfig } from "./config.js";
 import { createAuth } from "./auth.js";
+import { CAMPUSES, campusIdsFor } from "./transit/campuses.js";
+import { defaultTransit } from "./transit.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 
-export function createApp({ store, scanner, pusher, scheduler, agentHub = null, password, secret }) {
+const csvCell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replaceAll('"', '""')}"` : String(v));
+
+export function createApp({ store, scanner, pusher, scheduler, agentHub = null, transit = defaultTransit(), password, secret }) {
   const app = express();
   const auth = createAuth({ password, secret });
 
@@ -23,7 +27,8 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
 
   app.get("/sw.js", (_req, res) => {
     res.set("Cache-Control", "no-cache");
-    res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"));
+    // publicDir is fixed, so dotfiles: allow only stops Express refusing a checkout that sits under a dot folder (.claude/worktrees/...).
+    res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"), { dotfiles: "allow" });
   });
   app.use(express.static(publicDir, { maxAge: "1h", index: "index.html" }));
 
@@ -44,6 +49,9 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       config: store.data.config,
       sections: SECTIONS,
       sources: SOURCES,
+      campuses: CAMPUSES.map(({ id, name, short, region }) => ({ id, name, short, region })),
+      autoCampuses: campusIdsFor({ ...store.data.config, transitCampuses: [] }),
+      transit: transit ? transit.meta : null,
       sourceHealth: store.data.sourceHealth,
       matches: store.data.matches,
       lastRun: store.data.lastRun,
@@ -71,6 +79,32 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     store.save();
     scheduler.reschedule();
     res.json({ config: store.data.config });
+  });
+
+  // The stops that go on to a campus, for the app's stop list and for taking into a map app:
+  // /api/transit/ul (JSON), /api/transit/ul?format=csv, /api/transit/ul?format=geojson
+  api.get("/transit/:campus", (req, res) => {
+    const result = transit?.stopsFor(req.params.campus);
+    if (!result) return res.status(404).json({ error: "no transit data for that campus" });
+    const only = String(req.query.routes ?? "").split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
+    const routes = result.routes.filter((r) => !only.length || only.includes(r.label.toLowerCase()));
+    if (req.query.format === "csv") {
+      const lines = routes.flatMap((r) => r.stops.map((s) => [r.label, r.operator, r.mode, s.code, s.name, s.lat, s.lng, s.perDay, s.mins ?? ""].map(csvCell).join(",")));
+      res.type("text/csv").send(["route,operator,mode,stop_code,stop_name,latitude,longitude,trips_per_weekday,minutes_to_campus", ...lines].join("\n") + "\n");
+      return;
+    }
+    if (req.query.format === "geojson") {
+      const features = routes.flatMap((r) =>
+        r.stops.map((s) => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [s.lng, s.lat] },
+          properties: { route: r.label, operator: r.operator, mode: r.mode, stop: s.name, code: s.code, tripsPerWeekday: s.perDay, minutesToCampus: s.mins },
+        })),
+      );
+      res.json({ type: "FeatureCollection", features });
+      return;
+    }
+    res.json({ ...result, routes, attribution: transit.meta.attribution });
   });
 
   api.post("/subscribe", (req, res) => {

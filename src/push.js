@@ -75,6 +75,14 @@ export function createPusher({ store, webpush = webpushLib, env = process.env })
   return { publicKey, sendToAll, addSubscription, removeSubscription, count: () => subs().length };
 }
 
+// "304A 250 m, 14 min to UL": the nearest way to the campus, for a notification or a card.
+export function describeTransit(transit) {
+  const c = transit?.campuses?.[0];
+  const o = c?.options?.[0];
+  if (!o) return null;
+  return `${o.label} ${o.distM} m away${o.mins ? `, ${o.mins} min to ${c.short}` : ` to ${c.short}`}`;
+}
+
 export function buildListingPayload(listing, config) {
   const price = listing.priceMonthly !== null ? `€${listing.priceMonthly.toLocaleString("en-IE")}/mo` : listing.priceText || "Price n/a";
   const flags = listing.flags ?? [];
@@ -88,10 +96,11 @@ export function buildListingPayload(listing, config) {
   if (flags.includes("ends-early")) extras.push(`ends ${listing.availableTo}`);
   if (flags.includes("short-term")) extras.push("short-term friendly");
   if (flags.includes("owner-occupied-unknown")) extras.push("check owner-occupied");
+  const transit = flags.includes("transit-access") ? describeTransit(listing.transit) : null;
   const also = listing.alsoOn?.length ? `also on ${listing.alsoOn.map((a) => a.label).join(", ")}` : null;
   return {
     title: `${price} · ${listing.title}`.slice(0, 120),
-    body: [dist, listing.sourceLabel, listing.bedsText, ...extras, also].filter(Boolean).join(" · "),
+    body: [dist, transit, listing.sourceLabel, listing.bedsText, ...extras, also].filter(Boolean).join(" · "),
     url: listing.url,
     tag: `listing-${listing.id}`,
   };
