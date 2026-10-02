@@ -98,6 +98,8 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       lastRun: store.data.lastRun,
       failureCount: store.data.failureCount,
       scanning: scanner.isRunning(),
+      // How many other accounts share this search, so the app can say a verdict is for everyone.
+      sharedWith: users.list().length,
       nextRunAt: scheduler.nextRunAt(),
       subscriptions: pusher.subscriptionsOf(effective.owner).map(publicDevice),
       vapidPublicKey: pusher.publicKey,

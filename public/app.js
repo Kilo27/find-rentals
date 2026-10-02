@@ -23,6 +23,7 @@ const openSections = {};
 let sessionEnded = false; // signed out by the server while the app was open, as opposed to never signed in
 let unreachable = false; // no connection at start-up and no saved copy to show
 let offline = false; // showing the last copy because the server can't be reached
+let unreachableWhy = null; // set when it was the server that failed, not the connection
 let loadedAt = Date.now(); // when `state` was last fetched or restored
 let pushState = { supported: false, permission: "default", subscribedHere: false };
 let pendingListing = listingFromSearch(location.search); // the listing an alert pointed at, until it has been shown
@@ -106,7 +107,12 @@ function useSnapshot() {
 
 const mapView = createMapView({
   api: (...args) => api(...args),
-  onShowList: () => setView("list"),
+  onShowList: () => {
+    setView("list");
+    focusKey("view:list");
+  },
+  // Opening a listing from the map counts as having looked at it, as it does from the list.
+  onOpened: (m) => openedListing(m),
 });
 
 function setView(v) {
@@ -157,7 +163,9 @@ function inFuture(iso) {
   if (!iso) return "";
   const s = (Date.parse(iso) - Date.now()) / 1000;
   if (s < 60) return "any moment";
-  return s < 3600 ? `in ${Math.round(s / 60)} min` : `in ${Math.round(s / 3600)} h`;
+  if (s < 3600) return `in ${Math.round(s / 60)} min`;
+  if (s < 2 * 86400) return `in ${Math.round(s / 3600)} h`;
+  return `in ${Math.round(s / 86400)} days`;
 }
 
 const kv = (k, v) => h("div", { class: "kv" }, h("span", {}, k), h("span", {}, v));
@@ -195,7 +203,13 @@ async function boot() {
     syncSubscription();
   } catch (err) {
     state = null;
-    if (err.offline) useSnapshot();
+    // Only a 401 means "not signed in" (and api() has already shown the login for it). Anything else, a connection that
+    // isn't there or a server that is having a bad moment, shows the saved list or a "can't reach" screen, never a
+    // login screen that asks for a password the person may not remember.
+    if (err.status !== 401) {
+      useSnapshot();
+      unreachableWhy = err.offline ? null : "Rental Watch isn't responding properly right now.";
+    }
   }
   render();
   if (state && pendingListing) openListing(pendingListing);
@@ -318,6 +332,7 @@ async function openListing(id) {
   render();
   const card = [...root.querySelectorAll(".card")].find((el) => el.dataset.id === m.id);
   card?.scrollIntoView({ block: "start" });
+  card?.focus({ preventScroll: true });
   setTimeout(() => {
     if (arrivedId === m.id) arrivedId = null;
     card?.classList.remove("arrived");
@@ -372,8 +387,8 @@ function renderUnreachable() {
     "div",
     { class: "login" },
     h("h1", {}, "Rental Watch"),
-    h("p", { class: "lede" }, "Can't reach Rental Watch."),
-    h("p", { class: "hint" }, "Check your connection. This will keep trying on its own, or you can try now."),
+    h("p", { class: "lede" }, unreachableWhy ?? "Can't reach Rental Watch."),
+    h("p", { class: "hint" }, unreachableWhy ? "It should come back on its own. This will keep trying, or you can try now." : "Check your connection. This will keep trying on its own, or you can try now."),
     h(
       "button",
       {
@@ -407,6 +422,7 @@ async function stopViewing() {
     await loadUsers().catch(() => {});
     render();
     window.scrollTo(0, 0);
+    focusKey("tab:users");
   } catch {}
 }
 
@@ -538,13 +554,23 @@ async function dismiss(m, status) {
   const at = active.findIndex((x) => x.id === m.id);
   const next = active[at + 1] ?? active[at - 1];
   if (await setReview(m.id, status)) {
-    showToast(`Moved to ${title}`, { label: "Undo", run: () => setReview(m.id, before) });
+    // Verdicts are shared, so when the search is shared say so: one person's "Not a fit" is everyone's.
+    const forEveryone = state.sharedWith ? " for everyone" : "";
+    showToast(`Moved to ${title}${forEveryone}`, {
+      label: "Undo",
+      run: async () => {
+        if (await setReview(m.id, before)) focusKey(m.id + ":open");
+      },
+    });
     if (next && document.activeElement === document.body) focusKey(next.id + ":open");
   }
 }
 
 async function restore(m) {
-  if (await setReview(m.id, previousReview.get(m.id) ?? null)) showToast("Back in your matches.");
+  if (await setReview(m.id, previousReview.get(m.id) ?? null)) {
+    showToast("Back in your matches.");
+    focusKey(m.id + ":open");
+  }
 }
 
 // Going to the listing's own site is the natural "I've looked at this", so it marks the card seen.
@@ -579,7 +605,9 @@ function renderSourceStrip() {
                 openSections.scanner = true;
                 tab = "alerts";
                 render();
-                window.scrollTo(0, 0);
+                const panel = root.querySelector("details.scanner");
+                panel?.scrollIntoView({ block: "start" });
+                panel?.querySelector("summary")?.focus({ preventScroll: true });
               },
             },
             "Scanner details",
@@ -607,7 +635,7 @@ const installSteps = () =>
   h(
     "ol",
     { class: "steps" },
-    h("li", {}, "In Safari, tap the Share button."),
+    h("li", {}, "In Safari, tap Share ", icon("share"), "."),
     h("li", {}, "Choose Add to Home Screen."),
     h("li", {}, "Open Rental Watch from your Home Screen, log in, and tap Turn on alerts."),
   );
@@ -624,7 +652,34 @@ const blockedSteps = () =>
 // Getting alerts is the point of the app, so a device that isn't set up is told so at the top of the first screen.
 function renderAlertsCard() {
   const mode = setupMode();
-  if (!["install", "off", "blocked"].includes(mode) || hideAlertsCard()) return null;
+  if (!["install", "off", "blocked"].includes(mode)) return null;
+  // Put away with "Not now": one quiet line stays, so silence can't be mistaken for there being nothing new.
+  if (hideAlertsCard()) {
+    return h(
+      "div",
+      { class: "strip quiet" },
+      icon("pause"),
+      h(
+        "div",
+        { class: "strip-text" },
+        h("span", { class: "strip-head" }, "Alerts are off on this phone"),
+        h(
+          "button",
+          {
+            class: "linklike",
+            "data-fk": "alerts:setup",
+            onclick: () => {
+              try {
+                localStorage.removeItem(ALERTS_CARD_KEY);
+              } catch {}
+              render();
+            },
+          },
+          "Set up",
+        ),
+      ),
+    );
+  }
   const msg = msgBox("err");
   const notNow = h(
     "button",
@@ -636,6 +691,7 @@ function renderAlertsCard() {
           localStorage.setItem(ALERTS_CARD_KEY, String(Date.now()));
         } catch {}
         render();
+        focusKey("view:list");
       },
     },
     "Not now",
@@ -698,7 +754,7 @@ function renderCard(m) {
   const named = (label) => label + ": " + m.title;
   return h(
     "article",
-    { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id, "aria-label": d.price + ", " + m.title },
+    { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id, tabindex: "-1", "aria-label": d.price + ", " + m.title },
     listingImage(m),
     h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
     h(
@@ -713,7 +769,7 @@ function renderCard(m) {
               "button",
               {
                 class: "act",
-                "aria-label": named(more ? "Fewer options" : "More options"),
+                "aria-label": named(more ? "Less options" : "More options"),
                 "data-fk": m.id + ":more",
                 "aria-expanded": String(more),
                 onclick: () => {
@@ -734,6 +790,7 @@ function renderCard(m) {
                       onclick: () => {
                         moreFor = null;
                         setReview(m.id, seen ? null : "seen");
+                        focusKey(m.id + ":more");
                       },
                     },
                     seen ? "Mark as unseen" : "Mark as seen",
@@ -747,9 +804,22 @@ function renderCard(m) {
   );
 }
 
+// Kept while the admin visits other tabs, so a half-made change isn't lost. It is rebuilt only when the saved
+// settings themselves change.
+let settingsCache = null;
+
 function renderSettings() {
+  const cacheKey = JSON.stringify(state.config);
+  if (settingsCache?.key === cacheKey) return settingsCache.el;
   const c = state.config;
   const msg = msgBox();
+  let dirty = false;
+  const markDirty = () => {
+    if (dirty) return;
+    dirty = true;
+    msg.className = "msg";
+    msg.textContent = "You have unsaved changes.";
+  };
   const f = {};
   // A label is tied to its field by id, so a screen reader announces it and tapping the label focuses the field.
   const fid = (name) => "s-" + name;
@@ -849,6 +919,7 @@ function renderSettings() {
         try {
           const r = await api("PUT", "/api/config", collect());
           state.config = r.config;
+          dirty = false;
           msg.className = "msg ok";
           msg.textContent = "Saved. Changes apply from the next scan (or use Alerts > Scanner details > Scan now to apply them immediately).";
         } catch (err) {
@@ -860,32 +931,9 @@ function renderSettings() {
     "Save settings",
   );
 
-  return h(
+  const form = h(
     "form",
     { onsubmit: (e) => e.preventDefault() },
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Where"),
-      text("centerLabel", "Centre name", c.center.label),
-      h(
-        "div",
-        { class: "row" },
-        num("lat", "Latitude", c.center.lat),
-        num("lng", "Longitude", c.center.lng),
-      ),
-      num("radiusKm", "Max distance (km)", c.radiusKm, { min: "0.1", max: "20" }),
-      h("div", { class: "hint" }, "Exact straight-line distance from the centre point."),
-    ),
-    renderTransitSettings(c, f, num, check),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Where to look"),
-      sourceChecks,
-      h("div", { class: "hint" }, "Daft.ie sections:"),
-      sectionChecks,
-    ),
     h(
       "div",
       { class: "panel" },
@@ -912,10 +960,33 @@ function renderSettings() {
     h(
       "div",
       { class: "panel" },
+      h("h2", {}, "Where"),
+      text("centerLabel", "Centre name", c.center.label),
+      h(
+        "div",
+        { class: "row" },
+        num("lat", "Latitude", c.center.lat),
+        num("lng", "Longitude", c.center.lng),
+      ),
+      num("radiusKm", "Max distance (km)", c.radiusKm, { min: "0.1", max: "20" }),
+      h("div", { class: "hint" }, "Exact straight-line distance from the centre point."),
+    ),
+    h(
+      "div",
+      { class: "panel" },
+      h("h2", {}, "Where to look"),
+      sourceChecks,
+      h("div", { class: "hint" }, "Daft.ie sections:"),
+      sectionChecks,
+    ),
+    h(
+      "div",
+      { class: "panel" },
       h("h2", {}, "Keywords"),
       area("excludeKeywords", "Exclude if title/description contains", c.excludeKeywords, "Comma separated."),
       area("includeKeywords", "Only if it contains one of (optional)", c.includeKeywords),
     ),
+    renderTransitSettings(c, f, num, check),
     h(
       "div",
       { class: "panel" },
@@ -941,9 +1012,12 @@ function renderSettings() {
         num("maxPages", "Max result pages per search (Daft: 20 per page)", c.maxPages, { min: "1", max: "10", step: "1" }),
       ),
     ),
-    save,
-    msg,
+    h("div", { class: "savebar" }, save, msg),
   );
+  form.addEventListener("input", markDirty);
+  form.addEventListener("change", markDirty);
+  settingsCache = { key: cacheKey, el: form };
+  return form;
 }
 
 const mapLink = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
@@ -1020,15 +1094,15 @@ function renderTransitSettings(c, f, num, check) {
   );
 
   return h(
-    "div",
+    "details",
     { class: "panel" },
-    h("h2", {}, "Public transport"),
+    h("summary", {}, "Public transport"),
     check("transitEnabled", "Also accept homes beyond the distance above that are on a direct bus, tram or train route to the campus", c.transitEnabled),
     h("div", { class: "hint" }, "Uses the National Transport Authority's timetables for Bus Éireann, Dublin Bus, Go-Ahead, Luas and Irish Rail. Only services that go straight to the campus count, and only the stops on the side of the road that heads there."),
     h("div", { class: "row" }, num("transitMaxKm", "Furthest from the centre (km)", c.transitMaxKm, { min: "0.5", max: "20" }), num("transitWalkM", "Walk to the stop (m)", c.transitWalkM, { step: "50", min: "100", max: "2000" })),
     h("div", { class: "row" }, num("transitMaxRideMin", "Longest ride (minutes)", c.transitMaxRideMin, { step: "1", min: "5", max: "90" }), num("transitMinPerDay", "Fewest trips per weekday", c.transitMinPerDay, { step: "1", min: "1" })),
     h("div", { class: "hint" }, "The walk is a straight line to the stop, so allow about a quarter more on the ground."),
-    h("label", {}, "Campuses"),
+    h("h3", {}, "Campuses"),
     h("div", { class: "hint" }, auto.length ? `Leave all unticked to use the campus at your search centre (now: ${auto.join(", ")}).` : "Nothing is near your search centre, so tick the campus you want."),
     campusBoxes,
     h(
@@ -1285,6 +1359,7 @@ function renderInvite() {
         onclick: () => {
           lastInvite = null;
           render();
+          focusKey("users:name");
         },
       },
       "Done",
@@ -1312,7 +1387,7 @@ function renderUsers() {
     }
   };
 
-  const name = h("input", { type: "text", placeholder: "Username", "aria-label": "Username", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const name = h("input", { type: "text", placeholder: "Username", "aria-label": "Username", "data-fk": "users:name", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
   const pass = h("input", { type: "text", placeholder: "Password (8+ characters)", "aria-label": "Password", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
   const add = h(
     "form",

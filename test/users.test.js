@@ -216,6 +216,16 @@ test("marks on listings (seen, not a fit) are shared by every account", async ()
   }
 });
 
+test("the state says how many other accounts share the search, so the app can say a verdict is for everyone", async () => {
+  const admin = (await login("kyle", "admin-pass-1")).j;
+  const bob = (await login("bob", "bobs-password")).j;
+  const others = store.data.users.length;
+  assert.ok(others >= 1);
+  // Everyone shares with the same number of other people: the admin with each user, a user with the admin and the rest.
+  assert.equal((await call(admin, "GET", "/api/state")).data.sharedWith, others);
+  assert.equal((await call(bob, "GET", "/api/state")).data.sharedWith, others);
+});
+
 test("the admin can view the app as a user, and only the admin", async () => {
   const admin = (await login("kyle", "admin-pass-1")).j;
   const bob = (await login("bob", "bobs-password")).j;
