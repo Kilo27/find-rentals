@@ -31,7 +31,7 @@ It answers "is there a place I can actually live near this campus" rather than "
 ## Operating Context
 
 - The tool runs as one small Node service on Railway with a volume at `/data`, serving the phone web app and sending Web Push.
-- Daft and Rent.ie refuse Railway's IP addresses, so those two sources are fetched by an agent on the admin's Windows laptop (`RentalWatchAgent`). While the laptop is asleep they are shown as "not checked", not as failed.
+- Daft and Rent.ie refuse Railway's IP addresses, so those two sources are fetched by an agent on the admin's Windows laptop (the "Rental Watch Agent" tray app). While the laptop is asleep they are shown as "not checked", not as failed.
 - Typical loop: a push arrives, the user opens the app, triages the card (price, distance, availability, flags, source, route to campus), marks it seen, "Not a fit" or "No longer available", then jumps to the source site to contact the landlord. Speed matters, because good places go fast.
 - The admin tunes the search (centre, radius, sources, filters, transit rules) under Settings and monitors source health under Status. The admin can open the app "as" another user to debug why they aren't getting alerts.
 - The map view (OpenStreetMap via Leaflet) is a secondary way to review matches: price pins, approximate-area shading, campus and radius, transit lines and stops.

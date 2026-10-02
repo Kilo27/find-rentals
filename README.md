@@ -164,7 +164,12 @@ A small agent runs on a computer at home and connects *out* to the app over HTTP
    AGENT_SERVER_URL=https://<your-app>.up.railway.app
    AGENT_TOKEN=<the same token>
    ```
-4. Run `npm run agent` to try it; it logs every page it fetches. To start it automatically and hidden whenever you log in to Windows, logging to `agent.log`: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-agent-task.ps1` (remove with `Unregister-ScheduledTask -TaskName RentalWatchAgent`).
+4. Run `npm run agent` to try it; it logs every page it fetches.
+5. To use it as an app, install the tray app once: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\agent-tray.ps1 -Install`. That adds **Rental Watch Agent** to the desktop and Start menu and starts it whenever you log in to Windows (it also removes the older `RentalWatchAgent` scheduled task if you have one). Opening it puts an icon near the clock (under the ^ arrow until you drag it out) and starts the agent, logging to `agent.log`:
+   - green: connected; amber: starting, or can't reach the server (the laptop just woke, or Railway is redeploying); grey: paused; red: needs attention (no `.env`, no `npm install`, the token is refused, or the agent keeps crashing).
+   - click the icon to pause or start the agent, open Rental Watch, show the log, turn "Start when I log in" off, or quit (which stops the agent).
+   - it restarts the agent if it crashes, and if one is already running (from `npm run agent`) it takes that over instead of starting a second.
+   - after a `git pull` that changes the agent, choose Quit and open it again. Remove everything with the same command and `-Uninstall`.
 
 The agent only makes HTTPS requests to `daft.ie` and `rent.ie` (`AGENT_ALLOW`). It re-checks every redirect, never connects to private (home network) addresses and is never sent cookies, so the server can't use it for anything else. The scan log line ends with `via-laptop=daft,rent` while it is in use.
 
