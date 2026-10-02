@@ -5,6 +5,7 @@ import { createPusher } from "./push.js";
 import { createScanner } from "./scan.js";
 import { createScheduler } from "./scheduler.js";
 import { createAgentHub } from "./agent-hub.js";
+import { alertAfterFromEnv, createLaptopWatch } from "./laptop-watch.js";
 import { createMapData } from "./mapdata.js";
 import { proxyFromEnv } from "./proxy.js";
 import { isValidUsername, normalizeUsername } from "./users.js";
@@ -43,7 +44,10 @@ if (process.env.AGENT_TOKEN) {
   }
 }
 
-const scanner = createScanner({ store, pusher, log: console, proxy: proxyFromEnv(process.env, console.warn, agentHub) });
+const proxy = proxyFromEnv(process.env, console.warn, agentHub);
+const scanner = createScanner({ store, pusher, log: console, proxy });
+// The admin's devices hear when the laptop agent goes away and when it is back.
+const laptopWatch = createLaptopWatch({ store, pusher, proxy, alertAfterMs: alertAfterFromEnv(process.env) });
 const startDelayMs = Number(process.env.SCAN_START_DELAY_SECONDS ?? 10) * 1000;
 const scheduler = createScheduler({ store, scanner, startDelayMs });
 
@@ -58,6 +62,7 @@ const server = app.listen(port, "0.0.0.0", () => {
     console.warn("WARNING: no volume attached - state is lost on every deploy. Add a Railway Volume.");
   }
   scheduler.start();
+  laptopWatch.start();
   // Fetch the transport lines now, so the map is ready the first time it is opened.
   setTimeout(() => mapData.get(store.data.config), 5000).unref();
 });
@@ -65,6 +70,7 @@ const server = app.listen(port, "0.0.0.0", () => {
 for (const sig of ["SIGTERM", "SIGINT"]) {
   process.on(sig, () => {
     scheduler.stop();
+    laptopWatch.stop();
     server.close(() => process.exit(0));
   });
 }

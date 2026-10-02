@@ -33,7 +33,7 @@ const freshState = () => ({
   mapCache: { transit: {}, campus: {} },
   siteConstants: {},
   sourceHealth: {},
-  laptop: { lastOnlineAt: null, offlineNotified: false },
+  laptop: { offlineSince: null, offlineNotified: false },
   pendingAttempts: {},
   baselineScans: 0,
 });

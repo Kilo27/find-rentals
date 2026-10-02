@@ -17,7 +17,6 @@ const MAX_PENDING_SCANS = 5;
 const MAX_BASELINE_SCANS = 6;
 const GEOCODE_BUDGET = 60;
 const SOURCE_ALERT_AFTER = 6;
-const LAPTOP_ALERT_AFTER_MS = 24 * 3600_000;
 
 const srcBrief = (s) => {
   if (s.skipped) return `${s.id}=skipped`;
@@ -64,37 +63,13 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   let inflight = null;
 
   // How the scanner is doing is for whoever runs it. Everyone else gets alerts about places, and the status line in
-  // the app says if the sites are not being checked; a note about a laptop agent or an HTTP code helps nobody else.
+  // the app says if the sites are not being checked; a note about an HTTP code helps nobody else. (The laptop agent
+  // going away and coming back is announced by laptop-watch.js, not by a scan.)
   const toAdmin = (payload) => pusher.sendToOwner(ADMIN_OWNER, payload);
 
   function run() {
     if (!inflight) inflight = doScan().finally(() => (inflight = null));
     return inflight;
-  }
-
-  // One push when the laptop agent has been away for a day, and one when it is back.
-  async function noteLaptop(d, offline, t0, labels) {
-    const lap = (d.laptop ??= { lastOnlineAt: null, offlineNotified: false });
-    const names = labels.join(" and ");
-    const plural = labels.length > 1;
-    if (!offline) {
-      if (lap.offlineNotified) {
-        await toAdmin({ title: "Laptop agent is back", body: `${names} ${plural ? "are" : "is"} being checked again.`, url: "/", tag: "laptop" });
-      }
-      lap.lastOnlineAt = t0.toISOString();
-      lap.offlineNotified = false;
-      return;
-    }
-    lap.lastOnlineAt ??= t0.toISOString();
-    if (!lap.offlineNotified && t0.getTime() - Date.parse(lap.lastOnlineAt) >= LAPTOP_ALERT_AFTER_MS) {
-      await toAdmin({
-        title: "Laptop agent offline",
-        body: `${names} ${plural ? "haven't" : "hasn't"} been checked for a day. Wake the laptop or start npm run agent.`,
-        url: "/",
-        tag: "laptop",
-      });
-      lap.offlineNotified = true;
-    }
   }
 
   async function doScan() {
@@ -164,10 +139,6 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
         }
         results.push({ id, label: adapter.label, ok: false, error: err.message, status: err.status ?? null, notes });
       }
-    }
-
-    if (proxy.kind === "laptop" && routed.length) {
-      await noteLaptop(d, laptopOffline, t0, routed.map((id) => ADAPTERS[id]?.label ?? id));
     }
 
     const okSources = results.filter((r) => r.ok);
