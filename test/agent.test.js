@@ -7,6 +7,8 @@ import { AgentOfflineError, createAgentHub } from "../src/agent-hub.js";
 import { checkTarget, createJobFetcher, guardedLookup, isPrivateAddress, parseAllow, runAgent } from "../src/agent.js";
 import { proxyFromEnv } from "../src/proxy.js";
 import { createScanner } from "../src/scan.js";
+import { DEFAULT_ALERT_AFTER_MS, alertAfterFromEnv, createLaptopWatch } from "../src/laptop-watch.js";
+import { ADMIN_OWNER, createPusher } from "../src/push.js";
 import { daftPage, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
 
 const TOKEN = crypto.randomBytes(32).toString("base64url");
@@ -270,7 +272,7 @@ test("scan: while the laptop is offline its sources are skipped, not failed, and
   assert.match(lines.at(-1), /\| daft=skipped ul=1 \|.*\| laptop=offline$/);
   assert.ok(store.data.matches.some((m) => m.id === "daft:4"), "Daft's matches stay while the laptop sleeps");
   assert.equal(store.data.sourceHealth.daft.failures, 0, "a sleeping laptop is not a broken source");
-  assert.ok(![...pusher.sent, ...pusher.ops()].some((p) => /looks broken|offline/.test(p.title)), "no alerts for a night's sleep");
+  assert.ok(![...pusher.sent, ...pusher.ops()].some((p) => /looks broken|offline/.test(p.title)), "a scan skipping the laptop's sources sends nothing; the laptop watch does the telling");
 });
 
 test("scan: a fresh install waits for the laptop before finishing its baseline, so existing listings don't alert as new", async () => {
@@ -288,23 +290,185 @@ test("scan: a fresh install waits for the laptop before finishing its baseline, 
   assert.deepEqual(pusher.sent.map((p) => p.title), ["Watching started: 2 current matches"]);
 });
 
-test("scan: one push to the admin after a day without the laptop, and one when it is back", async () => {
-  const { state, pusher, scanAfter } = laptopSetup();
-  await scanAfter(0);
-  pusher.sent.length = 0;
-  pusher.sentToOwner.length = 0;
+// The laptop watch looks at the agent itself on a clock of its own, not at scans. `minutes(n)` moves that clock on and checks.
+function watchSetup({ alertAfterMs = 5 * 60_000, sources = ["daft", "ul"], store: given } = {}) {
+  const state = { online: true, t: Date.parse("2026-10-01T22:00:00Z") };
+  const { store } = given ? { store: given } : tempStore();
+  store.data.config = { ...store.data.config, sources };
+  const proxy = { kind: "laptop", fetch() {}, sources: new Set(["daft"]), online: () => state.online };
+  const pusher = fakePusher();
+  const warnings = [];
+  const make = (over = {}) => createLaptopWatch({ store, pusher, proxy, alertAfterMs, now: () => new Date(state.t), log: { warn: (l) => warnings.push(l) }, ...over });
+  const watch = make();
+  const minutes = async (n, w = watch) => {
+    state.t += n * 60_000;
+    await w.check();
+  };
+  return { state, store, pusher, proxy, warnings, watch, make, minutes };
+}
+
+test("laptop watch: the admin is told when the agent has been gone a few minutes, once, and again when it is back", async () => {
+  const { state, pusher, minutes } = watchSetup();
+  await minutes(0);
+  assert.equal(pusher.ops().length, 0, "nothing while it is connected");
 
   state.online = false;
-  await scanAfter(23 * 60);
-  assert.equal(pusher.ops().length, 0);
-  await scanAfter(60);
-  await scanAfter(30);
+  await minutes(1); // first noticed: the clock starts here
+  await minutes(3);
+  await minutes(1);
+  assert.equal(pusher.ops().length, 0, "not yet: 4 minutes is a short gap, not an outage");
+  await minutes(1);
   assert.deepEqual(pusher.ops().map((p) => p.title), ["Laptop agent offline"]);
-  assert.match(pusher.ops()[0].body, /Daft\.ie hasn't been checked for a day/);
+  assert.match(pusher.ops()[0].body, /^Daft\.ie isn't being checked\. Wake the laptop or start npm run agent\.$/);
+  assert.equal(pusher.ops()[0].tag, "laptop");
+
+  for (let i = 0; i < 20; i++) await minutes(60);
+  assert.equal(pusher.ops().length, 1, "one note per outage, however long it lasts");
 
   state.online = true;
-  await scanAfter(30);
-  await scanAfter(30);
+  await minutes(1);
+  await minutes(1);
   assert.deepEqual(pusher.ops().map((p) => p.title), ["Laptop agent offline", "Laptop agent is back"]);
+  assert.match(pusher.ops()[1].body, /^Daft\.ie is being checked again\.$/);
+  assert.equal(pusher.ops()[1].tag, "laptop", "the same tag, so the 'back' note replaces the 'offline' one on the phone");
   assert.equal(pusher.sent.length, 0, "housemates are not told about the admin's laptop");
+  assert.ok(pusher.sentToOwner.every((s) => s.owner === ADMIN_OWNER), "only the admin's devices");
+});
+
+test("laptop watch: a short gap, such as a redeploy or a Wi-Fi change, says nothing in either direction", async () => {
+  const { state, pusher, store, minutes } = watchSetup();
+  state.online = false;
+  await minutes(1);
+  await minutes(2);
+  state.online = true;
+  await minutes(1);
+  state.online = false;
+  await minutes(3);
+  assert.equal(pusher.ops().length, 0, "the second gap starts its own clock rather than adding to the first");
+  assert.equal(store.data.laptop.offlineNotified, false);
+});
+
+test("laptop watch: a restart neither forgets an outage nor tells the admin about it twice", async () => {
+  const { state, store, pusher, make, minutes } = watchSetup();
+  state.online = false;
+  await minutes(1);
+  await minutes(2);
+
+  const afterRestart = make();
+  await minutes(4, afterRestart);
+  assert.deepEqual(pusher.ops().map((p) => p.title), ["Laptop agent offline"], "the clock kept running through the restart");
+
+  const andAgain = make();
+  await minutes(1, andAgain);
+  assert.equal(pusher.ops().length, 1);
+  assert.equal(JSON.parse(JSON.stringify(store.data.laptop)).offlineNotified, true);
+
+  state.online = true;
+  await minutes(1, make());
+  assert.deepEqual(pusher.ops().map((p) => p.title), ["Laptop agent offline", "Laptop agent is back"]);
+});
+
+test("laptop watch: with no source that needs the laptop switched on, or no laptop agent, there is nothing to tell", async () => {
+  const off = watchSetup({ sources: ["ul"] });
+  off.state.online = false;
+  await off.minutes(10);
+  await off.minutes(10);
+  assert.equal(off.pusher.ops().length, 0);
+
+  const proxied = watchSetup();
+  proxied.proxy.kind = "proxy";
+  proxied.state.online = false;
+  await proxied.minutes(10);
+  await proxied.minutes(10);
+  assert.equal(proxied.pusher.ops().length, 0, "a paid proxy is not a laptop");
+
+  // Daft switched off in Settings during an outage: the outage is over as far as anyone can tell, and "back" would be untrue.
+  const s = watchSetup();
+  s.state.online = false;
+  await s.minutes(1);
+  await s.minutes(6);
+  assert.equal(s.pusher.ops().length, 1);
+  s.store.data.config.sources = ["ul"];
+  await s.minutes(1);
+  assert.equal(s.pusher.ops().length, 1, "no 'back' note for a source nobody is waiting on");
+  assert.deepEqual({ ...s.store.data.laptop }, { offlineSince: null, offlineNotified: false });
+});
+
+test("laptop watch: names both sites when both need the laptop, and an alert delay of 0 tells the admin as soon as it notices", async () => {
+  const { state, pusher, proxy, minutes } = watchSetup({ alertAfterMs: 0, sources: ["daft", "rent", "ul"] });
+  proxy.sources = new Set(["daft", "rent"]);
+  state.online = false;
+  await minutes(1);
+  assert.match(pusher.ops()[0].body, /^Daft\.ie and Rent\.ie aren't being checked\./);
+  state.online = true;
+  await minutes(1);
+  assert.match(pusher.ops()[1].body, /^Daft\.ie and Rent\.ie are being checked again\.$/);
+});
+
+test("laptop watch: a settings file from before this version still works, and a failing push is logged rather than thrown", async () => {
+  const { state, store, pusher, warnings, minutes } = watchSetup();
+  store.data.laptop = { lastOnlineAt: "2026-09-30T00:00:00.000Z", offlineNotified: false };
+  pusher.sendToOwner = async () => {
+    throw new Error("push service down");
+  };
+  state.online = false;
+  await minutes(1);
+  await minutes(6);
+  assert.match(warnings.at(-1), /laptop watch failed: push service down/);
+  assert.equal(store.data.laptop.offlineNotified, true, "marked as told before sending, so a broken push service isn't retried every minute");
+});
+
+test("laptop watch: LAPTOP_ALERT_AFTER_MINUTES sets the delay, and anything that isn't a number of minutes falls back to 5", () => {
+  assert.equal(alertAfterFromEnv({}), 5 * 60_000);
+  assert.equal(alertAfterFromEnv({ LAPTOP_ALERT_AFTER_MINUTES: "30" }), 30 * 60_000);
+  assert.equal(alertAfterFromEnv({ LAPTOP_ALERT_AFTER_MINUTES: "0" }), 0);
+  assert.equal(alertAfterFromEnv({ LAPTOP_ALERT_AFTER_MINUTES: "1.5" }), 90_000);
+  for (const bad of ["", "  ", "soon", "-3", "NaN", "Infinity"]) assert.equal(alertAfterFromEnv({ LAPTOP_ALERT_AFTER_MINUTES: bad }), DEFAULT_ALERT_AFTER_MS, JSON.stringify(bad));
+});
+
+test("laptop watch, with the real hub and pusher: the agent going quiet reaches the admin's phones and nobody else's", async () => {
+  const t = { now: Date.parse("2026-10-01T22:00:00Z") };
+  const hub = createAgentHub({ token: TOKEN, now: () => t.now, onlineWindowMs: 60_000 });
+  const proxy = proxyFromEnv({}, () => {}, hub);
+  const { store } = tempStore();
+  const delivered = [];
+  const webpush = {
+    generateVAPIDKeys: () => ({ publicKey: "pub", privateKey: "priv" }),
+    sendNotification: async (sub, body) => void delivered.push({ to: sub.endpoint.split("/").pop(), ...JSON.parse(body) }),
+  };
+  const pusher = createPusher({ store, webpush, env: {} });
+  const device = (name) => ({ endpoint: `https://push.example/${name}`, keys: { p256dh: "k", auth: "a" } });
+  pusher.addSubscription(device("admin-phone"), "", ADMIN_OWNER);
+  pusher.addSubscription(device("admin-ipad"), "", ADMIN_OWNER);
+  pusher.addSubscription(device("housemate-phone"), "", "sam");
+  const watch = createLaptopWatch({ store, pusher, proxy, alertAfterMs: 5 * 60_000, now: () => new Date(t.now), log: SILENT });
+  const minutes = async (n) => {
+    t.now += n * 60_000;
+    await watch.check();
+  };
+
+  // The agent opens a poll, as it does all day, then the lid closes and the connection drops.
+  let dropConnection;
+  const res = { status: () => res, json() {}, end() {}, on: (event, fn) => event === "close" && (dropConnection = fn) };
+  hub.next({ get: () => `Bearer ${TOKEN}` }, res);
+  await watch.check();
+  assert.equal(hub.online(), true, "a poll is open");
+  await minutes(1);
+  assert.equal(delivered.length, 0, "an open poll is not an outage, however long it has been open");
+
+  dropConnection();
+  assert.equal(hub.online(), true, "just dropped: the hub still gives it its minute");
+  await minutes(1);
+  assert.equal(hub.online(), false);
+  await minutes(4);
+  assert.equal(delivered.length, 0, "inside the grace period");
+  await minutes(2);
+  assert.deepEqual(delivered.map((d) => d.to).sort(), ["admin-ipad", "admin-phone"], "both of the admin's devices, not the housemate's");
+  assert.ok(delivered.every((d) => d.title === "Laptop agent offline" && /Daft\.ie and Rent\.ie aren't being checked/.test(d.body)));
+
+  // It comes back: the agent polls again.
+  delivered.length = 0;
+  hub.next({ get: () => `Bearer ${TOKEN}` }, { ...res, on() {} });
+  await minutes(1);
+  assert.deepEqual(delivered.map((d) => `${d.to}:${d.title}`).sort(), ["admin-ipad:Laptop agent is back", "admin-phone:Laptop agent is back"]);
 });
