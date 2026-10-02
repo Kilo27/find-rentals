@@ -155,8 +155,10 @@ test("scan: total failure records error and alerts on 3rd consecutive failure on
     assert.match(run.error, /403/);
   }
   assert.equal(store.data.failureCount, 4);
-  assert.equal(pusher.sent.length, 1);
-  assert.match(pusher.sent[0].title, /can't reach any source/);
+  assert.equal(pusher.sent.length, 0, "everyone else is not sent error codes");
+  assert.equal(pusher.ops().length, 1);
+  assert.match(pusher.ops()[0].title, /can't reach any source/);
+  assert.match(pusher.ops()[0].body, /403/, "the admin does get the detail");
   assert.equal(store.data.baselineDone, false, "baseline must wait for a successful scan");
 });
 
@@ -170,9 +172,11 @@ test("scan: recovery after 3+ failures sends a recovery push", async () => {
   });
   for (let i = 0; i < 3; i++) await scanner.run();
   pusher.sent.length = 0;
+  pusher.sentToOwner.length = 0;
   ok = true;
   await scanner.run();
-  assert.ok(pusher.sent.some((p) => /is back/.test(p.title)));
+  assert.ok(pusher.ops().some((p) => /is back/.test(p.title)));
+  assert.ok(!pusher.sent.some((p) => /is back/.test(p.title)), "recovery is the admin's news, not everyone's");
   assert.equal(store.data.failureCount, 0);
 });
 

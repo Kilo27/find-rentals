@@ -6,7 +6,7 @@ import { analyzeListing, evaluateLocation, evaluateNonLocation } from "./filter.
 import { dedupe } from "./dedupe.js";
 import { stripSharedCoords } from "./coords.js";
 import { proxyFromEnv } from "./proxy.js";
-import { buildListingPayload } from "./push.js";
+import { ADMIN_OWNER, buildListingPayload } from "./push.js";
 import { attachTransit, defaultTransit } from "./transit.js";
 
 const MAX_INDIVIDUAL_PUSHES = 5;
@@ -63,6 +63,10 @@ const SILENT = { log() {}, warn() {} };
 export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT, proxy = proxyFromEnv(), transit = defaultTransit(log.warn) }) {
   let inflight = null;
 
+  // How the scanner is doing is for whoever runs it. Everyone else gets alerts about places, and the status line in
+  // the app says if the sites are not being checked; a note about a laptop agent or an HTTP code helps nobody else.
+  const toAdmin = (payload) => pusher.sendToOwner(ADMIN_OWNER, payload);
+
   function run() {
     if (!inflight) inflight = doScan().finally(() => (inflight = null));
     return inflight;
@@ -75,7 +79,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     const plural = labels.length > 1;
     if (!offline) {
       if (lap.offlineNotified) {
-        await pusher.sendToAll({ title: "Laptop agent is back", body: `${names} ${plural ? "are" : "is"} being checked again.`, url: "/", tag: "laptop" });
+        await toAdmin({ title: "Laptop agent is back", body: `${names} ${plural ? "are" : "is"} being checked again.`, url: "/", tag: "laptop" });
       }
       lap.lastOnlineAt = t0.toISOString();
       lap.offlineNotified = false;
@@ -83,7 +87,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     }
     lap.lastOnlineAt ??= t0.toISOString();
     if (!lap.offlineNotified && t0.getTime() - Date.parse(lap.lastOnlineAt) >= LAPTOP_ALERT_AFTER_MS) {
-      await pusher.sendToAll({
+      await toAdmin({
         title: "Laptop agent offline",
         body: `${names} ${plural ? "haven't" : "hasn't"} been checked for a day. Wake the laptop or start npm run agent.`,
         url: "/",
@@ -174,7 +178,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
       store.save();
       const n = d.failureCount;
       if (n === 3 || n % 48 === 0) {
-        await pusher.sendToAll({
+        await toAdmin({
           title: "Rental bot can't reach any source",
           body: `${n} scans failed in a row: ${firstError}`,
           url: "/",
@@ -198,7 +202,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
         h.failures += 1;
         h.lastError = r.error ?? badNote?.error ?? warning;
         if (h.failures === SOURCE_ALERT_AFTER || (h.failures > SOURCE_ALERT_AFTER && h.failures % 96 === 0)) {
-          await pusher.sendToAll({
+          await toAdmin({
             title: `${r.label} looks broken`,
             body: `${h.failures} scans in a row with no usable results: ${h.lastError}`,
             url: "/",
@@ -207,7 +211,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
         }
       } else {
         if (h.failures >= SOURCE_ALERT_AFTER) {
-          await pusher.sendToAll({ title: `${r.label} is working again`, body: "Listings are coming through.", url: "/", tag: `source-${r.id}` });
+          await toAdmin({ title: `${r.label} is working again`, body: "Listings are coming through.", url: "/", tag: `source-${r.id}` });
         }
         h.failures = 0;
         h.lastOkAt = nowIso;
@@ -305,7 +309,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
     }
 
     if (recovered) {
-      await pusher.sendToAll({ title: "Rental bot is back", body: "Scans are working again.", url: "/", tag: "scan-failure" });
+      await toAdmin({ title: "Rental bot is back", body: "Scans are working again.", url: "/", tag: "scan-failure" });
     }
 
     const cutoff = t0.getTime() - SEEN_TTL_MS;

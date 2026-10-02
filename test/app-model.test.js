@@ -34,11 +34,35 @@ test("sources: a paused or failing site is named in plain words, and the raw err
   );
   assert.equal(s.level, "partial");
   assert.equal(s.headline, "Watching 2 of 4 sites · last check 16 min ago");
-  assert.deepEqual(s.issues.map((i) => i.text), ["RENT: Paused for now. It will catch up by itself.", "MYHOME: Not responding right now."]);
+  assert.deepEqual(s.issues.map((i) => i.text), ["RENT: Paused for now. It will catch up by itself.", "MYHOME: Not responding for a while."]);
   assert.equal(s.note, "Not checking properly: RENT (paused), MYHOME (not responding)", "the one line that sits above the list");
   assert.ok([...s.issues.map((i) => i.text), s.note].every((t) => !/403|laptop|agent/i.test(t)), "no codes or internals in what everyone sees");
   assert.equal(s.rows.find((r) => r.id === "rent").raw, "not checked: laptop agent offline");
   assert.equal(s.rows.find((r) => r.id === "myhome").raw, "error: HTTP 403 from www.myhome.ie (failing x4)");
+});
+
+test("sources: a site that is only paused is routine, so it is calm, and invited users are not shown site names", () => {
+  const s = summarizeSources(state({ lastRun: { at: minutesAgo(16), ok: true, sources: [src("daft", { skipped: "laptop agent offline", fetched: 0 }), src("rent", { skipped: "laptop agent offline", fetched: 0 }), src("ul")] } }), NOW);
+  assert.equal(s.level, "catching-up", "not the warning level");
+  assert.equal(s.headline, "Watching 1 of 3 sites · last check 16 min ago");
+  assert.equal(s.note, "Catching up: DAFT, RENT", "the admin sees which");
+  assert.equal(s.plainNote, "Some sites are catching up.", "everyone else only that something is");
+  assert.ok(!/DAFT|RENT/.test(s.plainNote));
+});
+
+test("sources: a site that is not responding is the warning level, and says 'for a while' once it keeps failing", () => {
+  const mk = (failures) => summarizeSources(state({ sourceHealth: { ul: { failures } }, lastRun: { at: minutesAgo(5), ok: true, sources: [src("daft"), src("ul", { ok: false, error: "HTTP 403" })] } }), NOW);
+  const now = mk(1);
+  assert.equal(now.level, "partial");
+  assert.equal(now.rows[1].detail, "Not responding right now.");
+  assert.equal(now.plainNote, "Some sites aren't responding, so you may miss a few places.");
+  assert.equal(mk(4).rows[1].detail, "Not responding for a while.");
+});
+
+test("sources: a pause alongside a real fault is still a fault", () => {
+  const s = summarizeSources(state({ lastRun: { at: minutesAgo(5), ok: true, sources: [src("daft", { skipped: "laptop agent offline", fetched: 0 }), src("ul", { ok: false, error: "x" }), src("rent")] } }), NOW);
+  assert.equal(s.level, "partial");
+  assert.equal(s.note, "Not checking properly: DAFT (paused), UL (not responding)");
 });
 
 test("sources: a page that loaded but looked wrong is a warning, not a failure", () => {
@@ -81,6 +105,9 @@ test("invite: new users get the steps for an iPhone, a reset gets only the new p
   assert.match(invite, /Password: pw123456/);
   assert.match(invite, /Add to Home Screen/);
   assert.match(invite, /Turn on alerts/);
+  assert.match(invite, /copy the link into Safari/, "a link opened inside WhatsApp can't be added to the Home Screen");
+  assert.match(invite, /log in again/, "the Home Screen app is a separate app to Safari");
+  assert.match(invite, /change your password any time under Alerts/);
 
   const reset = inviteText({ url: "https://rw.example.com", username: "aoife", password: "newpass99", reset: true });
   assert.match(reset, /password has been reset/);
