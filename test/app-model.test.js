@@ -105,7 +105,7 @@ test("invite: new users get the steps for an iPhone, a reset gets only the new p
   assert.match(invite, /Password: pw123456/);
   assert.match(invite, /Add to Home Screen/);
   assert.match(invite, /Turn on alerts/);
-  assert.match(invite, /copy the link into Safari/, "a link opened inside WhatsApp can't be added to the Home Screen");
+  assert.match(invite, /Copy the link into Safari/, "a link opened inside WhatsApp can't be added to the Home Screen");
   assert.match(invite, /log in again/, "the Home Screen app is a separate app to Safari");
   assert.match(invite, /change your password any time under Alerts/);
 

@@ -100,9 +100,9 @@ input[type=text], input[type=number], input[type=date], input[type=password], te
   width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--field); border-radius: 10px;
 }
-input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+input[type=checkbox] { flex: none; width: 20px; height: 20px; accent-color: var(--accent); }
 textarea { min-height: 64px; }
-.row { display: flex; gap: 10px; }
+.row { display: flex; align-items: flex-end; gap: 10px; }
 .row > * { flex: 1; min-width: 0; }
 button.primary, button.secondary {
   font: inherit; font-weight: 700; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--accent); margin: 8px 8px 0 0;
@@ -232,6 +232,20 @@ details .check { margin-left: 4px; }
 .strip:is(.partial, .stale, .down, .failed) .icon, .status-line:is(.mode-blocked, .mode-unsupported) .icon, .site:is(.warn, .down) .icon, .offline .icon { color: var(--warn); }
 .strip:is(.none, .paused, .catching-up) .icon, .site.paused .icon, .status-line:is(.mode-off, .mode-install, .mode-viewing) .icon { color: var(--muted); }
 
+/* Alerts put away with "Not now" leave one line, so silence still can't be read as nothing new. */
+.strip.quiet { align-items: center; padding: 4px 12px; }
+.strip.quiet .icon { margin-top: 0; color: var(--muted); }
+.strip.quiet .strip-text { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.strip.quiet .linklike { margin: 0; }
+
+/* Save stays in reach however far down the form is, and says when there is something to save. */
+.savebar {
+  position: sticky; bottom: calc(52px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 12px;
+  margin: 12px -16px 0; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line);
+}
+.savebar button.primary { flex: none; margin: 0; }
+.savebar .msg { flex: 1; margin: 0; font-size: 13px; }
+
 /* The first-run card that asks a device to turn on alerts. */
 .panel.setup { border-color: var(--accent); }
 .panel.setup h2 { font-size: 18px; }
@@ -247,8 +261,8 @@ ol.steps li { margin: 6px 0; }
 .site .icon { margin-top: 3px; }
 .site-name { font-weight: 600; }
 .site .hint { margin-top: 0; }
-details.scanner > summary { margin: 0; font-size: 16px; font-weight: 700; }
-details.scanner[open] > summary { margin-bottom: 8px; }
+details.panel > summary { margin: 0; font-size: 16px; font-weight: 700; }
+details.panel[open] > summary { margin-bottom: 8px; }
 
 .offline { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); font-size: 14px; }
 .offline span { flex: 1; min-width: 0; }

@@ -57,6 +57,7 @@ const ICON_PATHS = {
   alert: '<path d="M12 4l9.5 16h-19z"/><path d="M12 10v4M12 17v.01"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/>',
+  share: '<path d="M12 15V3M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-1"/>',
 };
 
 export function icon(name, size = 16) {

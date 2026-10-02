@@ -32,7 +32,7 @@ const zoneHeading = (g) => (g.name ? `Somewhere in ${g.name}: exact address unkn
 const groupLabel = (g) => (g.kind === "zone" ? `${g.items.length} listing${g.items.length > 1 ? "s" : ""}, ${g.name || "approximate area"}` : `${g.items.length} listing${g.items.length > 1 ? "s" : ""}, from ${pinLabel(g.items)}`);
 
 // The map view. `update(state)` hands it the latest matches; it draws them once the element is on the page.
-export function createMapView({ api, onShowList }) {
+export function createMapView({ api, onShowList, onOpened }) {
   const canvas = h("div", { class: "map-canvas", role: "region", "aria-label": "Map of matching rentals" });
   const status = h("div", { class: "map-status", role: "status" });
   const note = h("div", { class: "map-note", hidden: true });
@@ -78,6 +78,21 @@ export function createMapView({ api, onShowList }) {
   canvas.addEventListener("pointermove", track, true);
 
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Tab" && !sheet.hidden) {
+      // The sheet is modal: keep keyboard focus inside it until it is closed.
+      const els = [...sheet.querySelectorAll("a[href], button")];
+      if (!els.length) return;
+      const first = els[0];
+      const last = els[els.length - 1];
+      if (!sheet.contains(document.activeElement) || (e.shiftKey && document.activeElement === first)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (e.key !== "Escape") return;
     closeSheet();
     unpin();
@@ -89,7 +104,7 @@ export function createMapView({ api, onShowList }) {
     const d = describeMatch(m, current.config);
     return h(
       "a",
-      { class: compact ? "mcard compact" : "mcard", href: m.url, target: "_blank", rel: "noopener noreferrer" },
+      { class: compact ? "mcard compact" : "mcard", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => onOpened?.(m) },
       listingImage(m),
       h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
     );
@@ -160,7 +175,7 @@ export function createMapView({ api, onShowList }) {
         h("div", { class: "meta" }, d.meta),
         d.transit.map((t) => h("div", { class: "transit" }, t)),
         badgeRow(d.badges),
-        h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer" }, `Open on ${m.sourceLabel} ↗`),
+        h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => onOpened?.(m) }, `Open on ${m.sourceLabel} ↗`),
       ),
     );
   }
@@ -196,6 +211,7 @@ export function createMapView({ api, onShowList }) {
   function activate(group) {
     if (touchLike()) return openSheet(group);
     if (group.items.length === 1) {
+      onOpened?.(group.items[0]);
       window.open(group.items[0].url, "_blank", "noopener,noreferrer");
       return;
     }
@@ -413,11 +429,14 @@ export function createMapView({ api, onShowList }) {
           type: "button",
           class: selectedRoute === r.id ? "route-row on" : "route-row",
           "aria-pressed": String(selectedRoute === r.id),
+          "data-route": r.id,
           title: r.operator || undefined,
           onclick: () => {
             selectedRoute = selectedRoute === r.id ? null : r.id;
             styleRoutes();
             renderPanel();
+            // The panel is drawn again, so put keyboard focus back on the route that was toggled.
+            panelBody.querySelector('[data-route="' + CSS.escape(String(r.id)) + '"]')?.focus({ preventScroll: true });
           },
         },
         h("i", { class: r.mode === "rail" ? "swatch dashed" : "swatch", style: `--c:${r.colour}` }),

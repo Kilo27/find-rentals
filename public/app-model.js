@@ -60,7 +60,11 @@ export function inviteText({ url, username, password, reset = false }) {
   if (!reset) {
     lines.push(
       "",
-      "On an iPhone: copy the link into Safari (a link opened inside WhatsApp or Messages can't be added to your Home Screen). Tap Share, then Add to Home Screen. Open Rental Watch from your Home Screen, log in again (it's a separate app to Safari), and tap Turn on alerts.",
+      "On an iPhone:",
+      "1. Copy the link into Safari (a link opened inside WhatsApp or Messages can't be added to your Home Screen).",
+      "2. Tap Share, then Add to Home Screen.",
+      "3. Open Rental Watch from your Home Screen and log in again (it's a separate app to Safari).",
+      "4. Tap Turn on alerts.",
       "",
       "You can change your password any time under Alerts.",
     );
