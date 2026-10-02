@@ -1,7 +1,5 @@
 // The laptop agent: npm run agent (settings in .env, see .env.example).
 import fs from "node:fs";
-import path from "node:path";
-import { startTray, trayWanted, TRAY_TEXT } from "./agent-tray.js";
 import { DEFAULT_ALLOW, createJobFetcher, parseAllow, runAgent } from "./agent.js";
 
 const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -41,26 +39,10 @@ const allow = AGENT_ALLOW ? parseAllow(AGENT_ALLOW) : DEFAULT_ALLOW;
 log.log(`[agent] starting: fetching ${allow.join(", ")} for ${server.origin}`);
 
 const controller = new AbortController();
-const stop = () => {
-  controller.abort();
-  process.exit(0);
-};
-for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, stop);
-
-// On Windows an icon by the clock shows whether the agent is connected (set AGENT_TRAY=0 for none).
-const tray = trayWanted(process.env)
-  ? startTray({
-      log,
-      url: server.origin,
-      logPath: AGENT_LOG ? path.resolve(AGENT_LOG) : "",
-      onQuit: () => {
-        log.log("[agent] stopped from the tray icon");
-        stop();
-      },
-    })
-  : null;
-tray?.set("connecting", TRAY_TEXT.connecting);
-process.on("exit", () => tray?.stop());
-const onState = (state) => tray?.set(state, state === "connected" ? TRAY_TEXT.connected(server.host) : TRAY_TEXT[state]);
-
-await runAgent({ server: server.origin, token, fetchJob: createJobFetcher({ allow }), log, signal: controller.signal, onState });
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, () => {
+    controller.abort();
+    process.exit(0);
+  });
+}
+await runAgent({ server: server.origin, token, fetchJob: createJobFetcher({ allow }), log, signal: controller.signal });

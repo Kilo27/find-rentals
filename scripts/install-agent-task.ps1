@@ -1,5 +1,4 @@
 # Starts the laptop agent whenever you log in to Windows, hidden, logging to agent.log in this repo.
-# Its icon appears in the notification area by the clock (green = connected; right-click for the menu).
 #   Install:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-agent-task.ps1
 #   Remove:   Unregister-ScheduledTask -TaskName RentalWatchAgent -Confirm:$false
 # Needs .env in the repo root with AGENT_SERVER_URL and AGENT_TOKEN (see .env.example).
