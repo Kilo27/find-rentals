@@ -270,7 +270,7 @@ test("scan: while the laptop is offline its sources are skipped, not failed, and
   assert.match(lines.at(-1), /\| daft=skipped ul=1 \|.*\| laptop=offline$/);
   assert.ok(store.data.matches.some((m) => m.id === "daft:4"), "Daft's matches stay while the laptop sleeps");
   assert.equal(store.data.sourceHealth.daft.failures, 0, "a sleeping laptop is not a broken source");
-  assert.ok(!pusher.sent.some((p) => /looks broken|offline/.test(p.title)), "no alerts for a night's sleep");
+  assert.ok(![...pusher.sent, ...pusher.ops()].some((p) => /looks broken|offline/.test(p.title)), "no alerts for a night's sleep");
 });
 
 test("scan: a fresh install waits for the laptop before finishing its baseline, so existing listings don't alert as new", async () => {
@@ -288,21 +288,23 @@ test("scan: a fresh install waits for the laptop before finishing its baseline, 
   assert.deepEqual(pusher.sent.map((p) => p.title), ["Watching started: 2 current matches"]);
 });
 
-test("scan: one push after a day without the laptop, and one when it is back", async () => {
+test("scan: one push to the admin after a day without the laptop, and one when it is back", async () => {
   const { state, pusher, scanAfter } = laptopSetup();
   await scanAfter(0);
   pusher.sent.length = 0;
+  pusher.sentToOwner.length = 0;
 
   state.online = false;
   await scanAfter(23 * 60);
-  assert.equal(pusher.sent.length, 0);
+  assert.equal(pusher.ops().length, 0);
   await scanAfter(60);
   await scanAfter(30);
-  assert.deepEqual(pusher.sent.map((p) => p.title), ["Laptop agent offline"]);
-  assert.match(pusher.sent[0].body, /Daft\.ie hasn't been checked for a day/);
+  assert.deepEqual(pusher.ops().map((p) => p.title), ["Laptop agent offline"]);
+  assert.match(pusher.ops()[0].body, /Daft\.ie hasn't been checked for a day/);
 
   state.online = true;
   await scanAfter(30);
   await scanAfter(30);
-  assert.deepEqual(pusher.sent.map((p) => p.title), ["Laptop agent offline", "Laptop agent is back"]);
+  assert.deepEqual(pusher.ops().map((p) => p.title), ["Laptop agent offline", "Laptop agent is back"]);
+  assert.equal(pusher.sent.length, 0, "housemates are not told about the admin's laptop");
 });

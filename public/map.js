@@ -39,6 +39,7 @@ export function createMapView({ api, onShowList }) {
   const card = h("div", { class: "hovercard", hidden: true });
   const el = h("div", { class: "map-wrap" }, canvas, status, note, card);
 
+  let opener = null;
   const sheet = h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": "Listing details", hidden: true });
   const backdrop = h("div", { class: "sheet-backdrop", hidden: true, onclick: () => closeSheet() });
   document.body.append(backdrop, sheet);
@@ -159,7 +160,7 @@ export function createMapView({ api, onShowList }) {
         h("div", { class: "meta" }, d.meta),
         d.transit.map((t) => h("div", { class: "transit" }, t)),
         badgeRow(d.badges),
-        h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer" }, "View listing ↗"),
+        h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer" }, `Open on ${m.sourceLabel} ↗`),
       ),
     );
   }
@@ -172,6 +173,7 @@ export function createMapView({ api, onShowList }) {
       group.kind === "zone" ? h("div", { class: "hc-head" }, zoneHeading(group)) : n > 1 ? h("div", { class: "hc-head" }, `${n} listings here`) : null,
       h("div", { class: "sheet-list" }, group.items.map(sheetItem)),
     );
+    opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     sheet.hidden = false;
     backdrop.hidden = false;
     document.body.classList.add("sheet-open");
@@ -184,6 +186,9 @@ export function createMapView({ api, onShowList }) {
     sheet.hidden = true;
     backdrop.hidden = true;
     document.body.classList.remove("sheet-open");
+    // Back to the pin that opened it, so keyboard focus isn't dropped.
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+    opener = null;
   }
 
   // One handler for pins, area chips and area shapes: a finger opens the sheet; a mouse follows the listing link

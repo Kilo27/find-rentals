@@ -4,6 +4,7 @@
   --text: #13201e;
   --muted: #5b6b68;
   --line: #dbe4e2;
+  --field: #7c8d8a;
   --accent: #0f766e;
   --accent-text: #ffffff;
   --warn: #b45309;
@@ -17,6 +18,7 @@
     --text: #e8f1ef;
     --muted: #9bb3af;
     --line: #1f4540;
+    --field: #5f8780;
     --accent: #2dd4bf;
     --accent-text: #06201c;
     --warn: #fbbf24;
@@ -42,10 +44,11 @@ nav.tabs {
   border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
 }
 nav.tabs button {
-  flex: 1; padding: 14px 4px; border: 0; background: none; color: var(--muted);
+  flex: 1; padding: 11px 4px 14px; border: 0; border-top: 3px solid transparent; background: none; color: var(--muted);
   font: inherit; font-size: 14px; font-weight: 600;
 }
-nav.tabs button.active { color: var(--accent); }
+/* The current tab is marked by a bar above it as well as its colour, so it doesn't rely on seeing teal. */
+nav.tabs button.active { color: var(--accent); border-top-color: var(--accent); }
 .card {
   display: block; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   margin: 10px 0; overflow: hidden; color: inherit; text-decoration: none;
@@ -92,9 +95,10 @@ details.dismissed > summary { color: var(--muted); margin: 0; padding: 10px 0; }
 label { display: block; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }
 label.check { display: flex; gap: 10px; align-items: center; font-weight: 500; margin: 8px 0; }
 .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+/* A field's edge has to be seen to be found, so it is darker than the hairlines between things (3:1 against the page). */
 input[type=text], input[type=number], input[type=date], input[type=password], textarea {
   width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
-  border: 1px solid var(--line); border-radius: 10px;
+  border: 1px solid var(--field); border-radius: 10px;
 }
 input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
 textarea { min-height: 64px; }
@@ -125,12 +129,13 @@ button:disabled { opacity: 0.5; }
 .login h1 { margin: 0 0 4px; }
 .login input { display: block; margin-top: 8px; }
 .login .hint { margin: 4px 0 16px; }
+.login button.primary { width: 100%; margin: 12px 0 0; }
 .lede { margin: 0; font-size: 16px; font-weight: 600; }
 .boot { margin: 0; padding: 64px 16px; text-align: center; color: var(--muted); }
 details summary { cursor: pointer; font-weight: 600; margin: 12px 0 0; }
 select {
   width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
-  border: 1px solid var(--line); border-radius: 10px;
+  border: 1px solid var(--field); border-radius: 10px;
 }
 
 [hidden] { display: none !important; }
@@ -222,10 +227,10 @@ details .check { margin-left: 4px; }
 .strip-text { flex: 1; min-width: 0; }
 .strip-head { font-weight: 600; }
 .strip-issue { color: var(--muted); }
-.strip .linklike { display: block; margin: 0 0 -8px -4px; padding: 10px 4px 8px; font-weight: 600; }
+.strip .linklike { display: flex; align-items: center; min-height: 44px; margin: 0 0 -10px -4px; padding: 0 4px; font-weight: 600; }
 .strip.ok .icon, .status-line.mode-on .icon, .site.ok .icon { color: var(--ok); }
 .strip:is(.partial, .stale, .down, .failed) .icon, .status-line:is(.mode-blocked, .mode-unsupported) .icon, .site:is(.warn, .down) .icon, .offline .icon { color: var(--warn); }
-.strip:is(.none, .paused) .icon, .site.paused .icon, .status-line:is(.mode-off, .mode-install, .mode-viewing) .icon { color: var(--muted); }
+.strip:is(.none, .paused, .catching-up) .icon, .site.paused .icon, .status-line:is(.mode-off, .mode-install, .mode-viewing) .icon { color: var(--muted); }
 
 /* The first-run card that asks a device to turn on alerts. */
 .panel.setup { border-color: var(--accent); }

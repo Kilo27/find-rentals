@@ -260,12 +260,15 @@ test("a source that keeps returning nothing usable triggers a health alert, then
   const combined = async (url, opts) => (url.includes("www.daft.ie") ? daftOk(url, opts) : fetchImpl(url, opts));
   const scanner = scannerFor(store, pusher, combined);
   for (let i = 0; i < 6; i++) await scanner.run();
-  assert.equal(pusher.sent.filter((p) => /looks broken/.test(p.title)).length, 1);
-  assert.match(pusher.sent.find((p) => /looks broken/.test(p.title)).title, /UL Accommodation/);
+  assert.equal(pusher.ops().filter((p) => /looks broken/.test(p.title)).length, 1);
+  assert.match(pusher.ops().find((p) => /looks broken/.test(p.title)).title, /UL Accommodation/);
+  assert.ok(!pusher.sent.some((p) => /looks broken/.test(p.title)), "only the admin is told a source is broken");
   good = true;
   pusher.sent.length = 0;
+  pusher.sentToOwner.length = 0;
   await scanner.run();
-  assert.ok(pusher.sent.some((p) => /working again/.test(p.title)));
+  assert.ok(pusher.ops().some((p) => /working again/.test(p.title)));
+  assert.ok(!pusher.sent.some((p) => /working again/.test(p.title)));
 });
 
 const RENT_LIST = "https://www.rent.ie/rooms-to-rent/limerick/castletroy/";

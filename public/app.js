@@ -250,13 +250,22 @@ async function refresh({ manual = false } = {}) {
   render();
 }
 
+// Drawing the page again throws its controls away, which would send keyboard and screen-reader focus back to the top
+// after every tap. Controls that get used one after another carry a key (data-fk); once the new page is drawn, focus
+// goes back to the one that had it.
 function render() {
+  const key = document.activeElement?.dataset?.fk;
   if (pendingRefresh) {
     pendingRefresh = false;
     refreshNote.replaceChildren();
   }
   root.classList.toggle("wide", Boolean(state) && tab === "matches" && view === "map");
   root.replaceChildren(state ? renderMain() : unreachable ? renderUnreachable() : renderLogin());
+  if (key) focusKey(key);
+}
+
+function focusKey(key) {
+  root.querySelector('[data-fk="' + CSS.escape(key) + '"]')?.focus({ preventScroll: true });
 }
 
 // Whether this device can get alerts, and whether it is already set up for them.
@@ -273,16 +282,35 @@ async function refreshPushState() {
   pushState = { supported, permission, subscribedHere };
 }
 
-// Shows the listing an alert pointed at: on the Matches list, scrolled to and highlighted.
-function openListing(id) {
+// Shows the listing an alert pointed at: on the Matches list, scrolled to and highlighted. A listing that has only just
+// appeared isn't in the copy of the list this device holds, so it asks for the latest before saying the listing has gone.
+async function openListing(id) {
+  if (!id) return;
+  if (!state) {
+    // Signed out, or no connection and nothing saved: show it once that is sorted out, rather than losing it.
+    pendingListing = id;
+    return;
+  }
   pendingListing = null;
-  if (!state || !id) return;
-  const m = state.matches.find((x) => x.id === id);
+  let m = state.matches.find((x) => x.id === id);
+  let cantReach = false;
+  if (!m) {
+    try {
+      await refresh({ manual: true });
+    } catch (err) {
+      cantReach = Boolean(err.offline);
+    }
+    if (!state) {
+      pendingListing = id; // the refresh found the session had ended
+      return;
+    }
+    m = state.matches.find((x) => x.id === id);
+  }
   tab = "matches";
   view = "list";
   if (!m) {
     render();
-    showToast("That listing is no longer in your matches.");
+    showToast(cantReach ? "Can't reach Rental Watch to find that listing. Try again in a moment." : "That listing is no longer in your matches.");
     return;
   }
   if (isDismissed(m)) openSections[m.review] = true;
@@ -374,7 +402,11 @@ async function stopViewing() {
   try {
     await api("DELETE", "/api/view-as");
     await loadState();
+    // Back where the admin came from, not on a tab about their own devices.
+    tab = "users";
+    await loadUsers().catch(() => {});
     render();
+    window.scrollTo(0, 0);
   } catch {}
 }
 
@@ -438,6 +470,7 @@ function renderMain() {
           {
             class: tab === id ? "active" : "",
             "aria-current": tab === id ? "page" : false,
+            "data-fk": "tab:" + id,
             onclick: async () => {
               tab = id;
               if (id === "users") {
@@ -460,7 +493,7 @@ function renderMatches() {
     "div",
     { class: "seg", role: "group", "aria-label": "Matches view" },
     [["list", "List"], ["map", "Map"]].map(([id, label]) =>
-      h("button", { type: "button", class: view === id ? "active" : "", "aria-pressed": String(view === id), onclick: () => view !== id && setView(id) }, label),
+      h("button", { type: "button", class: view === id ? "active" : "", "aria-pressed": String(view === id), "data-fk": "view:" + id, onclick: () => view !== id && setView(id) }, label),
     ),
   );
   if (view === "map") {
@@ -500,10 +533,19 @@ async function dismiss(m, status) {
   previousReview.set(m.id, before);
   moreFor = null;
   const title = DISMISSED.find((d) => d.status === status).title;
-  if (await setReview(m.id, status)) showToast(`Moved to ${title}`, { label: "Undo", run: () => setReview(m.id, before) });
+  // The card this one makes way for, so keyboard focus carries on down the list.
+  const active = state.matches.filter((x) => !isDismissed(x));
+  const at = active.findIndex((x) => x.id === m.id);
+  const next = active[at + 1] ?? active[at - 1];
+  if (await setReview(m.id, status)) {
+    showToast(`Moved to ${title}`, { label: "Undo", run: () => setReview(m.id, before) });
+    if (next && document.activeElement === document.body) focusKey(next.id + ":open");
+  }
 }
 
-const restore = (m) => setReview(m.id, previousReview.get(m.id) ?? null);
+async function restore(m) {
+  if (await setReview(m.id, previousReview.get(m.id) ?? null)) showToast("Back in your matches.");
+}
 
 // Going to the listing's own site is the natural "I've looked at this", so it marks the card seen.
 function openedListing(m) {
@@ -516,21 +558,23 @@ function openedListing(m) {
 function renderSourceStrip() {
   const s = summarizeSources(state);
   const admin = state.user.isAdmin;
-  const iconName = s.level === "ok" ? "check" : s.level === "none" || s.level === "paused" ? "pause" : "alert";
+  const iconName = s.level === "ok" ? "check" : ["none", "paused", "catching-up"].includes(s.level) ? "pause" : "alert";
+  const note = admin ? s.note : s.plainNote;
   return h(
     "div",
-    { class: `strip ${s.level}`, role: "status" },
+    { class: `strip ${s.level}` },
     icon(iconName),
     h(
       "div",
       { class: "strip-text" },
       h("div", { class: "strip-head" }, s.headline),
-      s.note ? h("div", { class: "strip-issue" }, s.note) : null,
+      note ? h("div", { class: "strip-issue" }, note) : null,
       admin && s.level !== "ok" && s.level !== "none"
         ? h(
             "button",
             {
               class: "linklike",
+              "data-fk": "strip:details",
               onclick: () => {
                 openSections.scanner = true;
                 tab = "alerts";
@@ -545,9 +589,12 @@ function renderSourceStrip() {
   );
 }
 
+// "Not now" puts the card away for a few days; a device that still isn't getting alerts is asked again after that.
+const ALERTS_CARD_QUIET_MS = 3 * 24 * 3600 * 1000;
 const hideAlertsCard = () => {
   try {
-    return localStorage.getItem(ALERTS_CARD_KEY) === "1";
+    const at = Number(localStorage.getItem(ALERTS_CARD_KEY));
+    return at > 0 && Date.now() - at < ALERTS_CARD_QUIET_MS;
   } catch {
     return false;
   }
@@ -583,9 +630,10 @@ function renderAlertsCard() {
     "button",
     {
       class: "linklike",
+      "data-fk": "alerts:not-now",
       onclick: () => {
         try {
-          localStorage.setItem(ALERTS_CARD_KEY, "1");
+          localStorage.setItem(ALERTS_CARD_KEY, String(Date.now()));
         } catch {}
         render();
       },
@@ -646,23 +694,27 @@ function renderCard(m) {
   const dismissed = DISMISSED.find((d) => d.status === m.review);
   const d = describeMatch(m, state.config);
   const more = moreFor === m.id;
+  // Every card repeats the same buttons, so each is named with its listing for anyone who can't see the card around it.
+  const named = (label) => label + ": " + m.title;
   return h(
-    "div",
-    { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id },
+    "article",
+    { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id, "aria-label": d.price + ", " + m.title },
     listingImage(m),
     h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
     h(
       "div",
       { class: "actions" },
       dismissed
-        ? h("button", { class: "act restore", onclick: () => restore(m) }, dismissed.undo)
+        ? h("button", { class: "act restore", "aria-label": named(dismissed.undo), "data-fk": m.id + ":restore", onclick: () => restore(m) }, dismissed.undo)
         : [
-            h("a", { class: "act open", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => openedListing(m) }, `Open on ${m.sourceLabel}`, icon("external")),
-            h("button", { class: "act", onclick: () => dismiss(m, "rejected") }, "Not a fit"),
+            h("a", { class: "act open", href: m.url, target: "_blank", rel: "noopener noreferrer", "aria-label": named(`Open on ${m.sourceLabel}`), "data-fk": m.id + ":open", onclick: () => openedListing(m) }, `Open on ${m.sourceLabel}`, icon("external")),
+            h("button", { class: "act", "aria-label": named("Not a fit"), "data-fk": m.id + ":rejected", onclick: () => dismiss(m, "rejected") }, "Not a fit"),
             h(
               "button",
               {
                 class: "act",
+                "aria-label": named(more ? "Fewer options" : "More options"),
+                "data-fk": m.id + ":more",
                 "aria-expanded": String(more),
                 onclick: () => {
                   moreFor = more ? null : m.id;
@@ -677,6 +729,8 @@ function renderCard(m) {
                     "button",
                     {
                       class: "act",
+                      "aria-label": named(seen ? "Mark as unseen" : "Mark as seen"),
+                      "data-fk": m.id + ":seen",
                       onclick: () => {
                         moreFor = null;
                         setReview(m.id, seen ? null : "seen");
@@ -684,7 +738,7 @@ function renderCard(m) {
                     },
                     seen ? "Mark as unseen" : "Mark as seen",
                   ),
-                  h("button", { class: "act", onclick: () => dismiss(m, "unavailable") }, "No longer available"),
+                  h("button", { class: "act", "aria-label": named("No longer available"), "data-fk": m.id + ":unavailable", onclick: () => dismiss(m, "unavailable") }, "No longer available"),
                 ]
               : null,
           ],
@@ -697,25 +751,27 @@ function renderSettings() {
   const c = state.config;
   const msg = msgBox();
   const f = {};
+  // A label is tied to its field by id, so a screen reader announces it and tapping the label focuses the field.
+  const fid = (name) => "s-" + name;
   const text = (name, label, value, attrs = {}) => {
-    f[name] = h("input", { type: "text", value: value ?? "", ...attrs });
-    return [h("label", {}, label), f[name]];
+    f[name] = h("input", { type: "text", id: fid(name), value: value ?? "", ...attrs });
+    return [h("label", { for: fid(name) }, label), f[name]];
   };
   const num = (name, label, value, attrs = {}) => {
-    f[name] = h("input", { type: "number", inputmode: "decimal", step: "any", value: value ?? "", ...attrs });
-    return h("div", {}, h("label", {}, label), f[name]);
+    f[name] = h("input", { type: "number", id: fid(name), inputmode: "decimal", step: "any", value: value ?? "", ...attrs });
+    return h("div", {}, h("label", { for: fid(name) }, label), f[name]);
   };
   const date = (name, label, value) => {
-    f[name] = h("input", { type: "date", value: value ?? "" });
-    return h("div", {}, h("label", {}, label), f[name]);
+    f[name] = h("input", { type: "date", id: fid(name), value: value ?? "" });
+    return h("div", {}, h("label", { for: fid(name) }, label), f[name]);
   };
   const check = (name, label, value) => {
     f[name] = h("input", { type: "checkbox", checked: value });
     return h("label", { class: "check" }, f[name], label);
   };
   const area = (name, label, value, hint) => {
-    f[name] = h("textarea", { value: value.join(", ") });
-    return [h("label", {}, label), f[name], hint ? h("div", { class: "hint" }, hint) : null];
+    f[name] = h("textarea", { id: fid(name), value: value.join(", ") });
+    return [h("label", { for: fid(name) }, label), f[name], hint ? h("div", { class: "hint" }, hint) : null];
   };
 
   const sourceChecks = Object.entries(state.sources).map(([id, label]) => {
@@ -723,12 +779,12 @@ function renderSettings() {
     return h("label", { class: "check" }, f[`source:${id}`], label);
   });
   const urlArea = (name, label, value) => {
-    f[name] = h("textarea", { value: value.join("\n"), rows: "3", spellcheck: "false", autocapitalize: "off" });
-    return [h("label", {}, label), f[name]];
+    f[name] = h("textarea", { id: fid(name), value: value.join("\n"), rows: "3", spellcheck: "false", autocapitalize: "off" });
+    return [h("label", { for: fid(name) }, label), f[name]];
   };
   f.unverifiedDistance = h(
     "select",
-    {},
+    { id: fid("unverifiedDistance") },
     [
       ["locality", "Only if the area name matches (recommended)"],
       ["include", "Always include (flagged)"],
@@ -874,7 +930,7 @@ function renderSettings() {
         urlArea("rentUrls", "Rent.ie search pages", c.rentUrls),
         urlArea("myhomeUrls", "MyHome.ie search pages", c.myhomeUrls),
         urlArea("webUrls", "Custom pages (any listings site; enable under Where to look)", c.webUrls),
-        h("label", {}, "If a listing has no coordinates"),
+        h("label", { for: fid("unverifiedDistance") }, "If a listing has no coordinates"),
         f.unverifiedDistance,
         area("localityHints", "Area names that count as nearby", c.localityHints, "Used only for listings whose location can't be determined."),
         check("geocode", "Look up coordinates from addresses (OpenStreetMap)", c.geocode),
@@ -916,7 +972,7 @@ function renderTransitSettings(c, f, num, check) {
   const result = h("div", { class: "stops" });
   const pick = h(
     "select",
-    {},
+    { "aria-label": "Campus" },
     state.campuses.map((x) => h("option", { value: x.id, selected: x.id === (c.transitCampuses[0] ?? state.autoCampuses[0]) }, x.name)),
   );
   const show = h(
@@ -999,7 +1055,9 @@ async function turnOnAlerts(msg) {
     await refreshPushState();
     await loadState();
     render();
-    showToast("Alerts are on for this device.");
+    // A real alert, so there is proof it works before the first listing arrives.
+    const test = await api("POST", "/api/test-push").catch(() => null);
+    showToast(test?.sent ? "Alerts are on. A test alert is on its way." : "Alerts are on for this device.");
   } catch (err) {
     say(err.message, false);
   }
@@ -1108,7 +1166,7 @@ function renderAlerts() {
           { class: "panel scanner", open: openSections.scanner === true, ontoggle: (e) => (openSections.scanner = e.target.open) },
           h("summary", {}, "Scanner details"),
           r ? kv("Last scan", `${timeAgo(r.at)} (${r.ok ? "ok" : "failed"})`) : kv("Last scan", "not yet"),
-          r && r.ok ? kv("Found / kept / new", `${r.candidates} / ${r.matches} / ${r.newCount}`) : null,
+          r && r.ok ? kv("Found / matching / new", `${r.candidates} / ${r.matches} / ${r.newCount}`) : null,
           r && r.ok && r.pending ? kv("Waiting for detail pages", String(r.pending)) : null,
           r && !r.ok ? kv("Error", r.error) : null,
           kv("Next scan", state.scanning ? "running now" : state.config.enabled ? inFuture(state.nextRunAt) : "paused"),

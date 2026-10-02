@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Store } from "../src/store.js";
 import { SECTION_PATHS } from "../src/daft.js";
+import { ADMIN_OWNER } from "../src/push.js";
 
 export const UL = { lat: 52.6733, lng: -8.5739 };
 
@@ -67,15 +68,22 @@ export function tempStore() {
 
 export function fakePusher({ subscribers = 1, sendResult } = {}) {
   const sent = [];
+  // Pushes aimed at one account's devices, as { owner, payload }. The scanner sends its own health notes to the admin.
+  const sentToOwner = [];
   return {
     sent,
+    sentToOwner,
+    ops: () => sentToOwner.filter((s) => s.owner === ADMIN_OWNER).map((s) => s.payload),
     publicKey: "test-public-key",
     count: () => subscribers,
     sendToAll: async (payload) => {
       sent.push(payload);
       return sendResult ? sendResult(payload) : { sent: subscribers, failed: 0, removed: 0 };
     },
-    sendToOwner: async (_owner, payload) => ({ sent: 0, failed: 0, removed: 0 }),
+    sendToOwner: async (owner, payload) => {
+      sentToOwner.push({ owner, payload });
+      return { sent: 0, failed: 0, removed: 0 };
+    },
     subscriptionsOf: () => [],
     addSubscription() {},
     removeSubscription() {},

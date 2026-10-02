@@ -23,7 +23,7 @@ The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", 
 - **Availability**: start and end dates are read from listing text. A start date later than *need from* (default: today) plus a 14-day grace, or an end date more than 60 days before *stay until*, excludes the listing. Listings with no date are kept and flagged.
 - **Duplicates**: the same property on two sites is alerted once, with an "also on" link. Different houses (e.g. 14 vs 16 Plassey Park), different prices and separate ads on one site are never merged.
 - **No premature alerts**: listings still waiting for a detail page are held back rather than alerted half-checked.
-- **Health**: a source that returns nothing usable 6 scans in a row sends a "looks broken" notification, and another when it recovers.
+- **Health**: a source that returns nothing usable 6 scans in a row sends a "looks broken" notification, and another when it recovers. Notes like this about how the scanner is doing go to the **admin's devices only**; everyone else gets alerts about places, and the status line in the app (below) tells them if sites aren't being checked.
 
 ## Deploy on Railway
 
@@ -84,8 +84,8 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 - First scan is a *baseline*: one "Watching started: N matches" notification, existing listings marked seen. If detail pages are still being fetched (limit per scan), the baseline waits until they are done.
 - After that, each new match gets one notification showing price, title, distance, source and availability. More than 5 new in one scan: 5 individual pushes plus a digest. Tapping an alert opens the app on that listing's card (scrolled to and outlined), where **Open on Daft.ie** (or whichever site it came from) takes you to the advert and marks it seen. If the listing has since dropped out of your matches, the app says so. If the app is already open it is brought forward without reloading, and alerts sent before this behaviour still open the advert directly.
 - Each listing in the Matches tab shows its price and how near it is on one line, then **Open on …** (the advert, which also marks it seen) and **Not a fit**. **More** holds **Mark as seen** (dims it, tap again to undo) and **No longer available**. The two that put a listing away show **Moved to Not a fit · Undo** for a few seconds, and move it to a collapsed list of the same name at the bottom, where **Restore** / **Still available** brings it back as it was. These marks are stored on the server with the rest of the state, so they carry across scans and devices, and when the same property is on several sites a mark on one copy covers them all.
-- If every source fails 3 scans in a row you get a notification, and another on recovery.
-- Above the list, one line says whether the sites are being checked ("Watching 3 of 4 sites · last check 16 min ago"), names any that are paused or not responding in plain words, and warns when the last check is long overdue. The admin gets a **Details** link to the raw scanner diagnostics; invited users never see error codes.
+- If every source fails 3 scans in a row the admin gets a notification, and another on recovery.
+- Above the list, one line says whether the sites are being checked ("Watching 3 of 4 sites · last check 16 min ago"), and warns when the last check is long overdue. A site that is only paused (the laptop that fetches it is asleep) is shown calmly, in grey, as "catching up"; amber is for a site that isn't responding or a check that is overdue. The admin sees which sites; everyone else only that some are catching up or aren't responding. The admin gets a **Details** link to the raw scanner diagnostics; invited users never see error codes.
 - With no connection the app shows the last list it had, says how old it is and keeps trying; it only returns to the login screen when the server says the session has ended. If the list changes while someone is scrolled down, a **Matches updated · Show** button appears instead of moving the cards under their thumb.
 
 ## Map view
@@ -168,7 +168,7 @@ A small agent runs on a computer at home and connects *out* to the app over HTTP
 
 The agent only makes HTTPS requests to `daft.ie` and `rent.ie` (`AGENT_ALLOW`). It re-checks every redirect, never connects to private (home network) addresses and is never sent cookies, so the server can't use it for anything else. The scan log line ends with `via-laptop=daft,rent` while it is in use.
 
-While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Matches strip says "Watching 2 of 4 sites" and the Alerts tab shows them as paused, they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. If it has been gone for a day you get one notification, and another when it is back.
+While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Matches strip says "Watching 2 of 4 sites" and the Alerts tab shows them as paused, they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. If it has been gone for a day the admin gets one notification, and another when it is back.
 
 ### A paid residential proxy
 
