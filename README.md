@@ -60,8 +60,11 @@ I built the HTML scrapers without network access to the live sites, so check the
 ```bash
 npm run probe                 # all sources
 npm run probe -- ul rent      # specific sources
+npm run probe -- --region=cork     # a region's own pages and sources: limerick (the default), cork or galway
 npm run probe -- --url=https://example-agent.ie/lettings/limerick   # try any page
 ```
+
+`--region` reads the Daft area, Rent.ie and MyHome pages and locality hints from [`scripts/lib/regions.mjs`](scripts/lib/regions.mjs). Cork and Galway have no accommodation board, so they probe Daft, Rent.ie and MyHome. The presets don't change what the running app searches.
 
 It prints, per page, how many listings it recognised and for each: title, price, coordinates, availability, owner-occupied signal and whether the filters would pass it. If a source shows 0 listings it prints the start of the HTML it received, and **Status → Sources** plus `GET /api/debug` (while logged in) keep the same diagnostics for later scans.
 
