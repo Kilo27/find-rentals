@@ -110,19 +110,28 @@ export async function runAgent({
   log = console,
   signal,
   pollTimeoutMs = 40_000,
+  onState = () => {},
 }) {
   const base = server.replace(/\/+$/, "");
   const auth = { Authorization: `Bearer ${token}` };
   let backoff = 1_000;
   let connected = false;
+  // "connected", "offline" or "refused", reported to onState only when it changes (the tray icon shows it).
+  let reported = null;
+  const report = (state) => {
+    if (state === reported) return;
+    reported = state;
+    onState(state);
+  };
 
   while (!signal?.aborted) {
     try {
       const res = await fetchImpl(`${base}/api/agent/next`, { headers: auth, signal: AbortSignal.timeout(pollTimeoutMs) });
-      if (res.status === 401) throw new Error("the server refused the token (AGENT_TOKEN must match on both sides)");
+      if (res.status === 401) throw Object.assign(new Error("the server refused the token (AGENT_TOKEN must match on both sides)"), { refused: true });
       if (res.status !== 200 && res.status !== 204) throw new Error(`the server answered HTTP ${res.status}`);
       if (!connected) log.log(`[agent] connected to ${base}`);
       connected = true;
+      report("connected");
       backoff = 1_000;
       if (res.status === 204) continue;
 
@@ -145,6 +154,7 @@ export async function runAgent({
       if (!posted.ok) throw new Error(`the server refused the answer (HTTP ${posted.status})`);
     } catch (err) {
       if (signal?.aborted) break;
+      report(err.refused ? "refused" : "offline");
       log.warn(`[agent] ${connected ? "lost the server" : "can't reach the server"}: ${err.message}; retrying in ${backoff / 1000}s`);
       connected = false;
       await sleep(backoff);
