@@ -50,25 +50,40 @@ nav.tabs button.active { color: var(--accent); }
   display: block; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
   margin: 10px 0; overflow: hidden; color: inherit; text-decoration: none;
 }
-.card-link { display: block; color: inherit; text-decoration: none; }
+.card { scroll-margin-top: 12px; }
+.card.arrived { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card .body { padding: 12px 14px; }
 .card img { width: 100%; height: 160px; object-fit: cover; display: block; background: var(--line); }
-.card.seen .card-link, .card.rejected .card-link, .card.unavailable .card-link { opacity: 0.6; }
-/* Two columns with hairlines between cells; an odd last button takes the whole row. */
+.card:is(.seen, .rejected, .unavailable) :is(.price, .title, .near) { color: var(--muted); }
+.card:is(.seen, .rejected, .unavailable) img { opacity: 0.6; }
+/* The way to the listing comes first and fills the row; the two quiet choices share the next one. Hairlines between cells. */
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
 .act {
-  min-height: 44px; padding: 10px 8px; border: 0; background: var(--card); color: var(--accent);
-  font: inherit; font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 8px; border: 0;
+  background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer;
 }
-.act:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.act.bad { color: var(--bad); }
+/* The one way on: the accent on a faint tint of itself, so it leads without shouting on every card in a long list. */
+.act.open {
+  grid-column: 1 / -1; min-height: 48px; font-size: 16px; font-weight: 700; color: var(--accent);
+  background: var(--bg); background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.act.restore { grid-column: 1 / -1; color: var(--accent); }
+@media (hover: hover) {
+  .act:hover { background: var(--bg); }
+  .act.open:hover { background: var(--bg); background: color-mix(in srgb, var(--accent) 15%, var(--card)); }
+}
 .card-msg { margin: 0; padding: 8px 14px; border-top: 1px solid var(--line); }
 details.dismissed { margin-top: 16px; }
-details.dismissed > summary { color: var(--muted); }
-.price { font-size: 20px; font-weight: 700; }
+details.dismissed > summary { color: var(--muted); margin: 0; padding: 10px 0; }
+/* What it costs and how near it is: the two things a place is judged on first, on one line. */
+.lead { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; }
+.price { font-size: 22px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.near { margin-left: auto; text-align: right; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.near .note { display: block; font-size: 14px; color: var(--muted); }
+.near.via .note { color: var(--accent); }
 .title { margin: 2px 0 4px; }
 .meta { color: var(--muted); font-size: 14px; }
-.badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.badges { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: 8px; }
 .badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--line); color: var(--text); }
 .badge.new { background: var(--accent); color: var(--accent-text); }
 .badge.warn { background: transparent; border: 1px solid var(--warn); color: var(--warn); }
@@ -107,6 +122,11 @@ button:disabled { opacity: 0.5; }
 .kv:last-child { border-bottom: 0; }
 .kv span:first-child { color: var(--muted); }
 .login { padding: 48px 16px; }
+.login h1 { margin: 0 0 4px; }
+.login input { display: block; margin-top: 8px; }
+.login .hint { margin: 4px 0 16px; }
+.lede { margin: 0; font-size: 16px; font-weight: 600; }
+.boot { margin: 0; padding: 64px 16px; text-align: center; color: var(--muted); }
 details summary { cursor: pointer; font-weight: 600; margin: 12px 0 0; }
 select {
   width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
@@ -118,7 +138,7 @@ nav.tabs { z-index: 50; }
 #app.wide { max-width: 1280px; }
 
 .seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 12px; overflow: hidden; margin: 4px 0 10px; }
-.seg button { font: inherit; font-weight: 700; padding: 8px 20px; border: 0; background: transparent; color: var(--accent); }
+.seg button { font: inherit; font-weight: 700; padding: 8px 20px; min-height: 44px; border: 0; background: transparent; color: var(--accent); }
 .seg button.active { background: var(--accent); color: var(--accent-text); }
 
 .map-wrap { position: relative; z-index: 0; isolation: isolate; height: calc(100dvh - 165px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 380px; margin: 0 -16px; overflow: hidden; background: var(--line); }
@@ -168,6 +188,8 @@ button.linklike { font: inherit; color: var(--accent); background: none; border:
 .mcard.compact { display: flex; gap: 8px; border-top: 1px solid var(--line); }
 .mcard.compact img { width: 72px; height: 72px; flex: none; }
 .mcard.compact .price { font-size: 16px; }
+.mcard.compact .near { font-size: 14px; }
+.mcard.compact .near .note { display: none; }
 .mcard.compact .badges, .mcard.compact .transit { display: none; }
 .mcard:hover { background: var(--bg); }
 
@@ -188,3 +210,57 @@ details.route summary { margin: 8px 0 4px; }
 .stoprow span:last-child { display: block; color: var(--muted); }
 .stops a, .hint a { color: var(--accent); }
 details .check { margin-left: 4px; }
+
+/* Keyboard focus: one ring, taken from the palette. Inside clipped grid cells it sits inward so it isn't cut off. */
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.act:focus-visible, nav.tabs button:focus-visible { outline-offset: -3px; }
+
+/* Whether the sites are being checked: one calm line above the list. The icon and the words carry it, never colour alone. */
+.strip { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 14px; }
+.strip .icon, .site .icon, .status-line .icon, .offline .icon { flex: none; }
+.strip .icon { margin-top: 3px; }
+.strip-text { flex: 1; min-width: 0; }
+.strip-head { font-weight: 600; }
+.strip-issue { color: var(--muted); }
+.strip .linklike { display: block; margin: 0 0 -8px -4px; padding: 10px 4px 8px; font-weight: 600; }
+.strip.ok .icon, .status-line.mode-on .icon, .site.ok .icon { color: var(--ok); }
+.strip:is(.partial, .stale, .down, .failed) .icon, .status-line:is(.mode-blocked, .mode-unsupported) .icon, .site:is(.warn, .down) .icon, .offline .icon { color: var(--warn); }
+.strip:is(.none, .paused) .icon, .site.paused .icon, .status-line:is(.mode-off, .mode-install, .mode-viewing) .icon { color: var(--muted); }
+
+/* The first-run card that asks a device to turn on alerts. */
+.panel.setup { border-color: var(--accent); }
+.panel.setup h2 { font-size: 18px; }
+.panel.setup p { margin: 0 0 8px; }
+.setup .linklike { margin: 0 0 -8px -8px; padding: 12px 8px; }
+.offline .linklike { padding: 12px 8px; }
+ol.steps { margin: 8px 0; padding-left: 22px; }
+ol.steps li { margin: 6px 0; }
+
+.status-line { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-weight: 600; }
+.site { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.site:last-child { border-bottom: 0; }
+.site .icon { margin-top: 3px; }
+.site-name { font-weight: 600; }
+.site .hint { margin-top: 0; }
+details.scanner > summary { margin: 0; font-size: 16px; font-weight: 700; }
+details.scanner[open] > summary { margin-bottom: 8px; }
+
+.offline { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); font-size: 14px; }
+.offline span { flex: 1; min-width: 0; }
+
+.invite textarea { margin-top: 8px; font-size: 14px; line-height: 1.4; }
+
+/* Messages that come and go sit in the page permanently, so a screen reader announces each one. */
+.toast {
+  position: fixed; z-index: 70; left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom) + 12px); max-width: 480px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 8px 4px 16px; border-radius: 12px;
+  background: var(--text); color: var(--bg); font-size: 14px; font-weight: 600; box-shadow: 0 4px 16px rgb(0 0 0 / .3);
+}
+.toast:empty { display: block; height: 0; padding: 0; overflow: hidden; box-shadow: none; }
+.toast span { padding: 8px 0; }
+.toast button { min-height: 44px; padding: 0 12px; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.refresh-note { position: fixed; z-index: 55; top: calc(env(safe-area-inset-top) + 8px); left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+.refresh-note button {
+  pointer-events: auto; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-text);
+  font: inherit; font-size: 14px; font-weight: 700; box-shadow: 0 2px 10px rgb(0 0 0 / .3); cursor: pointer;
+}

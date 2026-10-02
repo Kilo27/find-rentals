@@ -62,7 +62,8 @@ test("scan: later runs push only brand-new matches, once", async () => {
   assert.equal(pusher.sent.length, 1);
   assert.match(pusher.sent[0].title, /^€500\/mo · Room 2/);
   assert.match(pusher.sent[0].body, /1\.2 km from University of Limerick/);
-  assert.equal(pusher.sent[0].url, "https://www.daft.ie/share/room-2/2");
+  assert.equal(pusher.sent[0].url, "/?listing=daft%3A2", "a tap opens the app on that listing");
+  assert.equal(pusher.sent[0].listingUrl, "https://www.daft.ie/share/room-2/2", "the source address still travels with it");
 
   await scanner.run();
   assert.equal(pusher.sent.length, 1, "no repeat notification");
@@ -255,6 +256,17 @@ test("push: listing payload formatting", () => {
   assert.equal(payload.title, "€600/mo · Room 3, Plassey");
   assert.equal(payload.body, "0.8 km from UL · Daft.ie · Double Room · short-term friendly · check owner-occupied");
   assert.equal(payload.tag, "listing-daft:3");
+  assert.equal(payload.url, "/?listing=daft%3A3");
+  assert.equal(payload.listingUrl, "https://www.daft.ie/x");
+});
+
+test("push: ids with awkward characters survive the round trip through the alert's address", async () => {
+  const { listingFromSearch } = await import("../public/app-model.js");
+  const payload = buildListingPayload(
+    { id: "web:https://site.ie/a b?c=1&d=2", title: "T", priceMonthly: 500, distanceKm: 1, sourceLabel: "Site", url: "https://site.ie/a" },
+    { center: { label: "UL" } },
+  );
+  assert.equal(listingFromSearch(payload.url.slice(1)), "web:https://site.ie/a b?c=1&d=2");
 });
 
 import fs from "node:fs";

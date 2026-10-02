@@ -127,7 +127,10 @@ export function buildListingPayload(listing, config) {
   return {
     title: `${price} · ${listing.title}`.slice(0, 120),
     body: [dist, transit, listing.sourceLabel, listing.bedsText, ...extras, also].filter(Boolean).join(" · "),
-    url: listing.url,
+    // Tapping the alert opens the app on this listing's card, where it can be dealt with and then opened on its own
+    // site. A copy of the source address rides along for anything that wants to go straight there.
+    url: `/?listing=${encodeURIComponent(listing.id)}`,
+    listingUrl: listing.url,
     tag: `listing-${listing.id}`,
   };
 }

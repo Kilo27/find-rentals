@@ -1,4 +1,5 @@
-import { h, timeAgo, MODE_ICON, describeMatch, badgeRow, listingImage } from "./ui.js";
+import { h, timeAgo, MODE_ICON, describeMatch, badgeRow, leadRow, listingImage, icon } from "./ui.js";
+import { alertsSetup, inviteText, listingFromSearch, summarizeSources } from "./app-model.js";
 import { createMapView } from "./map.js";
 
 const root = document.getElementById("app");
@@ -19,6 +20,90 @@ const dismissedStatuses = new Set(DISMISSED.map((d) => d.status));
 const isDismissed = (m) => dismissedStatuses.has(m.review);
 const openSections = {};
 
+let sessionEnded = false; // signed out by the server while the app was open, as opposed to never signed in
+let unreachable = false; // no connection at start-up and no saved copy to show
+let offline = false; // showing the last copy because the server can't be reached
+let loadedAt = Date.now(); // when `state` was last fetched or restored
+let pushState = { supported: false, permission: "default", subscribedHere: false };
+let pendingListing = listingFromSearch(location.search); // the listing an alert pointed at, until it has been shown
+let arrivedId = null; // the card to highlight after arriving from an alert
+let moreFor = null; // the card whose extra actions are open
+let lastInvite = null; // what to send someone just added: { username, password, reset }
+let lastDismissAt = 0;
+let pendingRefresh = false;
+// What a listing's verdict was before it was dismissed, so "Restore" and "Undo" put it back as it was.
+const previousReview = new Map();
+if (pendingListing) history.replaceState(null, "", location.pathname);
+
+const SNAPSHOT_KEY = "rw.snapshot";
+const ALERTS_CARD_KEY = "rw.alertsCardHidden";
+
+// A short message that appears above the tab bar, optionally with one action (Undo). It stays in the page so a
+// screen reader announces each new message.
+const toast = h("div", { class: "toast", role: "status", "aria-live": "polite" });
+const refreshNote = h("div", { class: "refresh-note", role: "status", "aria-live": "polite" });
+document.body.append(toast, refreshNote);
+let toastTimer;
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  toast.replaceChildren();
+}
+
+function showToast(text, action) {
+  clearTimeout(toastTimer);
+  toast.replaceChildren(
+    ...[
+      h("span", {}, text),
+      action
+        ? h(
+            "button",
+            {
+              type: "button",
+              onclick: () => {
+                hideToast();
+                action.run();
+              },
+            },
+            action.label,
+          )
+        : null,
+    ].filter(Boolean),
+  );
+  toastTimer = setTimeout(hideToast, action ? 8000 : 4000);
+}
+
+const msgBox = (cls = "") => h("div", { class: `msg ${cls}`.trim(), role: "status", "aria-live": "polite" });
+const sentence = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+function saveSnapshot() {
+  if (!state || state.viewingAs) return;
+  try {
+    const { areas, vapidPublicKey, ...rest } = state;
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ savedAt: Date.now(), state: rest }));
+  } catch {}
+}
+
+function clearSnapshot() {
+  try {
+    localStorage.removeItem(SNAPSHOT_KEY);
+  } catch {}
+}
+
+// With no connection the last list is better than nothing: show it, say how old it is, and carry on trying.
+function useSnapshot() {
+  try {
+    const snap = JSON.parse(localStorage.getItem(SNAPSHOT_KEY));
+    if (snap?.state?.user && Array.isArray(snap.state.matches)) {
+      state = { areas: {}, vapidPublicKey: null, ...snap.state };
+      loadedAt = snap.savedAt;
+      offline = true;
+      return;
+    }
+  } catch {}
+  unreachable = true;
+}
+
 const mapView = createMapView({
   api: (...args) => api(...args),
   onShowList: () => setView("list"),
@@ -34,20 +119,35 @@ function setView(v) {
 }
 
 async function api(method, url, body) {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
-    credentials: "same-origin",
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: "same-origin",
+    });
+  } catch {
+    const err = new Error("Can't reach Rental Watch. Check your connection and try again.");
+    err.offline = true;
+    throw err;
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && url !== "/api/login") {
+    // Only say the session ended if there was one: a first visit gets a plain login screen.
+    sessionEnded = Boolean(state);
     state = null;
+    offline = false;
+    unreachable = false;
+    clearSnapshot();
     render();
-    throw new Error("Please log in");
+    const err = new Error("Your session ended. Please log in again.");
+    err.status = 401;
+    throw err;
   }
   if (!res.ok) {
-    const err = new Error(data.errors ? data.errors.join("; ") : data.error || `HTTP ${res.status}`);
+    const err = new Error(data.errors ? data.errors.join("; ") : data.error || `Something went wrong (HTTP ${res.status}).`);
+    err.status = res.status;
     throw err;
   }
   return data;
@@ -67,63 +167,203 @@ const isStandalone = window.navigator.standalone === true || window.matchMedia("
 
 async function loadState() {
   state = await api("GET", "/api/state");
+  offline = false;
+  unreachable = false;
+  loadedAt = Date.now();
+  saveSnapshot();
 }
+
+// What would change the list on screen. Anything else a refresh brings back can wait for the next time it is drawn.
+const listSignature = () =>
+  JSON.stringify([
+    state?.matches.map((m) => [m.id, m.review, m.priceMonthly, m.lat, m.lng, m.areaKey, m.firstSeenAt, m.flags]),
+    Object.keys(state?.areas ?? {}),
+    state?.lastRun?.at,
+    state?.config?.enabled,
+  ]);
 
 async function boot() {
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type === "open-listing") openListing(e.data.listing);
+    });
+  }
   try {
     await loadState();
+    await refreshPushState();
     syncSubscription();
-  } catch {
+  } catch (err) {
     state = null;
+    if (err.offline) useSnapshot();
   }
   render();
-  setInterval(async () => {
-    if (!state || document.hidden) return;
-    try {
-      const before = matchSignature();
-      await loadState();
-      if (tab === "matches" && (view === "list" || before !== matchSignature())) render();
-    } catch {}
-  }, 60_000);
+  if (state && pendingListing) openListing(pendingListing);
+  setInterval(refresh, 60_000);
+  document.addEventListener("visibilitychange", () => !document.hidden && refresh());
+  window.addEventListener("online", () => refresh());
 }
 
-const matchSignature = () => JSON.stringify([state?.matches.map((m) => [m.id, m.priceMonthly, m.lat, m.lng, m.areaKey]), Object.keys(state?.areas ?? {})]);
+// Fetches the latest state, on a timer, when the app is brought back to the front, and when the connection returns.
+// If the list is changing under someone who has scrolled down, it offers the update instead of moving things around.
+async function refresh({ manual = false } = {}) {
+  if (document.hidden && !manual) return;
+  if (!state && !unreachable) return;
+  const before = listSignature();
+  const wasOffline = offline || unreachable;
+  try {
+    await loadState();
+  } catch (err) {
+    if (err.offline && state && !offline) {
+      offline = true;
+      render();
+    }
+    if (manual) throw err;
+    return;
+  }
+  if (wasOffline) {
+    await refreshPushState();
+    render();
+    if (pendingListing) openListing(pendingListing);
+    return;
+  }
+  if (tab !== "matches" || before === listSignature()) return;
+  if (view === "list" && window.scrollY > 160) {
+    pendingRefresh = true;
+    refreshNote.replaceChildren(
+      h(
+        "button",
+        {
+          type: "button",
+          onclick: () => {
+            pendingRefresh = false;
+            refreshNote.replaceChildren();
+            render();
+            window.scrollTo(0, 0);
+          },
+        },
+        "Matches updated · Show",
+      ),
+    );
+    return;
+  }
+  render();
+}
 
 function render() {
+  if (pendingRefresh) {
+    pendingRefresh = false;
+    refreshNote.replaceChildren();
+  }
   root.classList.toggle("wide", Boolean(state) && tab === "matches" && view === "map");
-  root.replaceChildren(state ? renderMain() : renderLogin());
+  root.replaceChildren(state ? renderMain() : unreachable ? renderUnreachable() : renderLogin());
+}
+
+// Whether this device can get alerts, and whether it is already set up for them.
+async function refreshPushState() {
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const permission = "Notification" in window ? Notification.permission : "unsupported";
+  let subscribedHere = false;
+  if (supported && permission === "granted") {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      subscribedHere = Boolean(await reg?.pushManager.getSubscription());
+    } catch {}
+  }
+  pushState = { supported, permission, subscribedHere };
+}
+
+// Shows the listing an alert pointed at: on the Matches list, scrolled to and highlighted.
+function openListing(id) {
+  pendingListing = null;
+  if (!state || !id) return;
+  const m = state.matches.find((x) => x.id === id);
+  tab = "matches";
+  view = "list";
+  if (!m) {
+    render();
+    showToast("That listing is no longer in your matches.");
+    return;
+  }
+  if (isDismissed(m)) openSections[m.review] = true;
+  arrivedId = m.id;
+  render();
+  const card = [...root.querySelectorAll(".card")].find((el) => el.dataset.id === m.id);
+  card?.scrollIntoView({ block: "start" });
+  setTimeout(() => {
+    if (arrivedId === m.id) arrivedId = null;
+    card?.classList.remove("arrived");
+  }, 6000);
 }
 
 function renderLogin() {
-  const msg = h("div", { class: "msg err" });
-  const name = h("input", { type: "text", placeholder: "Username", autocomplete: "username", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
-  const input = h("input", { type: "password", placeholder: "Password", autocomplete: "current-password" });
+  const msg = msgBox("err");
+  msg.setAttribute("role", "alert");
+  if (sessionEnded) msg.textContent = "Your session ended. Please log in again.";
+  const name = h("input", { type: "text", placeholder: "Username", "aria-label": "Username", autocomplete: "username", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const input = h("input", { type: "password", placeholder: "Password", "aria-label": "Password", autocomplete: "current-password" });
+  const submit = h("button", { class: "primary", type: "submit" }, "Log in");
   const form = h(
     "form",
     {
       class: "login",
       onsubmit: async (e) => {
         e.preventDefault();
+        submit.disabled = true;
+        msg.textContent = "";
         try {
           await api("POST", "/api/login", { username: name.value, password: input.value });
+          sessionEnded = false;
           await loadState();
+          await refreshPushState();
           tab = "matches";
           render();
           syncSubscription();
+          if (pendingListing) openListing(pendingListing);
         } catch (err) {
-          msg.textContent = err.message;
+          msg.textContent = sentence(err.message);
+          submit.disabled = false;
         }
       },
     },
     h("h1", {}, "Rental Watch"),
-    h("p", { class: "hint" }, "Sign in with your username and password. You only need to do this once per device."),
+    h("p", { class: "lede" }, "Alerts for new rentals near your campus."),
+    h("p", { class: "hint" }, "Log in with the username and password you were given. You only need to do this once per device."),
     name,
     input,
-    h("button", { class: "primary", type: "submit" }, "Log in"),
+    submit,
     msg,
   );
   return form;
+}
+
+// Start-up with no connection and nothing saved to show.
+function renderUnreachable() {
+  const msg = msgBox("err");
+  return h(
+    "div",
+    { class: "login" },
+    h("h1", {}, "Rental Watch"),
+    h("p", { class: "lede" }, "Can't reach Rental Watch."),
+    h("p", { class: "hint" }, "Check your connection. This will keep trying on its own, or you can try now."),
+    h(
+      "button",
+      {
+        class: "primary",
+        onclick: async (e) => {
+          e.target.disabled = true;
+          try {
+            await refresh({ manual: true });
+          } catch (err) {
+            msg.textContent = err.message;
+            e.target.disabled = false;
+          }
+        },
+      },
+      "Try again",
+    ),
+    msg,
+  );
 }
 
 async function loadUsers() {
@@ -143,10 +383,10 @@ function renderMain() {
   const admin = state.user.isAdmin;
   const tabs = [["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`]];
   if (admin) tabs.push(["settings", "Settings"]);
-  tabs.push(["status", "Status"]);
+  tabs.push(["alerts", "Alerts"]);
   if (admin) tabs.push(["users", "Users"]);
   if ((tab === "users" || tab === "settings") && !admin) tab = "matches";
-  const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : tab === "users" ? renderUsers() : renderStatus();
+  const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : tab === "users" ? renderUsers() : renderAlerts();
   const c = state.config;
   return h(
     "div",
@@ -159,6 +399,29 @@ function renderMain() {
           h("button", { class: "secondary", onclick: stopViewing }, "Exit"),
         )
       : null,
+    offline
+      ? h(
+          "div",
+          { class: "offline", role: "status" },
+          icon("alert"),
+          h("span", {}, `Can't reach Rental Watch. Showing the list from ${timeAgo(new Date(loadedAt).toISOString())}.`),
+          h(
+            "button",
+            {
+              class: "linklike",
+              onclick: async (e) => {
+                e.target.disabled = true;
+                await refresh({ manual: true }).catch(() => {});
+                if (offline) {
+                  e.target.disabled = false;
+                  showToast("Still can't reach Rental Watch.");
+                }
+              },
+            },
+            "Try again",
+          ),
+        )
+      : null,
     h(
       "header",
       {},
@@ -168,12 +431,13 @@ function renderMain() {
     h("main", {}, content),
     h(
       "nav",
-      { class: "tabs" },
+      { class: "tabs", "aria-label": "Sections" },
       tabs.map(([id, label]) =>
         h(
           "button",
           {
             class: tab === id ? "active" : "",
+            "aria-current": tab === id ? "page" : false,
             onclick: async () => {
               tab = id;
               if (id === "users") {
@@ -203,32 +467,166 @@ function renderMatches() {
     mapView.update({ ...state, matches: state.matches.filter((m) => !isDismissed(m)) });
     return [toggle, mapView.el];
   }
-  return [toggle, ...[renderList()].flat()];
+  return [renderAlertsCard(), toggle, renderSourceStrip(), ...[renderList()].flat()];
 }
 
-// Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server says no.
-async function setReview(m, status) {
-  const before = m.review;
+// Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server
+// says no. Looks the listing up by id because the list may have been refreshed since the button was drawn.
+async function setReview(id, status) {
+  const m = state?.matches.find((x) => x.id === id);
+  if (!m) return false;
+  const before = m.review ?? null;
   m.review = status;
   m.reviewError = null;
   render();
   try {
-    await api("PUT", "/api/review", { id: m.id, status });
+    await api("PUT", "/api/review", { id, status });
+    saveSnapshot();
+    return true;
   } catch (err) {
     m.review = before;
     m.reviewError = err.message;
     render();
+    return false;
   }
+}
+
+// Takes a listing out of the main list and says where it went, with a way to put it straight back.
+async function dismiss(m, status) {
+  // The next card slides up under the same thumb position, so a second tap straight after is almost always a slip.
+  if (Date.now() - lastDismissAt < 600) return;
+  lastDismissAt = Date.now();
+  const before = m.review ?? null;
+  previousReview.set(m.id, before);
+  moreFor = null;
+  const title = DISMISSED.find((d) => d.status === status).title;
+  if (await setReview(m.id, status)) showToast(`Moved to ${title}`, { label: "Undo", run: () => setReview(m.id, before) });
+}
+
+const restore = (m) => setReview(m.id, previousReview.get(m.id) ?? null);
+
+// Going to the listing's own site is the natural "I've looked at this", so it marks the card seen.
+function openedListing(m) {
+  if (m.review) return;
+  // After the browser has followed the link: re-drawing the list first could swallow the click.
+  setTimeout(() => setReview(m.id, "seen"), 0);
+}
+
+// One line saying whether the sites are being checked, so that no news can be read as no news and not as a silent failure.
+function renderSourceStrip() {
+  const s = summarizeSources(state);
+  const admin = state.user.isAdmin;
+  const iconName = s.level === "ok" ? "check" : s.level === "none" || s.level === "paused" ? "pause" : "alert";
+  return h(
+    "div",
+    { class: `strip ${s.level}`, role: "status" },
+    icon(iconName),
+    h(
+      "div",
+      { class: "strip-text" },
+      h("div", { class: "strip-head" }, s.headline),
+      s.note ? h("div", { class: "strip-issue" }, s.note) : null,
+      admin && s.level !== "ok" && s.level !== "none"
+        ? h(
+            "button",
+            {
+              class: "linklike",
+              onclick: () => {
+                openSections.scanner = true;
+                tab = "alerts";
+                render();
+                window.scrollTo(0, 0);
+              },
+            },
+            "Scanner details",
+          )
+        : null,
+    ),
+  );
+}
+
+const hideAlertsCard = () => {
+  try {
+    return localStorage.getItem(ALERTS_CARD_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const setupMode = () => alertsSetup({ ...pushState, viewing: Boolean(state.viewingAs), isIos, standalone: isStandalone });
+
+// The three ways to put the app on an iPhone's Home Screen, which is the only way an iPhone can receive alerts.
+const installSteps = () =>
+  h(
+    "ol",
+    { class: "steps" },
+    h("li", {}, "In Safari, tap the Share button."),
+    h("li", {}, "Choose Add to Home Screen."),
+    h("li", {}, "Open Rental Watch from your Home Screen, log in, and tap Turn on alerts."),
+  );
+
+const blockedSteps = () =>
+  h(
+    "div",
+    { class: "hint" },
+    isIos
+      ? "Open Settings, then Notifications, then Rental Watch, and switch on Allow Notifications. Then come back here."
+      : "Allow notifications for this site in your browser's site settings, then reload this page.",
+  );
+
+// Getting alerts is the point of the app, so a device that isn't set up is told so at the top of the first screen.
+function renderAlertsCard() {
+  const mode = setupMode();
+  if (!["install", "off", "blocked"].includes(mode) || hideAlertsCard()) return null;
+  const msg = msgBox("err");
+  const notNow = h(
+    "button",
+    {
+      class: "linklike",
+      onclick: () => {
+        try {
+          localStorage.setItem(ALERTS_CARD_KEY, "1");
+        } catch {}
+        render();
+      },
+    },
+    "Not now",
+  );
+  if (mode === "install") {
+    return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Get alerts on your iPhone"), h("p", {}, "Rental Watch can only send alerts once it is on your Home Screen."), installSteps(), h("div", { class: "hint" }, "Needs iOS 16.4 or later."), notNow);
+  }
+  if (mode === "blocked") {
+    return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Alerts are blocked on this device"), blockedSteps(), notNow);
+  }
+  return h(
+    "section",
+    { class: "panel setup", "aria-label": "Get alerts" },
+    h("h2", {}, "Turn on alerts"),
+    h("p", {}, "Get a notification on this device when a new place matches."),
+    h(
+      "button",
+      {
+        class: "primary",
+        onclick: (e) => {
+          e.target.disabled = true;
+          turnOnAlerts(msg).finally(() => (e.target.disabled = false));
+        },
+      },
+      "Turn on alerts",
+    ),
+    notNow,
+    msg,
+  );
 }
 
 function renderList() {
   if (!state.matches.length) {
     const ran = state.lastRun;
-    return h("div", { class: "empty" }, ran ? "No matching listings right now. You'll get a notification when one appears." : "Waiting for the first scan...");
+    return h("div", { class: "empty" }, ran ? "No matching listings right now. You'll get an alert when a new place appears." : "Waiting for the first check. Places that match will appear here.");
   }
   const active = state.matches.filter((m) => !isDismissed(m));
   return [
-    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Nothing left to look at: everything here has been dismissed.")]),
+    ...(active.length ? active.map(renderCard) : [h("div", { class: "empty" }, "Nothing left to look at. Everything here has been put away.")]),
     ...DISMISSED.map(({ status, title }) => {
       const group = state.matches.filter((m) => m.review === status);
       return group.length
@@ -247,41 +645,57 @@ function renderCard(m) {
   const seen = m.review === "seen";
   const dismissed = DISMISSED.find((d) => d.status === m.review);
   const d = describeMatch(m, state.config);
+  const more = moreFor === m.id;
   return h(
     "div",
-    { class: `card${m.review ? ` ${m.review}` : ""}` },
-    h(
-      "a",
-      { class: "card-link", href: m.url, target: "_blank", rel: "noopener noreferrer" },
-      listingImage(m),
-      h(
-        "div",
-        { class: "body" },
-        h("div", { class: "price" }, d.price),
-        h("div", { class: "title" }, m.title),
-        h("div", { class: "meta" }, d.meta),
-        d.transit.map((t) => h("div", { class: "transit" }, t)),
-        badgeRow(d.badges),
-      ),
-    ),
+    { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id },
+    listingImage(m),
+    h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
     h(
       "div",
       { class: "actions" },
       dismissed
-        ? h("button", { class: "act", onclick: () => setReview(m, "seen") }, dismissed.undo)
+        ? h("button", { class: "act restore", onclick: () => restore(m) }, dismissed.undo)
         : [
-            h("button", { class: "act", onclick: () => setReview(m, seen ? null : "seen") }, seen ? "Mark as unseen" : "Mark as seen"),
-            h("button", { class: "act bad", onclick: () => setReview(m, "rejected") }, "Not a fit"),
-            h("button", { class: "act bad", onclick: () => setReview(m, "unavailable") }, "No longer available"),
+            h("a", { class: "act open", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => openedListing(m) }, `Open on ${m.sourceLabel}`, icon("external")),
+            h("button", { class: "act", onclick: () => dismiss(m, "rejected") }, "Not a fit"),
+            h(
+              "button",
+              {
+                class: "act",
+                "aria-expanded": String(more),
+                onclick: () => {
+                  moreFor = more ? null : m.id;
+                  render();
+                },
+              },
+              more ? "Less" : "More",
+            ),
+            more
+              ? [
+                  h(
+                    "button",
+                    {
+                      class: "act",
+                      onclick: () => {
+                        moreFor = null;
+                        setReview(m.id, seen ? null : "seen");
+                      },
+                    },
+                    seen ? "Mark as unseen" : "Mark as seen",
+                  ),
+                  h("button", { class: "act", onclick: () => dismiss(m, "unavailable") }, "No longer available"),
+                ]
+              : null,
           ],
     ),
-    m.reviewError ? h("div", { class: "msg err card-msg" }, `Couldn't save that: ${m.reviewError}`) : null,
+    m.reviewError ? h("div", { class: "msg err card-msg", role: "alert" }, `Couldn't save that: ${m.reviewError}`) : null,
   );
 }
 
 function renderSettings() {
   const c = state.config;
-  const msg = h("div", { class: "msg" });
+  const msg = msgBox();
   const f = {};
   const text = (name, label, value, attrs = {}) => {
     f[name] = h("input", { type: "text", value: value ?? "", ...attrs });
@@ -380,7 +794,7 @@ function renderSettings() {
           const r = await api("PUT", "/api/config", collect());
           state.config = r.config;
           msg.className = "msg ok";
-          msg.textContent = "Saved. Changes apply from the next scan (use Status > Scan now to apply immediately).";
+          msg.textContent = "Saved. Changes apply from the next scan (or use Alerts > Scanner details > Scan now to apply them immediately).";
         } catch (err) {
           msg.className = "msg err";
           msg.textContent = err.message;
@@ -573,32 +987,45 @@ function renderTransitSettings(c, f, num, check) {
   );
 }
 
-function renderStatus() {
-  const r = state.lastRun;
-  const perm = "Notification" in window ? Notification.permission : "unsupported";
-  const msg = h("div", { class: "msg" });
+// Turns alerts on for this device, reporting progress and failure in `msg`.
+async function turnOnAlerts(msg) {
   const say = (text, ok = true) => {
     msg.className = `msg ${ok ? "ok" : "err"}`;
     msg.textContent = text;
   };
+  try {
+    say("Turning on alerts...");
+    await enablePush();
+    await refreshPushState();
+    await loadState();
+    render();
+    showToast("Alerts are on for this device.");
+  } catch (err) {
+    say(err.message, false);
+  }
+}
 
-  const enable = h(
-    "button",
-    {
-      class: "primary",
-      onclick: async () => {
-        try {
-          say("Enabling...");
-          await enablePush();
-          await loadState();
-          render();
-        } catch (err) {
-          say(err.message, false);
-        }
-      },
-    },
-    "Enable notifications on this device",
-  );
+const SOURCE_ICON = { ok: "check", paused: "pause", warn: "alert", down: "alert" };
+
+function renderAlerts() {
+  const mode = setupMode();
+  const msg = msgBox();
+  const say = (text, ok = true) => {
+    msg.className = `msg ${ok ? "ok" : "err"}`;
+    msg.textContent = text;
+  };
+  const viewing = Boolean(state.viewingAs);
+  const admin = state.user.isAdmin && !viewing;
+
+  const statusLine = {
+    on: [icon("check"), "On for this device"],
+    off: [icon("pause"), "Off on this device"],
+    blocked: [icon("alert"), "Blocked on this device"],
+    install: [icon("pause"), "Not available until Rental Watch is on your Home Screen"],
+    unsupported: [icon("alert"), "This browser can't receive alerts"],
+    viewing: [icon("pause"), `Devices can't be changed while viewing as ${state.viewingAs?.username}`],
+  }[mode];
+
   const test = h(
     "button",
     {
@@ -606,27 +1033,44 @@ function renderStatus() {
       onclick: async () => {
         try {
           const res = await api("POST", "/api/test-push");
-          say(res.sent ? `Sent to ${res.sent} device(s).` : "No device received it. Enable notifications first.", res.sent > 0);
+          say(res.sent ? "Test alert sent to this device." : "No device received it. Turn on alerts first.", res.sent > 0);
         } catch (err) {
           say(err.message, false);
         }
       },
     },
-    "Send test notification",
+    "Send a test alert",
   );
+  const enable = h(
+    "button",
+    {
+      class: "primary",
+      onclick: (e) => {
+        e.target.disabled = true;
+        turnOnAlerts(msg).finally(() => (e.target.disabled = false));
+      },
+    },
+    "Turn on alerts",
+  );
+
+  const watching = summarizeSources(state);
+  const scanMsg = msgBox();
+  const r = state.lastRun;
   const scan = h(
     "button",
     {
       class: "secondary",
       onclick: async (e) => {
         e.target.disabled = true;
-        say("Scanning Daft...");
+        scanMsg.className = "msg";
+        scanMsg.textContent = "Scanning...";
         try {
           await api("POST", "/api/scan");
           await loadState();
           render();
         } catch (err) {
-          say(err.message, false);
+          scanMsg.className = "msg err";
+          scanMsg.textContent = err.message;
           e.target.disabled = false;
         }
       },
@@ -634,65 +1078,55 @@ function renderStatus() {
     "Scan now",
   );
 
-  const viewing = Boolean(state.viewingAs);
-
   return h(
     "div",
     {},
     h(
       "div",
       { class: "panel" },
-      h("h2", {}, "Notifications"),
-      !viewing && isIos && !isStandalone
-        ? h("div", { class: "hint" }, "On iPhone: tap Share, then Add to Home Screen, then open Rental Watch from your Home Screen and come back here. (Needs iOS 16.4 or later.)")
-        : null,
-      viewing ? null : kv("Permission on this device", perm),
-      kv("Devices subscribed", String(state.subscriptions.length)),
-      state.subscriptions.map((s) => (s.lastError ? kv("Last push error", s.lastError) : null)),
-      viewing
-        ? h("div", { class: "hint" }, `Devices and passwords can't be changed while viewing as ${state.viewingAs.username}. Exit to change yours.`)
-        : [enable, test],
+      h("h2", {}, "Alerts on this device"),
+      h("div", { class: `status-line mode-${mode}` }, statusLine),
+      mode === "install" ? [installSteps(), h("div", { class: "hint" }, "Needs iOS 16.4 or later.")] : null,
+      mode === "blocked" ? blockedSteps() : null,
+      mode === "off" ? enable : null,
+      mode === "on" ? test : null,
       msg,
+      viewing ? null : kv("Devices receiving your alerts", String(state.subscriptions.length)),
+      state.subscriptions.map((s) => (s.lastError ? h("div", { class: "hint" }, `One of your devices couldn't be reached: ${s.lastError}`) : null)),
     ),
     h(
       "div",
       { class: "panel" },
-      h("h2", {}, "Scanner"),
-      r ? kv("Last scan", `${timeAgo(r.at)} (${r.ok ? "ok" : "FAILED"})`) : kv("Last scan", "not yet"),
-      r && r.ok ? kv("Listings seen / matching / new", `${r.candidates} / ${r.matches} / ${r.newCount}`) : null,
-      r && r.ok && r.pending ? kv("Waiting for detail pages", String(r.pending)) : null,
-      r && !r.ok ? kv("Error", r.error) : null,
-      kv("Next scan", state.scanning ? "running now" : state.config.enabled ? inFuture(state.nextRunAt) : "paused"),
-      state.failureCount ? kv("Consecutive failures", String(state.failureCount)) : null,
-      scan,
+      h("h2", {}, "Sites being watched"),
+      watching.rows.length
+        ? watching.rows.map((row) => h("div", { class: `site ${row.status}` }, icon(SOURCE_ICON[row.status]), h("div", {}, h("div", { class: "site-name" }, row.label), h("div", { class: "hint" }, row.detail))))
+        : h("div", { class: "hint" }, watching.headline),
     ),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Sources"),
-      r
-        ? r.sources.map((src) => {
-            const health = state.sourceHealth?.[src.id];
-            const warn = src.notes.find((n) => n.warning)?.warning;
-            const skipped = src.notes.filter((n) => n.skipped).length;
-            const detail = src.skipped
-              ? `not checked: ${src.skipped}`
-              : src.ok
-                ? `${src.fetched} found${skipped ? `, ${skipped} page(s) not found` : ""}${warn ? " - check layout" : ""}`
-                : `error: ${src.error}`;
-            return kv(src.label, health?.failures >= 3 ? `${detail} (failing x${health.failures})` : detail);
-          })
-        : h("div", { class: "hint" }, "No scan yet."),
-    ),
+    admin
+      ? h(
+          "details",
+          { class: "panel scanner", open: openSections.scanner === true, ontoggle: (e) => (openSections.scanner = e.target.open) },
+          h("summary", {}, "Scanner details"),
+          r ? kv("Last scan", `${timeAgo(r.at)} (${r.ok ? "ok" : "failed"})`) : kv("Last scan", "not yet"),
+          r && r.ok ? kv("Found / kept / new", `${r.candidates} / ${r.matches} / ${r.newCount}`) : null,
+          r && r.ok && r.pending ? kv("Waiting for detail pages", String(r.pending)) : null,
+          r && !r.ok ? kv("Error", r.error) : null,
+          kv("Next scan", state.scanning ? "running now" : state.config.enabled ? inFuture(state.nextRunAt) : "paused"),
+          state.failureCount ? kv("Consecutive failures", String(state.failureCount)) : null,
+          watching.rows.map((row) => kv(row.label, row.raw)),
+          scan,
+          scanMsg,
+        )
+      : null,
     renderAccount(),
   );
 }
 
 function renderAccount() {
-  const msg = h("div", { class: "msg" });
+  const msg = msgBox();
   const { user, viewingAs } = state;
-  const current = h("input", { type: "password", placeholder: "Current password", autocomplete: "current-password" });
-  const next = h("input", { type: "password", placeholder: "New password (8+ characters)", autocomplete: "new-password" });
+  const current = h("input", { type: "password", placeholder: "Current password", "aria-label": "Current password", autocomplete: "current-password" });
+  const next = h("input", { type: "password", placeholder: "New password (8+ characters)", "aria-label": "New password", autocomplete: "new-password" });
   const change = h(
     "form",
     {
@@ -731,6 +1165,8 @@ function renderAccount() {
         onclick: async () => {
           await api("POST", "/api/logout").catch(() => {});
           state = null;
+          sessionEnded = false;
+          clearSnapshot();
           render();
         },
       },
@@ -747,8 +1183,61 @@ function randomPassword() {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => chars[b % chars.length]).join("");
 }
 
+// The message to send someone just added (or whose password was reset), ready to copy or share. The password is only
+// ever held here, in memory, until the admin says they're done.
+function renderInvite() {
+  if (!lastInvite) return null;
+  const text = inviteText({ url: location.origin, ...lastInvite });
+  const box = h("textarea", { readonly: true, rows: "9", spellcheck: "false", "aria-label": `Message for ${lastInvite.username}`, value: text });
+  const note = msgBox();
+  const copy = async () => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      box.focus();
+      box.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {}
+    }
+    note.className = `msg ${ok ? "ok" : "err"}`;
+    note.textContent = ok ? "Copied. Paste it into a message to them." : "Couldn't copy. Select the text above and copy it.";
+  };
+  return h(
+    "div",
+    { class: "panel invite" },
+    h("h2", {}, lastInvite.reset ? `New password for ${lastInvite.username}` : `${lastInvite.username} is ready`),
+    h("div", { class: "hint" }, "Send them this. The password is only shown here, so copy it before you click Done."),
+    box,
+    h("button", { class: "primary", type: "button", onclick: copy }, "Copy message"),
+    navigator.share
+      ? h(
+          "button",
+          { class: "secondary", type: "button", onclick: () => navigator.share({ text }).catch(() => {}) },
+          "Share",
+        )
+      : null,
+    h(
+      "button",
+      {
+        class: "secondary",
+        type: "button",
+        onclick: () => {
+          lastInvite = null;
+          render();
+        },
+      },
+      "Done",
+    ),
+    note,
+  );
+}
+
 function renderUsers() {
-  const note = h("div", { class: `msg ${usersNote ? (usersNote.ok ? "ok" : "err") : ""}` }, usersNote?.text ?? "");
+  const note = msgBox(usersNote ? (usersNote.ok ? "ok" : "err") : "");
+  note.textContent = usersNote?.text ?? "";
   const say = (text, ok = true) => {
     usersNote = { text, ok };
     note.className = `msg ${ok ? "ok" : "err"}`;
@@ -765,8 +1254,8 @@ function renderUsers() {
     }
   };
 
-  const name = h("input", { type: "text", placeholder: "Username", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
-  const pass = h("input", { type: "text", placeholder: "Password (8+ characters)", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const name = h("input", { type: "text", placeholder: "Username", "aria-label": "Username", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  const pass = h("input", { type: "text", placeholder: "Password (8+ characters)", "aria-label": "Password", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
   const add = h(
     "form",
     {
@@ -776,7 +1265,8 @@ function renderUsers() {
           const username = name.value.trim().toLowerCase();
           const password = pass.value;
           await api("POST", "/api/users", { username, password });
-          say(`Created ${username}. Give them this password: ${password}. They can change it under Status.`);
+          lastInvite = { username, password, reset: false };
+          say(`Created ${username}. They can change their password under Alerts.`);
         })();
       },
     },
@@ -832,7 +1322,8 @@ function renderUsers() {
             const password = prompt(`New password for ${u.username} (8+ characters). They will be signed out everywhere.`);
             if (!password) return;
             await api("PUT", `/api/users/${encodeURIComponent(u.username)}/password`, { password });
-            say(`Password for ${u.username} changed. Give them: ${password}`);
+            lastInvite = { username: u.username, password, reset: true };
+            say(`Password for ${u.username} changed.`);
           }),
         },
         "Reset password",
@@ -862,6 +1353,7 @@ function renderUsers() {
       add,
       note,
     ),
+    renderInvite(),
     usersList.length ? usersList.map(userPanel) : h("div", { class: "empty" }, "No other users yet."),
   );
 }
@@ -876,10 +1368,17 @@ async function enablePush() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     throw new Error("Push isn't available here. On iPhone, add this page to your Home Screen and open it from there (iOS 16.4+).");
   }
+  if (!state.vapidPublicKey) throw new Error("Can't reach Rental Watch. Check your connection and try again.");
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") throw new Error("Notification permission was not granted. Check Settings > Notifications for this app.");
+  if (perm !== "granted") {
+    throw new Error(
+      isIos
+        ? "Alerts weren't allowed. Open Settings, then Notifications, then Rental Watch, and switch on Allow Notifications."
+        : "Alerts weren't allowed. Allow notifications for this site in your browser's site settings, then try again.",
+    );
+  }
   const existing = await reg.pushManager.getSubscription();
   if (existing) await existing.unsubscribe();
   const sub = await reg.pushManager.subscribe({
