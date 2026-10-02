@@ -10,7 +10,9 @@ export function h(tag, attrs = {}, ...children) {
     else if (k === "checked") el.checked = Boolean(v);
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const c of children.flat()) {
+  // Arrays can sit inside arrays (a conditional group inside a list of children), so flatten all the way down: a
+  // shallower flatten leaves an inner array to be printed as "[object HTMLButtonElement],...".
+  for (const c of children.flat(Infinity)) {
     if (c === null || c === undefined || c === false) continue;
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
