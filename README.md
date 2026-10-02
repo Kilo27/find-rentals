@@ -9,7 +9,7 @@ Watches several Irish rental sources every 30 minutes for places near a point (d
 | **Daft.ie** | Daft's own search pages, which carry their results as page data (the same listing data as Daft's gateway API) | Real coordinates, server-side owner-occupied filter for rooms. Daft's gateway API refuses every client that isn't a browser, so it is no longer used. An area name Daft doesn't know is reported as an error rather than searching all of Ireland |
 | **UL Accommodation** (accommodation.ul.ie, Studentpad) | Reads the all-adverts list page only: address (the title), price, availability and landlord type are all on it | UL's own noticeboard. The individual advert pages are an empty JavaScript shell, so they are not fetched. Many adverts are "Resident Landlord/Host Family" or weekday-only, which the filters catch. Distance comes from geocoding the address |
 | **Rent.ie** | Scrapes the search pages for the areas Rent.ie's own University of Limerick page lists as near-by: `houses-to-let` (houses and apartments) for Castletroy, Monaleen, Rhebogue, Newtown, Singland and Annacotty, and `rooms-to-rent` (shares) for Castletroy, Kilmurry, Kilbane, Monaleen, Rhebogue and Newtown | Checked live 2026-10-01. Rent.ie's student-accommodation pages carry no adverts, only links to these. Only each area's first page (its 20 newest adverts) is read, because its pagination links are disallowed by `robots.txt`. Saved settings still holding the old default URLs are updated on start; a 404 is reported as "skipped" |
-| **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Status tab says so. County-wide when it works; the distance check trims it |
+| **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Alerts tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page you add under Settings → Advanced | JSON-LD, embedded JSON or HTML cards |
 
 The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached. They identify themselves honestly as `RentalWatch/1.0`: a user agent that pretends to be Chrome is refused by Cloudflare (Daft, Rent.ie) with a "Security Check" page from any network.
@@ -36,7 +36,7 @@ The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", 
 
 1. Open the Railway URL in **Safari** → Share → **Add to Home Screen**.
 2. Open **Rental Watch from the Home Screen**, log in with your username and password.
-3. **Status → Enable notifications on this device → Allow**, then **Send test notification**. (Needs iOS 16.4+.)
+3. Tap **Turn on alerts** (the card at the top of Matches, or the **Alerts** tab) and choose **Allow**, then **Send a test alert**. (Needs iOS 16.4+.) Until the app is on the Home Screen, that card shows the Add to Home Screen steps instead.
 
 ## Accounts
 
@@ -44,12 +44,12 @@ There is one **admin** account, and only the admin can create others. The admin 
 
 The admin gets a **Users** tab:
 
-- **Add a user**: pick a username and a password (or press Generate) and give them both. They can change their own password under **Status**.
+- **Add a user**: pick a username and a password (or press Generate). You get a ready-to-send message with the link, the username, the password and the iPhone steps, with **Copy message** and **Share** buttons. The password is only shown there until you press **Done**. They can change their own password under **Alerts**.
 - **View as**: opens the app exactly as that user sees it (their devices, no Users tab), with a banner and an **Exit** button. While viewing as someone you can't change their devices or password, and it doesn't count as them being active. Signing in again ends it.
 - **Send test**, **Reset password** and **Remove**. Resetting a password or removing a user signs them out everywhere at once; removing a user also deletes their devices, so they stop getting alerts.
 - Each user's last sign-in, last activity and subscribed devices (including push errors) are listed, for working out why someone isn't getting alerts.
 
-Everyone shares **one search**: the same listings, the same settings and the same scan, and the centre point (campus) and radius are part of it. So only the admin can change the search settings (the Settings tab is admin-only); otherwise one person's change would replace everyone's. Each person gets the alerts on their own devices, and "Send test notification" only reaches your own. Any signed-in user can press Scan now, and only the admin can open `GET /api/debug`. Separate searches per person (for example different campuses) aren't supported yet. Sign-ins use a per-user password (stored hashed) and are limited to 10 failed attempts per IP per 15 minutes.
+Everyone shares **one search**: the same listings, the same settings and the same scan, and the centre point (campus) and radius are part of it. So only the admin can change the search settings (the Settings tab is admin-only); otherwise one person's change would replace everyone's. Each person gets the alerts on their own devices, and "Send test notification" only reaches your own. Scanner details and **Scan now** are in the admin's Alerts tab (the scan endpoint itself is open to any signed-in user), and only the admin can open `GET /api/debug`. Separate searches per person (for example different campuses) aren't supported yet. Sign-ins use a per-user password (stored hashed) and are limited to 10 failed attempts per IP per 15 minutes.
 
 Upgrading from the single-password version: sign in once more on each device, with the old `ACCESS_PASSWORD` and username `admin` (or your `ADMIN_USERNAME`). Devices already registered for notifications become the admin's.
 
@@ -66,7 +66,7 @@ npm run probe -- --url=https://example-agent.ie/lettings/limerick   # try any pa
 
 `--region` reads the Daft area, Rent.ie and MyHome pages and locality hints from [`scripts/lib/regions.mjs`](scripts/lib/regions.mjs). Cork and Galway have no accommodation board, so they probe Daft, Rent.ie and MyHome. The presets don't change what the running app searches.
 
-It prints, per page, how many listings it recognised and for each: title, price, coordinates, availability, owner-occupied signal and whether the filters would pass it. If a source shows 0 listings it prints the start of the HTML it received, and **Status → Sources** plus `GET /api/debug` (while logged in) keep the same diagnostics for later scans.
+It prints, per page, how many listings it recognised and for each: title, price, coordinates, availability, owner-occupied signal and whether the filters would pass it. If a source shows 0 listings it prints the start of the HTML it received, and **Alerts → Scanner details** plus `GET /api/debug` (while logged in) keep the same diagnostics for later scans.
 
 ## Reading the logs
 
@@ -82,9 +82,11 @@ Each scan writes one summary line to the service logs (Railway: service → Depl
 ## How it behaves
 
 - First scan is a *baseline*: one "Watching started: N matches" notification, existing listings marked seen. If detail pages are still being fetched (limit per scan), the baseline waits until they are done.
-- After that, each new match gets one notification showing price, title, distance, source and availability. More than 5 new in one scan: 5 individual pushes plus a digest. Tapping opens the listing.
-- Each listing in the Matches tab has **Mark as seen** (dims it, tap again to undo), **Not a fit** and **No longer available**. The last two move it to a collapsed list of the same name at the bottom, where **Restore** / **Still available** brings it back. These marks are stored on the server with the rest of the state, so they carry across scans and devices, and when the same property is on several sites a mark on one copy covers them all.
+- After that, each new match gets one notification showing price, title, distance, source and availability. More than 5 new in one scan: 5 individual pushes plus a digest. Tapping an alert opens the app on that listing's card (scrolled to and outlined), where **Open on Daft.ie** (or whichever site it came from) takes you to the advert and marks it seen. If the listing has since dropped out of your matches, the app says so. If the app is already open it is brought forward without reloading, and alerts sent before this behaviour still open the advert directly.
+- Each listing in the Matches tab shows its price and how near it is on one line, then **Open on …** (the advert, which also marks it seen) and **Not a fit**. **More** holds **Mark as seen** (dims it, tap again to undo) and **No longer available**. The two that put a listing away show **Moved to Not a fit · Undo** for a few seconds, and move it to a collapsed list of the same name at the bottom, where **Restore** / **Still available** brings it back as it was. These marks are stored on the server with the rest of the state, so they carry across scans and devices, and when the same property is on several sites a mark on one copy covers them all.
 - If every source fails 3 scans in a row you get a notification, and another on recovery.
+- Above the list, one line says whether the sites are being checked ("Watching 3 of 4 sites · last check 16 min ago"), names any that are paused or not responding in plain words, and warns when the last check is long overdue. The admin gets a **Details** link to the raw scanner diagnostics; invited users never see error codes.
+- With no connection the app shows the last list it had, says how old it is and keeps trying; it only returns to the login screen when the server says the session has ended. If the list changes while someone is scrolled down, a **Matches updated · Show** button appears instead of moving the cards under their thumb.
 
 ## Map view
 
@@ -166,7 +168,7 @@ A small agent runs on a computer at home and connects *out* to the app over HTTP
 
 The agent only makes HTTPS requests to `daft.ie` and `rent.ie` (`AGENT_ALLOW`). It re-checks every redirect, never connects to private (home network) addresses and is never sent cookies, so the server can't use it for anything else. The scan log line ends with `via-laptop=daft,rent` while it is in use.
 
-While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Status tab says "not checked", they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. If it has been gone for a day you get one notification, and another when it is back.
+While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Matches strip says "Watching 2 of 4 sites" and the Alerts tab shows them as paused, they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. If it has been gone for a day you get one notification, and another when it is back.
 
 ### A paid residential proxy
 

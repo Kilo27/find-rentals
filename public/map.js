@@ -1,4 +1,4 @@
-import { fill, h, describeMatch, badgeRow, isNewMatch, listingImage } from "./ui.js";
+import { fill, h, describeMatch, badgeRow, isNewMatch, leadRow, listingImage } from "./ui.js";
 import { clusterSpots, pinLabel, placeMatches } from "./map-model.js";
 
 // OpenStreetMap's own tiles. Their usage policy wants a Referer (this site otherwise sends none) and attribution.
@@ -90,7 +90,7 @@ export function createMapView({ api, onShowList }) {
       "a",
       { class: compact ? "mcard compact" : "mcard", href: m.url, target: "_blank", rel: "noopener noreferrer" },
       listingImage(m),
-      h("div", { class: "body" }, h("div", { class: "price" }, d.price), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
+      h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
     );
   }
 
@@ -153,7 +153,7 @@ export function createMapView({ api, onShowList }) {
       h(
         "div",
         { class: "body" },
-        h("div", { class: "price" }, d.price),
+        leadRow(d),
         h("div", { class: "title" }, m.title),
         m.address && m.address !== m.title ? h("div", { class: "meta" }, m.address) : null,
         h("div", { class: "meta" }, d.meta),
