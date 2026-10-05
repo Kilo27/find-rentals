@@ -167,13 +167,19 @@ A small agent runs on a computer at home and connects *out* to the app over HTTP
 4. Run `npm run agent` to try it; it logs every page it fetches.
 5. To use it as an app, install the tray app once: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\agent-tray.ps1 -Install`. That adds **Rental Watch Agent** to the desktop and Start menu and starts it whenever you log in to Windows (it also removes the older `RentalWatchAgent` scheduled task if you have one). Opening it puts an icon near the clock (under the ^ arrow until you drag it out) and starts the agent, logging to `agent.log`:
    - green: connected; amber: starting, or can't reach the server (the laptop just woke, or Railway is redeploying); grey: paused; red: needs attention (no `.env`, no `npm install`, the token is refused, or the agent keeps crashing).
-   - click the icon to pause or start the agent, open Rental Watch, show the log, turn "Start when I log in" off, or quit (which stops the agent).
+   - click the icon to pause or start the agent, open Rental Watch, show the log, turn "Start when I log in" off, keep the computer awake for a while (see below), or quit (which stops the agent).
    - it restarts the agent if it crashes, and if one is already running (from `npm run agent`) it takes that over instead of starting a second.
    - after a `git pull` that changes the agent, choose Quit and open it again. Remove everything with the same command and `-Uninstall`.
 
 The agent only makes HTTPS requests to `daft.ie` and `rent.ie` (`AGENT_ALLOW`). It re-checks every redirect, never connects to private (home network) addresses and is never sent cookies, so the server can't use it for anything else. The scan log line ends with `via-laptop=daft,rent` while it is in use.
 
 While the computer is asleep or off, Daft and Rent.ie are skipped rather than failed: the log shows `daft=skipped ... | laptop=offline`, the Matches strip says "Watching 2 of 4 sites" and the Alerts tab shows them as paused, they don't count towards "looks broken" alerts, and their earlier matches stay in the app. When the agent reconnects after a missed scan, a scan runs straight away. When the agent has been gone for 5 minutes (a redeploy or a Wi-Fi change is shorter than that) the admin's devices get one "Laptop agent offline" notification, naming the sites that aren't being checked, and a "Laptop agent is back" one when it returns. Nobody else is told, and a restart of the server neither forgets an outage nor repeats the note. A laptop that sleeps every night will therefore send two notifications a day; set `LAPTOP_ALERT_AFTER_MINUTES` on the server (for example `720`) to only hear about longer gaps, or `0` to hear as soon as it is noticed.
+
+**Sleep.** A computer that is asleep runs nothing, so the agent cannot fetch a page then, and by default the tray app leaves your sleep settings alone. Two things keep the gap short:
+- On waking, the agent notices from the clock (the log says `the computer was asleep for about 25 min; reconnecting`), drops the connection that died in the sleep and reconnects at once with a fresh retry delay, instead of waiting out the old connection's timeout. Then the scan that was missed runs.
+- **Keep this computer awake** in the tray menu stops Windows sleeping the computer by itself for **1, 2, 4 or 8 hours**, for example before you leave it plugged in overnight. It lets go on its own when the time is up, only holds while the agent is running (pausing it releases the computer), is not remembered when the app restarts, and the menu says until when. It cannot do more than Windows allows: closing the lid, the power button and Start → Sleep always sleep the computer, and on battery Windows stops honouring it a few minutes after the sleep timeout (the menu says so while you are on battery). Leave the lid open and the charger in.
+
+To have Daft and Rent.ie checked whatever the computer is doing, use a proxy (below), which needs no computer at home.
 
 ### A paid residential proxy
 

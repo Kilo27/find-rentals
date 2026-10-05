@@ -199,6 +199,76 @@ test("agent loop: retries with growing backoff while the server is unreachable o
   assert.match(warnings[2], /refused the token/);
 });
 
+// The agent can't see the lid, only the clock: a jump of minutes between two 5 ms ticks means the computer slept.
+function wakeSetup() {
+  const clock = { t: Date.parse("2026-10-05T10:00:00Z") };
+  const ctl = new AbortController();
+  const logs = [];
+  const warnings = [];
+  const calls = [];
+  const run = (fetchImpl, sleep) =>
+    runAgent({ server: "https://srv.example", token: TOKEN, fetchJob: async () => ({}), fetchImpl, sleep, log: { log: (m) => logs.push(m), warn: (m) => warnings.push(m) }, signal: ctl.signal, now: () => clock.t, tickMs: 5, wakeGapMs: 1000 });
+  // A poll over a connection that died in the sleep: it never answers, and only ends when it is aborted.
+  const deadPoll = (opts) => new Promise((_, reject) => opts.signal.addEventListener("abort", () => reject(opts.signal.reason), { once: true }));
+  const tick = () => new Promise((r) => setTimeout(r, 30));
+  return { clock, ctl, logs, warnings, calls, run, deadPoll, tick };
+}
+
+test("agent loop: after the computer wakes, the poll that died in its sleep is dropped and the agent reconnects at once", async () => {
+  const { clock, ctl, logs, warnings, calls, run, deadPoll, tick } = wakeSetup();
+  const sleeps = [];
+  const done = run(
+    (url, opts) => {
+      calls.push(opts.signal);
+      if (calls.length === 1) return deadPoll(opts);
+      ctl.abort();
+      return Promise.resolve(new Response(null, { status: 204 }));
+    },
+    async (ms) => sleeps.push(ms),
+  );
+  await waitFor(() => calls.length === 1);
+
+  clock.t += 200; // an ordinary pause is not a sleep
+  await tick();
+  assert.equal(calls.length, 1, "a small step in the clock leaves the poll alone");
+
+  clock.t += 25 * 60_000; // the lid was shut for 25 minutes
+  await done;
+  assert.equal(calls.length, 2, "it polled again straight away rather than waiting for the old poll's 40 s timeout");
+  assert.equal(calls[0].aborted, true);
+  assert.deepEqual(sleeps, [], "no backoff wait: nothing failed, the computer just woke");
+  assert.deepEqual(warnings, [], "waking is not reported as a lost server");
+  assert.match(logs.join("\n"), /the computer was asleep for about 25 min; reconnecting/);
+});
+
+test("agent loop: waking in the middle of a long backoff cuts the wait short and starts again from a short one", async () => {
+  const { clock, ctl, logs, warnings, calls, run, tick } = wakeSetup();
+  const sleeps = [];
+  const done = run(
+    async () => {
+      calls.push(1);
+      if (calls.length <= 3) throw new Error("fetch failed"); // no network: the backoff climbs to 4 s
+      if (calls.length === 4) throw new Error("fetch failed"); // and the first try after waking still finds none
+      ctl.abort();
+      return new Response(null, { status: 204 });
+    },
+    (ms) => {
+      sleeps.push(ms);
+      return sleeps.length === 3 ? new Promise(() => {}) : Promise.resolve(); // the third wait would last the whole sleep
+    },
+  );
+  await waitFor(() => sleeps.length === 3);
+  await tick();
+  assert.equal(calls.length, 3, "stuck in the long wait");
+
+  clock.t += 3 * 60 * 60_000;
+  await done;
+  assert.equal(calls.length, 5);
+  assert.deepEqual(sleeps, [1000, 2000, 4000, 2000], "after waking the backoff began again instead of carrying on from where it was");
+  assert.match(logs.join("\n"), /asleep for about 180 min/);
+  assert.equal(warnings.length, 4, "the real failures are still reported");
+});
+
 test("laptop agent end to end: a scan fetches Daft through the agent while UL and the geocoder stay direct", async () => {
   const hub = createAgentHub({ token: TOKEN, pollWaitMs: 200 });
   const base = await serve(hub);

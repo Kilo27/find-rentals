@@ -99,8 +99,14 @@ const where = (url) => {
   }
 };
 
+const whenAborted = (signal) => new Promise((resolve) => (signal.aborted ? resolve() : signal.addEventListener("abort", resolve, { once: true })));
+
 // Long-polls the server for requests and posts each answer back gzipped. Never exits on its own:
 // network trouble (the laptop sleeping, Wi-Fi changes, a redeploy) is retried with backoff.
+//
+// A sleeping laptop freezes this process, and on waking the poll in flight is dead but only noticed when its own timeout
+// runs out, with any backoff still counting. The clock jumping further than a tick can explain means it slept (or was
+// frozen): the poll and any backoff wait are dropped and the agent reconnects at once, from a fresh backoff.
 export async function runAgent({
   server,
   token,
@@ -110,45 +116,69 @@ export async function runAgent({
   log = console,
   signal,
   pollTimeoutMs = 40_000,
+  now = () => Date.now(),
+  tickMs = 5_000,
+  wakeGapMs = 20_000,
 }) {
   const base = server.replace(/\/+$/, "");
   const auth = { Authorization: `Bearer ${token}` };
   let backoff = 1_000;
   let connected = false;
+  let wake = new AbortController(); // aborted when the computer wakes; a fresh one for each turn of the loop
 
-  while (!signal?.aborted) {
-    try {
-      const res = await fetchImpl(`${base}/api/agent/next`, { headers: auth, signal: AbortSignal.timeout(pollTimeoutMs) });
-      if (res.status === 401) throw new Error("the server refused the token (AGENT_TOKEN must match on both sides)");
-      if (res.status !== 200 && res.status !== 204) throw new Error(`the server answered HTTP ${res.status}`);
-      if (!connected) log.log(`[agent] connected to ${base}`);
-      connected = true;
-      backoff = 1_000;
-      if (res.status === 204) continue;
+  let lastTick = now();
+  const watchdog = setInterval(() => {
+    const t = now();
+    const gap = t - lastTick;
+    lastTick = t;
+    if (gap <= wakeGapMs) return;
+    log.log(`[agent] the computer was asleep for about ${Math.max(1, Math.round(gap / 60_000))} min; reconnecting`);
+    backoff = 1_000;
+    connected = false;
+    wake.abort();
+  }, tickMs);
+  watchdog.unref?.();
 
-      const job = await res.json();
-      const started = Date.now();
-      let answer;
+  try {
+    while (!signal?.aborted) {
+      wake = new AbortController();
+      const woken = wake.signal;
       try {
-        answer = { id: job.id, ...(await fetchJob(job)) };
-        log.log(`[agent] ${where(job.url)} -> ${answer.status}, ${Math.round(answer.body.length / 1024)} KB in ${Date.now() - started} ms`);
+        const res = await fetchImpl(`${base}/api/agent/next`, { headers: auth, signal: AbortSignal.any([AbortSignal.timeout(pollTimeoutMs), woken]) });
+        if (res.status === 401) throw new Error("the server refused the token (AGENT_TOKEN must match on both sides)");
+        if (res.status !== 200 && res.status !== 204) throw new Error(`the server answered HTTP ${res.status}`);
+        if (!connected) log.log(`[agent] connected to ${base}`);
+        connected = true;
+        backoff = 1_000;
+        if (res.status === 204) continue;
+
+        const job = await res.json();
+        const started = Date.now();
+        let answer;
+        try {
+          answer = { id: job.id, ...(await fetchJob(job)) };
+          log.log(`[agent] ${where(job.url)} -> ${answer.status}, ${Math.round(answer.body.length / 1024)} KB in ${Date.now() - started} ms`);
+        } catch (err) {
+          answer = { id: job.id, error: err.message };
+          log.warn(`[agent] ${where(job.url)} -> failed: ${err.message}`);
+        }
+        const posted = await fetchImpl(`${base}/api/agent/result`, {
+          method: "POST",
+          headers: { ...auth, "Content-Type": "application/octet-stream" },
+          body: zlib.gzipSync(JSON.stringify(answer)),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!posted.ok) throw new Error(`the server refused the answer (HTTP ${posted.status})`);
       } catch (err) {
-        answer = { id: job.id, error: err.message };
-        log.warn(`[agent] ${where(job.url)} -> failed: ${err.message}`);
+        if (signal?.aborted) break;
+        if (woken.aborted && err === woken.reason) continue; // the dead poll was dropped on waking; the watchdog has said so
+        log.warn(`[agent] ${connected ? "lost the server" : "can't reach the server"}: ${err.message}; retrying in ${backoff / 1000}s`);
+        connected = false;
+        await Promise.race([sleep(backoff), whenAborted(woken)]);
+        backoff = Math.min(backoff * 2, 60_000);
       }
-      const posted = await fetchImpl(`${base}/api/agent/result`, {
-        method: "POST",
-        headers: { ...auth, "Content-Type": "application/octet-stream" },
-        body: zlib.gzipSync(JSON.stringify(answer)),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!posted.ok) throw new Error(`the server refused the answer (HTTP ${posted.status})`);
-    } catch (err) {
-      if (signal?.aborted) break;
-      log.warn(`[agent] ${connected ? "lost the server" : "can't reach the server"}: ${err.message}; retrying in ${backoff / 1000}s`);
-      connected = false;
-      await sleep(backoff);
-      backoff = Math.min(backoff * 2, 60_000);
     }
+  } finally {
+    clearInterval(watchdog);
   }
 }
