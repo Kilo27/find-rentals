@@ -8,6 +8,11 @@
 #   Try it once without installing (the icon appears near the clock):
 #     powershell -NoProfile -ExecutionPolicy Bypass -STA -File scripts\agent-tray.ps1
 #
+# A sleeping computer fetches nothing. By default this app leaves sleep alone; "Keep this computer awake" in the menu
+# asks Windows not to sleep it by itself for 1, 2, 4 or 8 hours (never longer, and it is not remembered across restarts).
+# Windows still sleeps it when the lid is closed or the power button is pressed, and on battery it stops honouring the
+# request a few minutes after the sleep timeout.
+#
 # Needs .env in the repo root with AGENT_SERVER_URL and AGENT_TOKEN (see .env.example) and `npm install`.
 # Keep this file ASCII: Windows PowerShell 5.1 reads a script without a BOM as ANSI.
 [CmdletBinding()]
@@ -15,7 +20,9 @@ param([switch]$Install, [switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-Add-Type -Namespace RentalWatch -Name Native -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'
+Add-Type -Namespace RentalWatch -Name Native -MemberDefinition '
+  [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);'
 
 $AppName = 'Rental Watch Agent'
 $Repo = Split-Path -Parent $PSScriptRoot
@@ -28,6 +35,9 @@ $StartupLink = Join-Path ([Environment]::GetFolderPath('Startup')) "$AppName.lnk
 $MenuLink = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.lnk"
 $DesktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
 $Colors = @{ ok = '#2f9e5f'; wait = '#d99a2b'; off = '#8b9099'; bad = '#cf4b3f' }
+# SetThreadExecutionState flags: ES_CONTINUOUS (0x80000000), with and without ES_SYSTEM_REQUIRED (0x1).
+$KeepAwakeOn = [uint32]2147483649
+$KeepAwakeOff = [uint32]2147483648
 
 # What the tray app is doing. wanted = the user wants the agent running (Pause turns it off); proc = the
 # node process; problem = something only the user can fix (no .env, no node, crash loop).
@@ -39,6 +49,9 @@ $script:quick = 0
 $script:problem = $null
 $script:cfg = @{}
 $script:notice = $null
+# awakeUntil = when "Keep this computer awake" runs out (MinValue = not asked for); awake = the request Windows holds now.
+$script:awakeUntil = [DateTime]::MinValue
+$script:awake = $false
 
 # ---- icon ---------------------------------------------------------------------------------------------
 
@@ -205,6 +218,40 @@ function Update-Agent {
   if (-not $script:proc -and (Get-Date) -ge $script:restartAt) { Start-Agent }
 }
 
+# ---- keeping the computer awake, for a while ----------------------------------------------------------
+
+# How long from now the computer is asked to stay awake; 0 lets it sleep again. The only place a deadline is set, so
+# nothing can ask for more than $MaxAwakeHours.
+$MaxAwakeHours = 8
+function Set-AwakeDeadline([double]$hours) {
+  $script:awakeUntil = if ($hours -gt 0) { (Get-Date).AddHours([Math]::Min($hours, $MaxAwakeHours)) } else { [DateTime]::MinValue }
+}
+
+# Awake only if it was asked for, the time has not run out, and the agent is running (nothing to stay awake for
+# while it is paused or stopped).
+function Test-KeepAwake {
+  return [bool]($script:wanted -and $null -ne $script:proc -and (Get-Date) -lt $script:awakeUntil)
+}
+
+# Tells Windows the computer is busy, so it does not sleep on its own timeout. The state belongs to the calling
+# thread, so this must run on the tray's UI thread (where the timer and the menu handlers run) and is only called
+# when the answer changes.
+function Set-KeepAwake([bool]$on) {
+  if ($on -eq $script:awake) { return }
+  $flags = if ($on) { $KeepAwakeOn } else { $KeepAwakeOff }
+  if ([RentalWatch.Native]::SetThreadExecutionState($flags) -ne 0) { $script:awake = $on }
+}
+
+# The menu's third line while it is keeping the computer awake, and what the user can't see: Windows may not let it.
+function Get-PowerNote {
+  if (-not (Test-KeepAwake)) { return '' }
+  $note = "Keeping this computer awake until $($script:awakeUntil.ToString('HH:mm'))"
+  if ([System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus -eq [System.Windows.Forms.PowerLineStatus]::Offline) {
+    $note += ' (on battery, Windows may sleep it sooner)'
+  }
+  return $note
+}
+
 # ---- status, from the agent's own log -----------------------------------------------------------------
 
 function Read-LogTail([string]$path) {
@@ -309,6 +356,9 @@ function Start-Tray {
   $miTitle.Enabled = $false
   $miDetail = $menu.Items.Add('')
   $miDetail.Enabled = $false
+  $miNote = $menu.Items.Add('')
+  $miNote.Enabled = $false
+  $miNote.Visible = $false
   [void]$menu.Items.Add('-')
   $miToggle = $menu.Items.Add('Pause agent')
   $miSite = $menu.Items.Add('Open Rental Watch')
@@ -316,6 +366,16 @@ function Start-Tray {
   [void]$menu.Items.Add('-')
   $miAuto = New-Object System.Windows.Forms.ToolStripMenuItem('Start when I log in')
   [void]$menu.Items.Add($miAuto)
+  $miAwake = New-Object System.Windows.Forms.ToolStripMenuItem('Keep this computer awake')
+  $awakeChoices = foreach ($hours in 1, 2, 4, 8) {
+    $choice = New-Object System.Windows.Forms.ToolStripMenuItem($(if ($hours -eq 1) { 'For 1 hour' } else { "For $hours hours" }))
+    $choice.Tag = $hours
+    [void]$miAwake.DropDownItems.Add($choice)
+    $choice
+  }
+  [void]$miAwake.DropDownItems.Add('-')
+  $miLetSleep = $miAwake.DropDownItems.Add('Let it sleep as usual')
+  [void]$menu.Items.Add($miAwake)
   $miQuit = $menu.Items.Add('Quit (stops the agent)')
 
   $ni = New-Object System.Windows.Forms.NotifyIcon
@@ -330,11 +390,18 @@ function Start-Tray {
   $refresh = {
     try {
       Update-Agent
+      Set-KeepAwake (Test-KeepAwake)
+      $asked = (Get-Date) -lt $script:awakeUntil
       $s = Get-AgentStatus
       $miTitle.Text = $s.Title
       $miDetail.Text = $s.Detail
+      $note = Get-PowerNote
+      $miNote.Text = $note
+      $miNote.Visible = [bool]$note
       $miToggle.Text = if ($script:wanted) { 'Pause agent' } else { 'Start agent' }
       $miAuto.Checked = Test-Path -LiteralPath $StartupLink
+      $miAwake.Checked = $asked
+      $miLetSleep.Enabled = $asked
       if ($s.Key -ne $shown.Key) {
         $ni.Icon = $icons[$s.Key]
         if ($s.Key -eq 'bad') { $ni.ShowBalloonTip(8000, $AppName, "$($s.Title). $($s.Detail)", [System.Windows.Forms.ToolTipIcon]::Warning) }
@@ -373,6 +440,17 @@ function Start-Tray {
     }
     & $refresh
   })
+  foreach ($choice in $awakeChoices) {
+    $choice.Add_Click({
+      param($sender, $e)
+      Set-AwakeDeadline ([double]$sender.Tag)
+      & $refresh
+    })
+  }
+  $miLetSleep.Add_Click({
+    Set-AwakeDeadline 0
+    & $refresh
+  })
   $miQuit.Add_Click({
     $script:wanted = $false
     Stop-Agent
@@ -400,7 +478,7 @@ function Start-Tray {
   & $refresh
   $ni.Visible = $true
   if (-not $script:problem) {
-    $ni.ShowBalloonTip(5000, $AppName, 'Running. It keeps Daft and Rent.ie working while this computer is on. Its icon is near the clock; click the ^ arrow if it is hidden.', [System.Windows.Forms.ToolTipIcon]::Info)
+    $ni.ShowBalloonTip(5000, $AppName, 'Running. It keeps Daft and Rent.ie working while this computer is awake; use "Keep this computer awake" in its menu to cover a few hours away. Its icon is near the clock; click the ^ arrow if it is hidden.', [System.Windows.Forms.ToolTipIcon]::Info)
   }
   $timer.Start()
   try {
@@ -408,6 +486,7 @@ function Start-Tray {
   } finally {
     $timer.Stop()
     Stop-Agent
+    Set-KeepAwake $false
     $ni.Visible = $false
     $ni.Dispose()
     $mutex.ReleaseMutex()
