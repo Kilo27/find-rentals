@@ -9,6 +9,7 @@ import { alertAfterFromEnv, createLaptopWatch } from "./laptop-watch.js";
 import { createMapData } from "./mapdata.js";
 import { proxyFromEnv } from "./proxy.js";
 import { isValidUsername, normalizeUsername } from "./users.js";
+import { configOf, watchers } from "./searches.js";
 
 const password = process.env.ACCESS_PASSWORD;
 if (!password && process.env.ALLOW_NO_AUTH !== "1") {
@@ -36,7 +37,7 @@ if (process.env.AGENT_TOKEN) {
       token: process.env.AGENT_TOKEN,
       onOnline: () => {
         console.log("[agent] laptop agent connected");
-        if (store.data.lastRun?.laptopOffline) scheduler.runSoon();
+        for (const [id, status] of Object.entries(store.data.regionStatus)) if (status.lastRun?.laptopOffline) scheduler.runSoon(id);
       },
     });
   } catch (err) {
@@ -64,7 +65,12 @@ const server = app.listen(port, "0.0.0.0", () => {
   scheduler.start();
   laptopWatch.start();
   // Fetch the transport lines now, so the map is ready the first time it is opened.
-  setTimeout(() => mapData.get(store.data.config), 5000).unref();
+  setTimeout(() => {
+    for (const { search } of watchers(store)) {
+      const config = configOf(store, search);
+      if (config) mapData.get(config);
+    }
+  }, 5000).unref();
 });
 
 for (const sig of ["SIGTERM", "SIGINT"]) {

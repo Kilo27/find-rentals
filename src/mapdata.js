@@ -6,7 +6,8 @@ const TRANSIT_TTL_MS = 7 * 24 * 3600_000;
 const CAMPUS_TTL_MS = 30 * 24 * 3600_000;
 const RETRY_AFTER_MS = 10 * 60_000;
 const MANUAL_RETRY_AFTER_MS = 20_000;
-const KEEP_ENTRIES = 3;
+// Enough for every campus somebody is watching, with a few to spare.
+const KEEP_ENTRIES = 12;
 
 const SILENT = { log() {}, warn() {} };
 

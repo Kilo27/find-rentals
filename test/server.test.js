@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
 import { createScanner } from "../src/scan.js";
 import { createScheduler } from "../src/scheduler.js";
-import { daftPage, makeFetch, noSleep, rawListing, tempStore, fakePusher } from "./helpers.js";
+import { configure, daftPage, makeFetch, noSleep, rawListing, searchOf, tempStore, fakePusher } from "./helpers.js";
 
 let server;
 let base;
@@ -23,7 +23,7 @@ const call = async (method, path, body, withCookie = true) => {
 
 before(async () => {
   ({ store } = tempStore());
-  store.data.config = { ...store.data.config, sections: ["sharing"], sources: ["daft"] };
+  configure(store, { sections: ["sharing"], sources: ["daft"] });
   const pusher = fakePusher();
   const fetchImpl = makeFetch(() => daftPage([rawListing({ id: 1 })]));
   const scanner = createScanner({ store, pusher, fetchImpl, sleep: noSleep, politenessMs: 0 });
@@ -62,7 +62,7 @@ test("the app's code is revalidated on every load, so a deploy shows up straight
 });
 
 test("API requires auth", async () => {
-  for (const [m, p] of [["GET", "/api/state"], ["PUT", "/api/config"], ["PUT", "/api/review"], ["POST", "/api/scan"], ["POST", "/api/test-push"], ["GET", "/api/debug"]]) {
+  for (const [m, p] of [["GET", "/api/state"], ["PUT", "/api/prefs"], ["PUT", "/api/campus"], ["PUT", "/api/regions/limerick"], ["PUT", "/api/review"], ["POST", "/api/scan"], ["POST", "/api/test-push"], ["GET", "/api/debug"]]) {
     const { res } = await call(m, p, m === "GET" ? undefined : {}, false);
     assert.equal(res.status, 401, `${m} ${p}`);
   }
@@ -89,26 +89,45 @@ test("scan now populates matches; state endpoint exposes config and VAPID key", 
   assert.ok(data.sections.sharing);
 });
 
-test("config can be updated, is validated, and persists to disk", async () => {
-  const ok = await call("PUT", "/api/config", { radiusKm: 1.5, priceMax: 700, excludeKeywords: "noisy, smoking" });
+test("preferences can be updated, are validated, and persist to disk", async () => {
+  const ok = await call("PUT", "/api/prefs", { radiusKm: 1.5, priceMax: 700, excludeKeywords: "noisy, smoking" });
   assert.equal(ok.res.status, 200);
-  assert.equal(ok.data.config.radiusKm, 1.5);
+  assert.equal(ok.data.prefs.radiusKm, 1.5);
+  assert.equal(ok.data.config.radiusKm, 1.5, "the complete search follows");
   assert.deepEqual(ok.data.config.excludeKeywords, ["noisy", "smoking"]);
-  assert.equal(store.data.config.priceMax, 700);
+  assert.equal(searchOf(store).prefs.priceMax, 700);
+  assert.equal(ok.data.matched, true, "matched again at once against what the region already collected, without scanning");
 
-  const bad = await call("PUT", "/api/config", { radiusKm: 500, intervalMinutes: 1 });
+  const bad = await call("PUT", "/api/prefs", { radiusKm: 500, priceMin: 900, priceMax: 100 });
   assert.equal(bad.res.status, 400);
-  assert.ok(bad.data.errors.length >= 2);
-  assert.equal(store.data.config.radiusKm, 1.5, "rejected update must not change config");
+  assert.match(bad.data.error, /radiusKm.*priceMin/);
+  assert.equal(searchOf(store).prefs.radiusKm, 1.5, "rejected update must not change anything");
 
   const reloaded = JSON.parse((await import("node:fs")).readFileSync(store.file, "utf8"));
-  assert.equal(reloaded.config.radiusKm, 1.5);
+  assert.equal(reloaded.searches["@admin"].prefs.radiusKm, 1.5);
+});
+
+test("preferences are only preferences: where the sites are read and which are read can't be set from there", async () => {
+  const before = JSON.stringify(store.data.regions);
+  const r = await call("PUT", "/api/prefs", { webUrls: "https://elsewhere.example/listings", sources: ["web"], daftLocation: "dublin-city", center: { label: "Elsewhere", lat: 51.9, lng: -8.5 }, intervalMinutes: 5 });
+  assert.equal(r.res.status, 200);
+  assert.equal(JSON.stringify(store.data.regions), before, "nothing about the region changed");
+  assert.equal(r.data.config.center.label, "University of Limerick", "the centre is the campus's");
+  assert.equal(r.data.config.sources.includes("web"), false);
+  assert.deepEqual(r.data.config.webUrls, []);
+});
+
+test("the radius can't go past what the campus allows", async () => {
+  const r = await call("PUT", "/api/prefs", { radiusKm: 12 });
+  assert.equal(r.res.status, 400);
+  assert.match(r.data.error, /at most 5 for this campus/);
 });
 
 test("transit: the state lists the campuses, and a campus's stops can be read as JSON, CSV or GeoJSON", async () => {
   const { data: state } = await call("GET", "/api/state");
   assert.ok(state.campuses.some((c) => c.id === "ul" && c.short === "UL"));
-  assert.deepEqual(state.autoCampuses, ["ul"]);
+  assert.equal(state.campus.id, "ul");
+  assert.deepEqual(state.searchCampuses.map((c) => c.id), ["ul", "mic", "tus-limerick", "ucc", "mtu-cork", "uog", "atu-galway"], "only the campuses whose regions are set up can be chosen");
   assert.ok(state.transit.attribution);
 
   const json = await call("GET", "/api/transit/ul?routes=304,310");
@@ -146,7 +165,7 @@ test("a listing can be marked seen or not a fit; the mark survives a rescan and 
 
   await call("PUT", "/api/review", { id: "daft:1", status: "rejected" });
   assert.equal(await reviewOf("daft:1"), "rejected");
-  assert.equal(JSON.parse((await import("node:fs")).readFileSync(store.file, "utf8")).reviews["daft:1"].status, "rejected", "saved to disk");
+  assert.equal(JSON.parse((await import("node:fs")).readFileSync(store.file, "utf8")).searches["@admin"].reviews["daft:1"].status, "rejected", "saved to disk");
 
   const gone = await call("PUT", "/api/review", { id: "daft:1", status: "unavailable" });
   assert.equal(gone.res.status, 200);
@@ -156,7 +175,7 @@ test("a listing can be marked seen or not a fit; the mark survives a rescan and 
 
   await call("PUT", "/api/review", { id: "daft:1", status: null });
   assert.equal(await reviewOf("daft:1"), null);
-  assert.deepEqual(store.data.reviews, {});
+  assert.deepEqual(searchOf(store).reviews, {});
 });
 
 test("review requests are validated", async () => {
@@ -164,18 +183,18 @@ test("review requests are validated", async () => {
     assert.equal((await call("PUT", "/api/review", body)).res.status, 400, JSON.stringify(body));
   }
   assert.equal((await call("PUT", "/api/review", { id: "daft:404", status: "seen" })).res.status, 404);
-  assert.deepEqual(store.data.reviews, {}, "nothing was stored for bad requests");
+  assert.deepEqual(searchOf(store).reviews, {}, "nothing was stored for bad requests");
 });
 
 test("a verdict on one copy of a property covers the other copies", async () => {
-  store.data.matches[0].memberIds = ["daft:1", "rent:9"];
+  searchOf(store).matches[0].memberIds = ["daft:1", "rent:9"];
   const { res, data } = await call("PUT", "/api/review", { id: "rent:9", status: "rejected" });
   assert.equal(res.status, 200);
   assert.equal(data.id, "daft:1");
-  assert.deepEqual(Object.keys(store.data.reviews).sort(), ["daft:1", "rent:9"]);
+  assert.deepEqual(Object.keys(searchOf(store).reviews).sort(), ["daft:1", "rent:9"]);
 
   await call("POST", "/api/scan");
-  assert.deepEqual(store.data.matches[0].memberIds, ["daft:1"], "the rescan no longer sees the Rent.ie copy");
+  assert.deepEqual(searchOf(store).matches[0].memberIds, ["daft:1"], "the rescan no longer sees the Rent.ie copy");
   const state = (await call("GET", "/api/state")).data;
   assert.equal(state.matches[0].review, "rejected", "the Daft copy still carries the verdict");
   assert.equal(state.matches[0].memberIds, undefined, "member ids stay on the server");
