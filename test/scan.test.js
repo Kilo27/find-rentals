@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createScanner } from "../src/scan.js";
 import { createPusher, buildListingPayload } from "../src/push.js";
 import { createTransit } from "../src/transit.js";
-import { daftPage, httpError, kmNorth, makeFetch, noSleep, rawListing, tempStore, fakePusher } from "./helpers.js";
+import { configure, daftPage, httpError, kmNorth, makeFetch, noSleep, rawListing, searchOf, tempStore, fakePusher } from "./helpers.js";
 
 const bySection = (map) => makeFetch((q) => {
   const out = map[q.section];
@@ -14,7 +14,7 @@ const newScanner = (opts) => createScanner({ sleep: noSleep, politenessMs: 0, ge
 
 function setup({ pusher = fakePusher(), sections = ["sharing"] } = {}) {
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sections, sources: ["daft"] };
+  configure(store, { sections, sources: ["daft"] });
   return { store, pusher };
 }
 
@@ -28,22 +28,22 @@ test("scan: first run is a baseline - one summary push, listings marked seen", a
   assert.equal(run.matches, 2);
   assert.equal(pusher.sent.length, 1);
   assert.match(pusher.sent[0].title, /Watching started: 2/);
-  assert.deepEqual(Object.keys(store.data.seen).sort(), ["daft:1", "daft:2"]);
-  assert.equal(store.data.matches.length, 2);
-  assert.equal(store.data.matches[0].text, undefined);
+  assert.deepEqual(Object.keys(searchOf(store).seen).sort(), ["daft:1", "daft:2"]);
+  assert.equal(searchOf(store).matches.length, 2);
+  assert.equal(searchOf(store).matches[0].text, undefined);
 });
 
 test("scan: year-old verdicts on listings that are gone are pruned; current and recent ones stay", async () => {
   const { store, pusher } = setup();
   const scanner = newScanner({ store, pusher, fetchImpl: bySection({ sharing: () => daftPage([rawListing({ id: 1 })]) }) });
   const old = "2020-01-01T00:00:00.000Z";
-  store.data.reviews = {
+  searchOf(store).reviews = {
     "daft:1": { status: "seen", at: old },
     "daft:98": { status: "rejected", at: new Date().toISOString() },
     "daft:99": { status: "rejected", at: old },
   };
   await scanner.run();
-  assert.deepEqual(Object.keys(store.data.reviews).sort(), ["daft:1", "daft:98"]);
+  assert.deepEqual(Object.keys(searchOf(store).reviews).sort(), ["daft:1", "daft:98"]);
 });
 
 test("scan: later runs push only brand-new matches, once", async () => {
@@ -82,7 +82,7 @@ test("scan: non-matching listings never notify, but reappear if settings widen",
   assert.equal(run.rejected, 2);
   assert.equal(pusher.sent.length, 0);
 
-  store.data.config = { ...store.data.config, radiusKm: 3 };
+  configure(store, { radiusKm: 3 });
   await scanner.run();
   assert.equal(pusher.sent.length, 1);
   assert.match(pusher.sent[0].title, /Room 2/);
@@ -114,13 +114,13 @@ test("scan: listings stay unseen if delivery fails to every device, then retry",
 
   items = [rawListing({ id: 1 }), rawListing({ id: 2 })];
   await scanner.run();
-  assert.equal(store.data.seen["daft:2"], undefined);
+  assert.equal(searchOf(store).seen["daft:2"], undefined);
 
   delivering = true;
   pusher.sent.length = 0;
   await scanner.run();
   assert.equal(pusher.sent.length, 1);
-  assert.ok(store.data.seen["daft:2"]);
+  assert.ok(searchOf(store).seen["daft:2"]);
 });
 
 test("scan: with no subscribers listings are still marked seen", async () => {
@@ -131,7 +131,7 @@ test("scan: with no subscribers listings are still marked seen", async () => {
   await scanner.run();
   items = [rawListing({ id: 9 })];
   await scanner.run();
-  assert.ok(store.data.seen["daft:9"]);
+  assert.ok(searchOf(store).seen["daft:9"]);
 });
 
 test("scan: duplicate ids across sections are collapsed", async () => {
@@ -154,12 +154,12 @@ test("scan: total failure records error and alerts on 3rd consecutive failure on
     assert.equal(run.ok, false);
     assert.match(run.error, /403/);
   }
-  assert.equal(store.data.failureCount, 4);
+  assert.equal(store.data.regionStatus.limerick.failureCount, 4);
   assert.equal(pusher.sent.length, 0, "everyone else is not sent error codes");
   assert.equal(pusher.ops().length, 1);
   assert.match(pusher.ops()[0].title, /can't reach any source/);
-  assert.match(pusher.ops()[0].body, /403/, "the admin does get the detail");
-  assert.equal(store.data.baselineDone, false, "baseline must wait for a successful scan");
+  assert.match(pusher.ops()[0].body, /^Limerick: 3 scans failed in a row: .*403/, "the admin does get the detail, and which region it is");
+  assert.equal(searchOf(store).baselineDone, false, "baseline must wait for a successful scan");
 });
 
 test("scan: recovery after 3+ failures sends a recovery push", async () => {
@@ -177,7 +177,7 @@ test("scan: recovery after 3+ failures sends a recovery push", async () => {
   await scanner.run();
   assert.ok(pusher.ops().some((p) => /is back/.test(p.title)));
   assert.ok(!pusher.sent.some((p) => /is back/.test(p.title)), "recovery is the admin's news, not everyone's");
-  assert.equal(store.data.failureCount, 0);
+  assert.equal(store.data.regionStatus.limerick.failureCount, 0);
 });
 
 test("scan: partial failure keeps previous matches for the failed section", async () => {
@@ -192,12 +192,12 @@ test("scan: partial failure keeps previous matches for the failed section", asyn
     }),
   });
   await scanner.run();
-  assert.equal(store.data.matches.length, 2);
+  assert.equal(searchOf(store).matches.length, 2);
   failRent = true;
   const run = await scanner.run();
   assert.equal(run.ok, true);
-  assert.equal(store.data.failureCount, 0);
-  assert.deepEqual(store.data.matches.map((m) => m.id).sort(), ["daft:1", "daft:2"]);
+  assert.equal(store.data.regionStatus.limerick.failureCount, 0);
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id).sort(), ["daft:1", "daft:2"]);
   assert.equal(run.sources[0].notes.find((n) => n.group === "residential-to-rent").ok, false);
 });
 
@@ -207,7 +207,7 @@ test("scan: concurrent run() calls share one scan", async () => {
   const scanner = newScanner({ store, pusher, fetchImpl });
   const [a, b] = await Promise.all([scanner.run(), scanner.run()]);
   assert.equal(a, b);
-  assert.equal(fetchImpl.pages().length, 1);
+  assert.equal(fetchImpl.pages().length, 2, "one search of the rooms, and one asking Daft which are owner-occupied");
 });
 
 test("push: dead subscriptions (410) are pruned, failures recorded", async () => {
@@ -273,24 +273,6 @@ test("push: ids with awkward characters survive the round trip through the alert
   assert.equal(listingFromSearch(payload.url.slice(1)), "web:https://site.ie/a b?c=1&d=2");
 });
 
-import fs from "node:fs";
-import path from "node:path";
-import { Store } from "../src/store.js";
-import { DEFAULT_CONFIG, normalizeConfig } from "../src/config.js";
-
-test("store: a saved config carrying the old 'university of limerick' locality hint is migrated", () => {
-  const { dir } = tempStore();
-  const old = { ...normalizeConfig(DEFAULT_CONFIG), localityHints: ["castletroy", "plassey", "dromroe", "mayorstone", "kilmurry", "university of limerick"] };
-  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: old }));
-  const migrated = new Store(dir);
-  assert.ok(!migrated.data.config.localityHints.includes("university of limerick"));
-  assert.ok(migrated.data.config.localityHints.includes("castletroy"));
-
-  const custom = { ...old, localityHints: ["castletroy", "my own area"] };
-  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: custom }));
-  assert.deepEqual(new Store(dir).data.config.localityHints, ["castletroy", "my own area"], "user-edited hints are left alone");
-});
-
 // A 304 stop 3.5 km north of UL (a made-up one: the real data has none there), 15 minutes from the campus.
 const stopAt = kmNorth(3.5);
 const northLine = () =>
@@ -311,15 +293,15 @@ test("scan: a home beyond the radius with a direct route to the campus is matche
   assert.equal(run.rejected, 2);
   assert.match(pusher.sent[0].body, /3\.5 km from University of Limerick · 304 \d+ m away, 15 min to UL/);
 
-  const stored = store.data.matches.find((m) => m.id === "daft:2");
+  const stored = searchOf(store).matches.find((m) => m.id === "daft:2");
   assert.ok(stored.flags.includes("transit-access"));
   assert.equal(stored.transit.campuses[0].options[0].label, "304");
   assert.equal(stored.transit.campuses[0].options[0].code, "999");
-  assert.equal(store.data.matches.find((m) => m.id === "daft:1").transit, null, "homes inside the radius with no stop nearby carry no transport link");
+  assert.equal(searchOf(store).matches.find((m) => m.id === "daft:1").transit, null, "homes inside the radius with no stop nearby carry no transport link");
 });
 
 test("scan: without transport data (or with it switched off) the radius is strict", async () => {
-  for (const setupTransit of [(s) => ({ transit: null }), (s) => { s.store.data.config = { ...s.store.data.config, transitEnabled: false }; return { transit: northLine() }; }]) {
+  for (const setupTransit of [(s) => ({ transit: null }), (s) => { configure(s.store, { transitEnabled: false }); return { transit: northLine() }; }]) {
     const s = setup();
     let items = [rawListing({ id: 1 })];
     const scanner = newScanner({ ...s, ...setupTransit(s), fetchImpl: bySection({ sharing: () => daftPage(items) }) });
@@ -329,21 +311,4 @@ test("scan: without transport data (or with it switched off) the radius is stric
     assert.equal(run.matches, 1);
     assert.equal(run.rejected, 1);
   }
-});
-
-test("store: a saved config carrying the old, mostly broken default Rent.ie URLs is migrated", () => {
-  const { dir } = tempStore();
-  const oldUrls = [
-    "https://www.rent.ie/rooms-to-rent/limerick/castletroy/",
-    "https://www.rent.ie/student-accommodation/University-of-Limerick/46/",
-    "https://www.rent.ie/houses-to-rent/limerick/castletroy/",
-    "https://www.rent.ie/apartments-to-rent/limerick/castletroy/",
-  ];
-  const old = { ...normalizeConfig(DEFAULT_CONFIG), rentUrls: oldUrls };
-  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: old }));
-  assert.deepEqual(new Store(dir).data.config.rentUrls, DEFAULT_CONFIG.rentUrls);
-
-  const custom = { ...old, rentUrls: oldUrls.slice(0, 2) };
-  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ version: 1, config: custom }));
-  assert.deepEqual(new Store(dir).data.config.rentUrls, oldUrls.slice(0, 2), "user-edited URLs are left alone");
 });

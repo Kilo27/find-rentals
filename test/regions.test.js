@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { DEFAULT_CONFIG, normalizeConfig } from "../src/config.js";
 import { searchUrl } from "../src/daft.js";
 import { campusById } from "../src/transit/campuses.js";
-import { REGIONS, regionConfig } from "../scripts/lib/regions.mjs";
+import { REGIONS, campusConfig, regionConfig } from "../scripts/lib/regions.mjs";
 
 const ids = Object.keys(REGIONS);
 
@@ -63,4 +63,21 @@ test("the probe names the known regions when given an unknown one, without touch
 
 test("an unknown region throws from regionConfig", () => {
   assert.throws(() => regionConfig("nowhere"), /unknown region "nowhere"/);
+});
+
+test("the probe can check a campus: its region's pages plus the campus's own", () => {
+  const mic = normalizeConfig(campusConfig("mic"));
+  assert.equal(mic.center.label, "Mary Immaculate College");
+  assert.equal(mic.daftLocation, DEFAULT_CONFIG.daftLocation, "the same Daft area as the rest of Limerick");
+  assert.ok(mic.rentUrls.includes(DEFAULT_CONFIG.rentUrls[0]), "the region's pages");
+  assert.ok(mic.rentUrls.includes("https://www.rent.ie/houses-to-let/limerick/limerick-city-centre/"), "and the campus's own");
+  assert.equal(new Set(mic.rentUrls).size, mic.rentUrls.length);
+  assert.deepEqual(normalizeConfig(campusConfig("ul")).rentUrls, DEFAULT_CONFIG.rentUrls, "UL has no pages of its own beyond the region's");
+});
+
+test("the probe names the known campuses when given an unknown one, without touching the network", () => {
+  const r = spawnSync(process.execPath, ["scripts/probe-sources.mjs", "--campus=nowhere"], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unknown campus "nowhere"/);
+  for (const id of ["ul", "mic", "tus-limerick", "ucc", "mtu-cork", "uog", "atu-galway"]) assert.ok(r.stderr.includes(id), id);
 });

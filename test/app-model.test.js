@@ -98,6 +98,14 @@ test("sources: no scan yet, paused, and a scan that is long overdue are each the
   assert.equal(summarizeSources(slow, NOW).level, "ok");
 });
 
+test("sources: an account that hasn't chosen a campus has nothing to check, and is told what to do", () => {
+  const s = summarizeSources(state({ config: null, lastRun: null }), NOW);
+  assert.equal(s.level, "none");
+  assert.equal(s.headline, "Choose a campus to start watching");
+  assert.deepEqual(s.rows, []);
+  assert.equal(summarizeSources(state({ config: { enabled: false } }), NOW).level, "paused", "a region that is switched off is still just paused");
+});
+
 test("invite: new users get the steps for an iPhone, a reset gets only the new password", () => {
   const invite = inviteText({ url: "https://rw.example.com", username: "aoife", password: "pw123456" });
   assert.match(invite, /Open: https:\/\/rw\.example\.com/);
@@ -105,6 +113,7 @@ test("invite: new users get the steps for an iPhone, a reset gets only the new p
   assert.match(invite, /Password: pw123456/);
   assert.match(invite, /Add to Home Screen/);
   assert.match(invite, /Turn on alerts/);
+  assert.match(invite, /Choose your campus/, "nothing is watched for a new account until they pick one");
   assert.match(invite, /Copy the link into Safari/, "a link opened inside WhatsApp can't be added to the Home Screen");
   assert.match(invite, /log in again/, "the Home Screen app is a separate app to Safari");
   assert.match(invite, /change your password any time under Alerts/);

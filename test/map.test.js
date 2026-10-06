@@ -7,7 +7,8 @@ import { createGeocoder, resolveArea } from "../src/geocode.js";
 import { areasForMatches, createMapData } from "../src/mapdata.js";
 import { OVERPASS_MIRRORS, buildRoutes, buildStops, overpass, simplify, stitch, transitBounds } from "../src/transit-lines.js";
 import { clusterSpots, pinLabel, placeMatches } from "../public/map-model.js";
-import { UL, fakePusher, kmNorth, noSleep, router, tempStore } from "./helpers.js";
+import { configOf } from "../src/searches.js";
+import { UL, configure, fakePusher, kmNorth, noSleep, router, searchOf, tempStore } from "./helpers.js";
 
 const way = (ref, pts, role = "") => ({ type: "way", ref, role, geometry: pts.map((p) => (p ? { lat: p[0], lon: p[1] } : null)) });
 const rel = (id, tags, members) => ({ type: "relation", id, tags: { type: "route", ...tags }, members });
@@ -148,7 +149,7 @@ test("map data loads in the background, is cached, and a stale copy is shown whi
   const fetchImpl = mapRoutes();
   const clock = { t: Date.parse("2026-10-01T12:00:00Z") };
   const { store, mapData } = newMapData(fetchImpl, clock);
-  const config = store.data.config;
+  const config = configOf(store, searchOf(store));
 
   const first = mapData.get(config);
   assert.equal(first.transitStatus, "loading");
@@ -178,7 +179,7 @@ test("a failed fetch is reported, not retried for ten minutes, and can be retrie
   const fetchImpl = mapRoutes({ overpassOk: false });
   const clock = { t: Date.parse("2026-10-01T12:00:00Z") };
   const { store, mapData } = newMapData(fetchImpl, clock);
-  const config = store.data.config;
+  const config = configOf(store, searchOf(store));
 
   mapData.get(config);
   await mapData.settled();
@@ -304,12 +305,12 @@ test("a scan gives approximate and unlocated listings the area they are in, whic
     }],
   ]);
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sources: ["ul"], ulUrls: [LIST], rentUrls: [], myhomeUrls: [], webUrls: [] };
+  configure(store, { sources: ["ul"], ulUrls: [LIST], rentUrls: [], myhomeUrls: [], webUrls: [] });
   const scanner = createScanner({ store, pusher: fakePusher(), fetchImpl, sleep: noSleep, politenessMs: 0, geocodeDelayMs: 0, now: () => new Date("2026-09-30T12:00:00Z") });
   const run = await scanner.run();
   assert.equal(run.ok, true);
 
-  const by = (id) => store.data.matches.find((m) => m.id === id);
+  const by = (id) => searchOf(store).matches.find((m) => m.id === id);
   assert.equal(by("ul:2001").distanceSource, "geocoded-area");
   assert.equal(by("ul:2001").areaKey, "area:castletroy");
   assert.equal(by("ul:2001").areaQuery, undefined, "the helper field is not stored");
@@ -318,7 +319,7 @@ test("a scan gives approximate and unlocated listings the area they are in, whic
   assert.equal(by("ul:2003").distanceSource, "geocoded");
   assert.equal(by("ul:2003").areaKey, undefined, "an exact address needs no area");
 
-  const areas = areasForMatches(store.data.matches, store.data.geocache);
+  const areas = areasForMatches(searchOf(store).matches, store.data.geocache);
   assert.equal(areas["area:castletroy"].geometry.type, "Polygon");
   assert.equal(areas["area:castletroy"].name, "Castletroy");
 });
@@ -327,7 +328,7 @@ test("a scan gives approximate and unlocated listings the area they are in, whic
 
 test("API: /api/state carries the areas, /api/map serves the map background, and the map library is served", async () => {
   const { store } = tempStore();
-  store.data.matches = [{ id: "ul:1", areaKey: "area:castletroy", lat: null, lng: null }];
+  searchOf(store).matches = [{ id: "ul:1", areaKey: "area:castletroy", lat: null, lng: null }];
   store.data.geocache["area:castletroy"] = { lat: 52.665, lng: -8.571, kind: "suburb", name: "Castletroy", geometry: null, at: new Date().toISOString() };
   const pusher = fakePusher();
   const scanner = createScanner({ store, pusher, fetchImpl: router([]), sleep: noSleep, politenessMs: 0 });

@@ -1,5 +1,6 @@
 import { ADAPTERS } from "./sources/index.js";
 import { ADMIN_OWNER } from "./push.js";
+import { activeSources } from "./regions.js";
 
 // Long enough to ride out a redeploy (the agent reconnects within a minute) or a Wi-Fi change, short enough that the
 // admin hears while there is still time to wake the laptop.
@@ -23,9 +24,9 @@ export function createLaptopWatch({ store, pusher, proxy, alertAfterMs = DEFAULT
 
   const toAdmin = (payload) => pusher.sendToOwner(ADMIN_OWNER, payload);
 
-  // The sources that need the agent, by name. Empty when the agent isn't in use or none of them is switched on.
+  // The sources that need the agent, by name: those of the regions somebody is watching in. Empty when the agent isn't in use or none of them is switched on.
   const routedLabels = () =>
-    proxy.kind === "laptop" ? store.data.config.sources.filter((id) => proxy.sources.has(id)).map((id) => ADAPTERS[id]?.label ?? id) : [];
+    proxy.kind === "laptop" ? activeSources(store).filter((id) => proxy.sources.has(id)).map((id) => ADAPTERS[id]?.label ?? id) : [];
 
   async function check() {
     const labels = routedLabels();

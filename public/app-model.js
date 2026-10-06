@@ -9,6 +9,8 @@ const LATE_AFTER_MIN = 90;
 export function summarizeSources(state, now = Date.now()) {
   const { config, lastRun } = state;
   const none = { issues: [], rows: [], note: null, plainNote: null, checkedAt: lastRun?.at ?? null };
+  // No campus chosen yet (the state has no search): there is nothing to check until there is one.
+  if (config === null) return { ...none, level: "none", headline: "Choose a campus to start watching" };
   if (config && config.enabled === false) return { ...none, level: "paused", headline: "Watching is paused" };
   if (!lastRun) return { ...none, level: "none", headline: "Waiting for the first check" };
   if (lastRun.ok === false) {
@@ -64,7 +66,7 @@ export function inviteText({ url, username, password, reset = false }) {
       "1. Copy the link into Safari (a link opened inside WhatsApp or Messages can't be added to your Home Screen).",
       "2. Tap Share, then Add to Home Screen.",
       "3. Open Rental Watch from your Home Screen and log in again (it's a separate app to Safari).",
-      "4. Tap Turn on alerts.",
+      "4. Choose your campus, then tap Turn on alerts.",
       "",
       "You can change your password any time under Alerts.",
     );

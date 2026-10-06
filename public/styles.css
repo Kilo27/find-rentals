@@ -100,7 +100,14 @@ input[type=text], input[type=number], input[type=date], input[type=password], te
   width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--field); border-radius: 10px;
 }
-input[type=checkbox] { flex: none; width: 20px; height: 20px; accent-color: var(--accent); }
+input[type=checkbox], input[type=radio] { flex: none; width: 20px; height: 20px; accent-color: var(--accent); }
+/* Groups of fields that share a label or a switch (the campuses, the settings that are only read while viewing as someone). */
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.campuses { margin: 12px 0 0; }
+fieldset.campuses legend { padding: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
+fieldset.campuses label.check { min-height: 44px; margin: 0; }
+.section-title { margin: 24px 0 2px; font-size: 16px; }
+.region-status h3 { margin: 14px 0 2px; }
 textarea { min-height: 64px; }
 .row { display: flex; align-items: flex-end; gap: 10px; }
 .row > * { flex: 1; min-width: 0; }
