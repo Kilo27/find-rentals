@@ -62,7 +62,7 @@ test("the admin signs in with the configured username (any case) and password", 
   const ok = await login("  KYLE ", "admin-pass-1");
   assert.equal(ok.status, 200);
   const { data } = await call(ok.j, "GET", "/api/state");
-  assert.deepEqual(data.user, { username: "kyle", isAdmin: true });
+  assert.deepEqual(data.user, { username: "kyle", isAdmin: true, name: null, hasPassword: true });
   assert.equal(data.viewingAs, null);
 });
 
@@ -327,7 +327,7 @@ test("the admin can view the app as a user, and only the admin", async () => {
   assert.equal((await call(admin, "POST", "/api/view-as", { username: "bob" })).status, 200);
 
   const { data } = await call(admin, "GET", "/api/state");
-  assert.deepEqual(data.user, { username: "bob", isAdmin: false });
+  assert.deepEqual(data.user, { username: "bob", isAdmin: false, name: null, hasPassword: true });
   assert.deepEqual(data.viewingAs, { username: "bob", by: "kyle" });
   assert.equal(data.subscriptions.length, 1, "shows bob's devices, not the admin's");
   assert.equal(store.data.users.find((u) => u.username === "bob").lastSeenAt, seenBefore, "viewing is not bob being active");
@@ -347,7 +347,7 @@ test("the admin can view the app as a user, and only the admin", async () => {
   assert.equal((await call(admin, "GET", "/api/state")).data.user.username, "sneaky");
   assert.equal((await call(admin, "DELETE", "/api/view-as")).status, 200);
   const back = (await call(admin, "GET", "/api/state")).data;
-  assert.deepEqual(back.user, { username: "kyle", isAdmin: true });
+  assert.deepEqual(back.user, { username: "kyle", isAdmin: true, name: null, hasPassword: true });
   assert.equal(back.viewingAs, null);
 
   // a user who sends the cookie anyway is still themselves

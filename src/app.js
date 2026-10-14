@@ -1,20 +1,24 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { ConfigError, SECTIONS, SOURCES, normalizeRegion } from "./config.js";
+import { ConfigError, SECTIONS, SOURCES, normalizePrefs, normalizeRegion } from "./config.js";
 import { createAuth } from "./auth.js";
+import { DEVICE_TTL_MS, isLinkToken } from "./links.js";
 import { areasForMatches } from "./mapdata.js";
 import { createUsers, UserError, normalizeUsername } from "./users.js";
 import { CAMPUSES } from "./transit/campuses.js";
-import { searchCampuses } from "./catalogue.js";
+import { searchCampus, searchCampuses } from "./catalogue.js";
 import { regionName, regionStatus } from "./regions.js";
 import { campusOf, chooseCampus, configOf, searchOf, updatePrefs, watchers } from "./searches.js";
 import { defaultTransit } from "./transit.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
-// The map library is served from the installed package, so the page needs no third-party script host.
-const leafletDir = path.join(path.dirname(createRequire(import.meta.url).resolve("leaflet/package.json")), "dist");
+const requireHere = createRequire(import.meta.url);
+// The map library and the QR code maker are served from the installed packages, so the page needs no third-party script host.
+const leafletDir = path.join(path.dirname(requireHere.resolve("leaflet/package.json")), "dist");
+const qrcodeDir = path.dirname(requireHere.resolve("qrcode-generator"));
 
 const publicDevice = (s) => ({ endpoint: s.endpoint.slice(-12), userAgent: s.userAgent, addedAt: s.addedAt, lastError: s.lastError });
 
@@ -38,7 +42,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
   const app = express();
   const admin = normalizeUsername(adminUsername);
   const users = createUsers({ store, adminUsername: admin });
-  const auth = createAuth({ users, adminUsername: admin, password, secret });
+  const auth = createAuth({ users, store, adminUsername: admin, password, secret });
   if (users.find(admin)) console.warn(`A user named "${admin}" exists but ADMIN_USERNAME is the same name, so only the admin can sign in as it.`);
 
   app.set("trust proxy", 1);
@@ -58,6 +62,27 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"), { dotfiles: "allow" });
   });
   app.use("/vendor/leaflet", express.static(leafletDir, { maxAge: "7d", index: false }));
+  app.use("/vendor/qrcode", express.static(qrcodeDir, { maxAge: "7d", index: false }));
+
+  // A sign-in link is the app's address with ?join=<token>. An iPhone's Home Screen app keeps its own cookies apart from
+  // Safari's, so the page opened from such a link names a manifest whose start address carries the same token: the app
+  // added to the Home Screen from that page then opens already signed in, with nothing to type. The token is only ever
+  // copied into the page when it has the shape of one.
+  const joinToken = (req) => (isLinkToken(req.query.join) ? req.query.join : null);
+  app.get(["/", "/index.html"], async (req, res) => {
+    const token = joinToken(req);
+    let html = await fs.readFile(path.join(publicDir, "index.html"), "utf8");
+    if (token) html = html.replace('href="/manifest.webmanifest"', `href="/manifest.webmanifest?join=${token}"`);
+    res.set("Cache-Control", "no-cache");
+    res.type("html").send(html);
+  });
+  app.get("/manifest.webmanifest", async (req, res) => {
+    const manifest = JSON.parse(await fs.readFile(path.join(publicDir, "manifest.webmanifest"), "utf8"));
+    const token = joinToken(req);
+    if (token) manifest.start_url = `/?join=${token}`;
+    res.set("Cache-Control", token ? "no-store" : "no-cache");
+    res.type("application/manifest+json").send(JSON.stringify(manifest));
+  });
   // The app's own code has no build step and no versioned file names, so a browser has to check with the server before
   // reusing a copy: otherwise a deploy goes unseen until the old file's hour is up (and a new app.js can meet an old
   // module it imports). A check that finds nothing new costs a small 304. Images and the manifest may be kept an hour.
@@ -72,6 +97,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
   );
 
   app.post("/api/login", auth.login);
+  app.post("/api/join", auth.join);
   app.post("/api/logout", auth.logout);
 
   // The laptop agent authenticates with its own token, not the app password.
@@ -111,8 +137,10 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     const search = mine(req);
     const campus = campusOf(search);
     const status = campus ? regionStatus(store, campus.regionId) : null;
+    const account = effective.isAdmin ? null : users.find(effective.username);
     res.json({
-      user: { username: effective.username, isAdmin: effective.isAdmin },
+      // `name` is what to call them; `hasPassword` is false for someone who has only ever signed in with a link.
+      user: { username: effective.username, isAdmin: effective.isAdmin, name: account?.name ?? null, hasPassword: effective.isAdmin || users.hasPassword(account) },
       viewingAs: viewing ? { username: effective.username, by: real.username } : null,
       campus: describeCampus(campus),
       // The campuses that can be chosen. Choosing one is what puts the account in a region.
@@ -132,6 +160,8 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       scanning: scanner.isRunning(),
       nextRunAt: scheduler.nextRunAt(campus?.regionId),
       subscriptions: pusher.subscriptionsOf(effective.owner).map(publicDevice),
+      // When this account last opened the app from a Home Screen, or null.
+      homeScreenAt: store.data.homeScreens?.[effective.owner] ?? null,
       vapidPublicKey: pusher.publicKey,
       serverTime: new Date().toISOString(),
       // Only the admin, and only as themselves, sees how the regions are set up.
@@ -181,6 +211,41 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     store.save();
     const matched = await rematch(req);
     res.json({ campus: describeCampus(campus), moved, matched, config: configOf(store, mine(req)) });
+  });
+
+  // The guided first-run setup: a campus and the answers to a few questions, saved together and matched once. Doing it in
+  // one go matters: matching with the default preferences first would finish watching's first look with those, and then
+  // whatever the person's own answers let in on top would alert as new.
+  api.post("/setup", auth.blockWhileViewing, async (req, res) => {
+    const search = mine(req);
+    const campus = typeof req.body?.campus === "string" ? searchCampus(req.body.campus) : null;
+    if (!campus) throw new UserError("Choose one of the campuses on the list");
+    try {
+      normalizePrefs({ ...search.prefs, ...(req.body?.prefs ?? {}) }, { maxRadiusKm: campus.maxRadiusKm });
+    } catch (err) {
+      if (err instanceof ConfigError) throw new UserError(err.errors.join("; "));
+      throw err;
+    }
+    const { moved } = chooseCampus(search, campus.id);
+    updatePrefs(search, req.body?.prefs ?? {});
+    store.save();
+    const matched = await rematch(req);
+    res.json({ campus: describeCampus(campus), moved, matched, matches: search.matches.length });
+  });
+
+  // A sign-in link for the device asking, so that an iPhone's Home Screen app (which doesn't share Safari's cookies) opens
+  // signed in. The page puts it in the manifest the app is added from, never in the address bar, so sharing the page
+  // doesn't share it.
+  api.post("/account/link", auth.blockWhileViewing, (req, res) => {
+    res.json(auth.issueLink(req.auth.effective.username, { ttlMs: DEVICE_TTL_MS, purpose: "device" }));
+  });
+
+  // The app was opened from a Home Screen. The page in Safari that walked someone through adding it watches for this, so it
+  // can tell them it worked and that they can carry on in the app; the admin sees it under Users.
+  api.post("/account/home-screen", auth.blockWhileViewing, (req, res) => {
+    (store.data.homeScreens ??= {})[req.auth.effective.owner] = new Date().toISOString();
+    store.save();
+    res.json({ ok: true });
   });
 
   // Where a region looks and how, which only the admin changes: a page that is wrong for one account is wrong for
@@ -289,10 +354,13 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     const campus = search ? campusOf(search) : null;
     return {
       username: u.username,
+      name: u.name ?? null,
+      hasPassword: users.hasPassword(u),
       createdAt: u.createdAt,
       lastLoginAt: u.lastLoginAt,
       lastSeenAt: u.lastSeenAt,
       devices: pusher.subscriptionsOf(u.username).map(publicDevice),
+      homeScreenAt: store.data.homeScreens?.[u.username] ?? null,
       // Where they are watching and what they have, for working out why someone isn't getting alerts.
       campus: describeCampus(campus),
       matches: search?.matches.length ?? 0,
@@ -302,9 +370,22 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
 
   api.get("/users", auth.requireAdmin, (_req, res) => res.json({ users: users.list().map(describeUser) }));
 
+  // Adding someone takes only a name: the username is made from it, a password is optional, and what comes back is a
+  // sign-in link to send them. The page builds the full address from its own origin.
   api.post("/users", auth.requireAdmin, async (req, res) => {
-    const user = await users.create(req.body?.username, req.body?.password);
-    res.status(201).json({ user: describeUser(user) });
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    if (!name && !req.body?.username) throw new UserError("Type the person's name");
+    const username = req.body?.username ? req.body.username : users.suggestUsername(name);
+    const user = await users.create(username, req.body?.password ?? null, { name: name || null });
+    const link = auth.issueLink(user.username, { replace: true });
+    res.status(201).json({ user: describeUser(user), link });
+  });
+
+  // A fresh sign-in link for someone, replacing the last one sent. Nobody is signed out.
+  api.post("/users/:username/link", auth.requireAdmin, (req, res) => {
+    const user = users.find(req.params.username);
+    if (!user) throw new UserError("No such user", 404);
+    res.json({ link: auth.issueLink(user.username, { replace: true }) });
   });
 
   api.put("/users/:username/password", auth.requireAdmin, async (req, res) => {
@@ -316,6 +397,8 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     const user = users.find(req.params.username);
     users.remove(req.params.username);
     pusher.removeOwner(user.username);
+    auth.forgetLinks(user.username);
+    if (store.data.homeScreens) delete store.data.homeScreens[user.username];
     res.json({ ok: true });
   });
 

@@ -31,6 +31,10 @@ const freshState = () => ({
   searches: { [ADMIN_OWNER]: newSearch({ campus: "ul" }) },
   subscriptions: [],
   users: [],
+  // Hashes of the sign-in links that have been handed out (links.js), and when each account last opened the app from a
+  // Home Screen.
+  signInLinks: [],
+  homeScreens: {},
   vapid: null,
   // Shared by every region and account: nothing in them depends on who is asking.
   debug: {},

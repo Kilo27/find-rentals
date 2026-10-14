@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertsSetup, inviteText, listingFromSearch, summarizeSources } from "../public/app-model.js";
+import { alertsSetup, answersFromPrefs, cleanSearch, collegeYearEnd, describeAnswers, devicePlatform, distanceChoices, homeScreenMode, inviteText, joinFromSearch, kindOf, linkInviteText, listingFromSearch, prefsFromAnswers, safariLayout, setupQuestions, summarizeSources } from "../public/app-model.js";
 
 const NOW = Date.parse("2026-10-02T12:00:00Z");
 const minutesAgo = (m) => new Date(NOW - m * 60_000).toISOString();
@@ -106,22 +106,13 @@ test("sources: an account that hasn't chosen a campus has nothing to check, and 
   assert.equal(summarizeSources(state({ config: { enabled: false } }), NOW).level, "paused", "a region that is switched off is still just paused");
 });
 
-test("invite: new users get the steps for an iPhone, a reset gets only the new password", () => {
-  const invite = inviteText({ url: "https://rw.example.com", username: "aoife", password: "pw123456" });
-  assert.match(invite, /Open: https:\/\/rw\.example\.com/);
-  assert.match(invite, /Username: aoife/);
-  assert.match(invite, /Password: pw123456/);
-  assert.match(invite, /Add to Home Screen/);
-  assert.match(invite, /Turn on alerts/);
-  assert.match(invite, /Choose your campus/, "nothing is watched for a new account until they pick one");
-  assert.match(invite, /Copy the link into Safari/, "a link opened inside WhatsApp can't be added to the Home Screen");
-  assert.match(invite, /log in again/, "the Home Screen app is a separate app to Safari");
-  assert.match(invite, /change your password any time under Alerts/);
-
-  const reset = inviteText({ url: "https://rw.example.com", username: "aoife", password: "newpass99", reset: true });
-  assert.match(reset, /password has been reset/);
+test("a password the admin sets is sent with the address and username, and nothing else", () => {
+  const reset = inviteText({ url: "https://rw.example.com", username: "aoife", password: "newpass99" });
+  assert.match(reset, /password has been changed/);
+  assert.match(reset, /Open: https:\/\/rw\.example\.com/);
+  assert.match(reset, /Username: aoife/);
   assert.match(reset, /Password: newpass99/);
-  assert.doesNotMatch(reset, /Home Screen/);
+  assert.doesNotMatch(reset, /Home Screen/, "setting up the phone is what a sign-in link is for");
 });
 
 test("alerts setup: each device lands in exactly one state", () => {
@@ -141,4 +132,106 @@ test("listing from an alert's address", () => {
   assert.equal(listingFromSearch(""), null);
   assert.equal(listingFromSearch("?other=1"), null);
   assert.equal(listingFromSearch("?listing="), null);
+});
+
+// --- Getting someone set up -------------------------------------------------------------------------------------------
+
+const UA = {
+  iphone26: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
+  iphone17: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+  ipadDesktop: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+  homeScreenApp: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+  instagram: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 350.0.0.0",
+  chromeIos: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0.0.0 Mobile/15E148 Safari/604.1",
+  android: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+};
+const device = (ua, over = {}) => devicePlatform({ ua: UA[ua], ...over });
+
+test("platform: which phone and browser, as far as it matters for getting set up", () => {
+  assert.deepEqual(
+    [device("iphone26").safari, device("iphone26").safariVersion, device("iphone26").ipad],
+    [true, 26, false],
+    "Safari 26 still says iOS 18 in its user agent; its own version is what counts",
+  );
+  assert.equal(device("ipadDesktop", { touchPoints: 5 }).ipad, true, "an iPad asking for desktop pages says it is a Mac but has a touch screen");
+  assert.equal(device("mac").ios, false, "a real Mac has no touch screen");
+  assert.equal(device("instagram").inApp, true);
+  assert.equal(device("instagram").safari, false);
+  assert.equal(device("chromeIos").otherBrowser, true);
+  assert.equal(device("chromeIos").safari, false);
+  const app = device("homeScreenApp", { standalone: true });
+  assert.equal(app.inApp, false, "the Home Screen app has no Safari in its user agent but isn't someone else's browser");
+  assert.equal(device("android").android, true);
+});
+
+test("home screen: one tap where the browser allows it, the taps spelt out on an iPhone, nothing on a computer", () => {
+  const mode = (ua, over = {}, canPrompt = false) => homeScreenMode({ platform: device(ua, over), canPrompt });
+  assert.equal(mode("iphone26"), "ios-safari");
+  assert.equal(mode("instagram"), "ios-elsewhere", "an app's own browser can't add to the Home Screen; Safari first");
+  assert.equal(mode("chromeIos"), "ios-elsewhere");
+  assert.equal(mode("homeScreenApp", { standalone: true }), "installed");
+  assert.equal(mode("android", {}, true), "prompt", "Chrome on Android installs with one tap once it offers to");
+  assert.equal(mode("android"), "android-menu", "until it does, the browser's menu");
+  assert.equal(mode("mac"), "none");
+  assert.equal(mode("mac", {}, true), "prompt", "a computer whose browser offers it can take it");
+
+  assert.equal(safariLayout(device("iphone26")), "compact", "Safari 26 keeps Share behind the ⋯ button");
+  assert.equal(safariLayout(device("iphone17")), "classic");
+  assert.equal(safariLayout(device("ipadDesktop", { touchPoints: 5 })), "ipad");
+});
+
+test("sign-in links: read once from the address, then taken out of it", () => {
+  // Shaped like a link's token but plainly made up, so secret scanners don't take a test for a leak.
+  const token = "x".repeat(32);
+  assert.equal(joinFromSearch(`?join=${token}`), token);
+  assert.equal(joinFromSearch("?join=short"), null);
+  assert.equal(joinFromSearch('?join="><script>'), null);
+  assert.equal(joinFromSearch(""), null);
+  assert.equal(cleanSearch(`?join=${token}`), "");
+  assert.equal(cleanSearch(`?listing=daft%3A1&join=${token}&utm=x`), "?utm=x", "anything else in the address stays");
+  assert.equal(cleanSearch(""), "");
+});
+
+test("invite: a link and nothing to remember, greeting them by first name", () => {
+  const link = "https://rw.example.com/?join=abc";
+  const text = linkInviteText({ name: "Seán O'Brien", link });
+  assert.match(text, /^Hi Seán, I've set you up on Rental Watch/);
+  assert.ok(text.includes(link));
+  assert.match(text, /no password/);
+  assert.match(text, /open it in Safari/);
+  assert.match(text, /2 weeks/);
+  assert.doesNotMatch(text, /Username|Password:/);
+  assert.match(linkInviteText({ name: null, link, fresh: true }), /^Here's a new link for Rental Watch\./);
+  assert.match(linkInviteText({ name: "Sam", link, fresh: true }), /^Hi Sam, here's a new link/);
+});
+
+test("setup answers: the questions stand for preferences, and back again", () => {
+  const prefs = { sections: ["sharing", "student-accommodation-to-share"], priceMax: 800, needFrom: "", stayUntil: "2027-06-30", excludeOwnerOccupied: true, excludeWeekdayOnly: false, radiusKm: 2, transitEnabled: true };
+  const a = answersFromPrefs(prefs);
+  assert.deepEqual(a, { kind: "room", budget: 800, moveIn: "", stayUntil: "2027-06-30", liveIn: false, weekdays: true, radiusKm: 2, transit: true });
+  assert.deepEqual(prefsFromAnswers(a), prefs, "a round trip changes nothing");
+
+  assert.equal(kindOf(["residential-to-rent"]), "whole");
+  assert.equal(kindOf(["sharing", "residential-to-rent"]), "either");
+  assert.equal(kindOf(["student-accommodation-to-share"]), "room");
+  assert.deepEqual(prefsFromAnswers({ ...a, kind: "whole" }).sections, ["residential-to-rent"]);
+
+  assert.deepEqual(setupQuestions({ kind: "room" }), ["campus", "kind", "budget", "dates", "sharing"]);
+  assert.deepEqual(setupQuestions({ kind: "whole" }), ["campus", "kind", "budget", "dates"], "living with the owner is about rooms");
+
+  const said = describeAnswers(a, { short: "UL" }, { transitMaxKm: 5 });
+  assert.equal(said.kind, "A room in a shared place");
+  assert.equal(said.budget, "Up to €800 a month");
+  assert.equal(said.dates, "As soon as possible, until 30 Jun 2027");
+  assert.equal(said.sharing, "Not with a live-in owner · weekdays only is fine");
+  assert.equal(said.distance, "Within 2 km of UL, or up to 5 km on a direct bus or train");
+  assert.equal(describeAnswers({ ...a, budget: null, stayUntil: "", transit: false }, { short: "UL" }).budget, "Any price");
+  assert.match(describeAnswers({ ...a, stayUntil: "" }, null).dates, /for as long as I like/);
+
+  assert.equal(collegeYearEnd(new Date("2026-10-14")), "2027-06-30");
+  assert.equal(collegeYearEnd(new Date("2027-03-01")), "2027-06-30");
+  assert.equal(collegeYearEnd(new Date("2027-07-01")), "2028-06-30", "in summer, the coming year");
+  assert.deepEqual(distanceChoices(4.5), [1, 2, 3]);
+  assert.deepEqual(distanceChoices(5), [1, 2, 3, 5]);
 });

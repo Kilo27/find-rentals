@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { createLinks } from "./links.js";
 import { ADMIN_OWNER } from "./push.js";
 import { MAX_PASSWORD, UserError, normalizeUsername } from "./users.js";
 
@@ -22,8 +23,9 @@ const decode = (v) => {
 // Sessions are signed cookies naming the user. The signature covers a per-user key that changes with the
 // password, so a password change or reset ends that user's sessions, and removing a user ends them at once.
 // The admin's key comes from ACCESS_PASSWORD, so changing that variable signs the admin out everywhere.
-export function createAuth({ users, adminUsername, password, secret }) {
+export function createAuth({ users, store, adminUsername, password, secret }) {
   const key = secret || sha(`find-rentals:${password}`);
+  const links = createLinks({ store });
   const adminSessionKey = sha(password).toString("hex");
   const sign = (username, sessionKey) => crypto.createHmac("sha256", key).update(`session-v2:${username}:${sessionKey}`).digest("hex");
 
@@ -134,6 +136,33 @@ export function createAuth({ users, adminUsername, password, secret }) {
       res.json({ ok: true });
     },
 
+    // A sign-in link (see links.js). It counts as a failed attempt when it doesn't work, like a wrong password.
+    join(req, res) {
+      if (blocked(req.ip)) return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+      const username = links.redeem(req.body?.token, (name) => {
+        const identity = identityFor(name);
+        return identity ? sessionKeyOf(identity) : null;
+      });
+      const identity = username ? identityFor(username) : null;
+      if (!identity) {
+        recordFailure(req.ip);
+        return res.status(400).json({ error: "This link has expired or has been replaced. Ask the person who sent it for a new one." });
+      }
+      if (!identity.isAdmin) users.recordLogin(users.find(identity.username));
+      startSession(req, res, identity);
+      res.clearCookie(VIEW_COOKIE, { path: "/" });
+      res.json({ ok: true, username: identity.username });
+    },
+
+    // A link that signs in as `username` (the admin's name or an account's).
+    issueLink(username, opts) {
+      const identity = identityFor(normalizeUsername(username));
+      if (!identity) throw new UserError("No such user", 404);
+      return links.issue(identity.username, sessionKeyOf(identity), opts);
+    },
+
+    forgetLinks: (username) => links.forget(normalizeUsername(username)),
+
     logout(_req, res) {
       res.clearCookie(COOKIE, { path: "/" });
       res.clearCookie(VIEW_COOKIE, { path: "/" });
@@ -157,7 +186,8 @@ export function createAuth({ users, adminUsername, password, secret }) {
       if (effective.isAdmin) throw new UserError("The admin password is the ACCESS_PASSWORD variable on the server");
       if (blocked(req.ip)) return res.status(429).json({ error: "too many attempts, try again later" });
       const user = users.find(effective.username);
-      if (!(await passwordOk(effective, req.body?.current))) {
+      // Someone who signed in with a link has no password yet, so there is no current one to ask for.
+      if (users.hasPassword(user) && !(await passwordOk(effective, req.body?.current))) {
         recordFailure(req.ip);
         return res.status(400).json({ error: "Current password is wrong" });
       }

@@ -290,3 +290,85 @@ details.panel[open] > summary { margin-bottom: 8px; }
   pointer-events: auto; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-text);
   font: inherit; font-size: 14px; font-weight: 700; box-shadow: 0 2px 10px rgb(0 0 0 / .3); cursor: pointer;
 }
+
+/* The guided setup: one question per screen, big targets, nothing else on screen (no tab bar). */
+body.in-setup { padding-bottom: env(safe-area-inset-bottom); }
+.onboard { max-width: 560px; margin: 0 auto; padding: 12px 16px 40px; }
+.setup-top { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.onboard .back { display: flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.setup-count { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.progress { height: 4px; margin: 4px 0 20px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
+.onboard h1 { margin: 8px 0; font-size: 26px; line-height: 1.2; }
+.onboard h1:focus { outline: none; }
+.hello { margin: 12px 0 0; color: var(--accent); font-size: 18px; font-weight: 700; }
+.lede-q { margin: 0 0 20px; color: var(--muted); }
+.onboard > p { margin: 0 0 12px; }
+.choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 56px; margin: 0 0 10px; padding: 14px 16px;
+  border: 1px solid var(--field); border-radius: 14px; background: var(--card); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.choice.chosen { padding: 13px 15px; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+@media (hover: hover) { .choice:hover { border-color: var(--accent); } }
+.choice-title { font-size: 17px; font-weight: 700; }
+.choice-sub { color: var(--muted); font-size: 14px; }
+.choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.choice-grid .choice { margin: 0; }
+.group-label { margin: 16px 0 8px; color: var(--muted); font-size: 14px; font-weight: 700; }
+.typed { margin-top: 18px; }
+.typed-row { display: flex; align-items: center; gap: 8px; }
+.typed-row input { flex: 1; }
+.typed-row button.secondary { flex: none; margin: 0; }
+.pills { margin: 18px 0 4px; }
+.pills legend { margin-bottom: 8px; padding: 0; font-weight: 700; }
+.pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { min-height: 44px; padding: 10px 16px; border: 1px solid var(--field); border-radius: 999px; background: var(--card); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.pill.chosen { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+.onboard input[type=date] { margin-top: 10px; }
+button.primary.wide { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 52px; margin: 24px 0 0; font-size: 17px; }
+.onboard .linklike.skip { display: block; margin: 16px auto 0; padding: 12px 8px; color: var(--muted); }
+.preview-item { margin: 8px 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.preview-item .price { font-size: 18px; }
+ol.steps.big { padding-left: 24px; }
+ol.steps.big li { margin: 14px 0; }
+.key { display: inline-flex; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); vertical-align: middle; }
+ul.how { margin: 8px 0 0; padding: 0; list-style: none; }
+ul.how li { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+ul.how li:last-child { border-bottom: 0; }
+ul.how .icon { flex: none; margin-top: 2px; color: var(--accent); }
+.msg input { margin-top: 8px; }
+
+/* Settings: the answers to the setup's questions, each changeable on its own. */
+.answer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.answer:last-child { border-bottom: 0; }
+.answer-label { color: var(--muted); font-size: 13px; }
+.answer-text { font-weight: 600; }
+.answer .linklike { flex: none; min-height: 44px; padding: 0 4px; }
+details.all-settings > summary { margin: 16px 0 0; padding: 10px 0; font-size: 16px; font-weight: 700; }
+
+/* A sign-in link to scan: dark on white whatever the theme, or phones can't read it. */
+.qr-box { margin-top: 12px; }
+.qr { width: 220px; max-width: 100%; margin: 12px auto 4px; overflow: hidden; border-radius: 12px; background: #fff; }
+.qr svg { display: block; width: 100%; height: auto; }
+.login .link-problem { margin: 16px 0; }
+.login .link-problem p { margin: 0 0 6px; }
+.panel .hint + form { margin-top: 12px; }
+
+/* Adding to the Home Screen. The bubble sits against Safari's toolbar and points at the button the first step means. */
+.pointer {
+  position: fixed; z-index: 80; display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 70vw; padding: 8px 12px;
+  border-radius: 12px; background: var(--accent); color: var(--accent-text); font-size: 14px; font-weight: 700; text-align: center;
+  box-shadow: 0 4px 16px rgb(0 0 0 / .35); pointer-events: none; animation: nudge 1.4s ease-in-out infinite;
+}
+.pointer.classic { left: 50%; bottom: calc(8px + env(safe-area-inset-bottom)); transform: translateX(-50%); }
+.pointer.compact { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); align-items: flex-end; }
+.pointer.ipad { right: 72px; top: calc(8px + env(safe-area-inset-top)); flex-direction: column-reverse; --nudge: -6px; }
+@keyframes nudge { 50% { translate: 0 var(--nudge, 6px); } }
+@media (prefers-reduced-motion: reduce) { .pointer { animation: none; } }
+.onboard:has(.pointer.classic, .pointer.compact) { padding-bottom: 120px; }
+.waiting { display: flex; align-items: center; gap: 10px; margin: 20px 0 0; color: var(--muted); font-size: 14px; }
+.waiting .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .waiting .dot { animation: none; } }
+.install-offer .icon { color: var(--accent); }
+.install-offer .linklike + .linklike { margin-left: 16px; color: var(--muted); }

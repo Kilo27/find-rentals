@@ -58,6 +58,15 @@ const ICON_PATHS = {
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/>',
   share: '<path d="M12 15V3M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-1"/>',
+  // The icon iOS shows beside "Add to Home Screen".
+  "add-home": '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/>',
+  "chevron-left": '<path d="M14.5 5.5L8 12l6.5 6.5"/>',
+  // Safari's ⋯ button, and the ⋮ menu of Android browsers.
+  more: '<circle cx="12" cy="12" r="9.5"/><path d="M8 12h.01M12 12h.01M16 12h.01" stroke-width="2.6"/>',
+  "more-vertical": '<path d="M12 5h.01M12 12h.01M12 19h.01" stroke-width="3"/>',
+  "arrow-down": '<path d="M12 4v15M6 13l6 6 6-6"/>',
+  "arrow-up": '<path d="M12 20V5M6 11l6-6 6 6"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
 };
 
 export function icon(name, size = 16) {

@@ -52,17 +52,21 @@ export function createUsers({ store, adminUsername, now = () => new Date() }) {
     list: () => all(),
     find,
 
-    async create(rawUsername, password) {
+    // A password is optional: someone added with none signs in with the link the admin sends them, and can set one later.
+    // `name` is how to greet them ("Sam"), as the admin typed it.
+    async create(rawUsername, password = null, { name = null } = {}) {
       const username = normalizeUsername(rawUsername);
       if (!isValidUsername(username)) {
         throw new UserError("Username must be 2-32 characters: lowercase letters, numbers, dot, dash or underscore");
       }
-      checkNewPassword(password);
+      if (password !== null && password !== undefined && password !== "") checkNewPassword(password);
+      else password = null;
       if (username === adminUsername || find(username)) throw new UserError("That username is taken", 409);
-      const passwordHash = await hashPassword(password);
+      const passwordHash = password === null ? null : await hashPassword(password);
       if (find(username)) throw new UserError("That username is taken", 409);
       const user = {
         username,
+        name: typeof name === "string" && name.trim() ? name.trim().slice(0, 40) : null,
         passwordHash,
         sessionKey: crypto.randomBytes(24).toString("hex"),
         createdAt: now().toISOString(),
@@ -96,11 +100,25 @@ export function createUsers({ store, adminUsername, now = () => new Date() }) {
       store.save();
     },
 
-    // Returns the user, or null. An unknown name still costs one hash so the response time doesn't reveal it.
+    // Returns the user, or null. An unknown name, or an account with no password, still costs one hash so the response
+    // time doesn't reveal it.
     async verify(username, password) {
       const user = find(username);
-      const ok = await checkPassword(password, user ? user.passwordHash : await dummyHash);
-      return user && ok ? user : null;
+      const ok = await checkPassword(password, user?.passwordHash ?? (await dummyHash));
+      return user?.passwordHash && ok ? user : null;
+    },
+
+    hasPassword: (user) => Boolean(user?.passwordHash),
+
+    // A free username made from a name someone typed ("Sam O'Brien" -> "samobrien", then "samobrien2" if that is taken).
+    suggestUsername(name) {
+      const base = normalizeUsername(name).normalize("NFKD").replace(/[^a-z0-9]/g, "").slice(0, 28) || "friend";
+      const padded = base.length < 2 ? `${base}1` : base;
+      for (let n = 1; n < 1000; n++) {
+        const candidate = n === 1 ? padded : `${padded}${n}`;
+        if (candidate !== adminUsername && !find(candidate)) return candidate;
+      }
+      throw new UserError("Couldn't find a free username; type a different name");
     },
 
     recordLogin(user) {
