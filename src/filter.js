@@ -4,6 +4,9 @@ import { analyzeText, isoDate } from "./text.js";
 const SHORT_TERM_RE =
   /short[- ]?term|until june|till june|academic year|semester|flexible (lease|term|stay)|month[- ]to[- ]month|\b(6|7|8|9|10)[- ]?months?\b/i;
 
+// Daft's sections that are rooms rather than whole places.
+const ROOM_SECTIONS = new Set(["sharing", "student-accommodation-to-share"]);
+
 const addDays = (iso, days) => isoDate(new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86400_000));
 
 export function analyzeListing(listing, now = new Date()) {
@@ -32,6 +35,13 @@ export function evaluateNonLocation(listing, config, now = new Date()) {
   } else {
     const hit = config.excludeKeywords.find((k) => text.includes(k));
     if (hit && !/owner|landlord/.test(hit)) return reject(`keyword: ${hit}`);
+  }
+
+  // The kinds of place asked for. Daft says which of its sections a listing is in. The other sites only say so in their
+  // wording, so there a listing is only turned away when it calls itself a room and only whole places were asked for.
+  if (config.sections?.length) {
+    if (listing.section && !config.sections.includes(listing.section)) return reject("not a kind of place asked for");
+    if (!listing.section && listing.kind === "room" && !config.sections.some((s) => ROOM_SECTIONS.has(s))) return reject("a room, and only whole places were asked for");
   }
 
   if (config.excludeWeekdayOnly && listing.weekdayOnly) return reject("weekday-only let");

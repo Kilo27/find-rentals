@@ -10,7 +10,7 @@ web
 
 The primary user is a renter who studies or works at an Irish university campus (so far: Limerick, Cork and Galway campuses) and needs a home within reach of it. They are searching for themselves, under time pressure, and use the app mostly on an iPhone installed to the Home Screen (iOS 16.4+ for push). The admin is one of them, and also runs the service.
 
-Other users are people the admin chooses to invite, such as housemates, friends or family, often at a different campus. Each chooses their own campus and has their own settings, matches, marks on listings and alerts, independent of every other account. They never see the Users tab or the admin's region settings. Only the admin creates accounts. There is no public sign-up.
+Other users are people the admin chooses to invite, such as housemates, friends or family, often at a different campus. Each chooses their own campus and has their own settings, matches, marks on listings and alerts, independent of every other account. They never see the Users tab or the admin's region settings. Only the admin creates accounts, by typing a name and sending the sign-in link it gives (or showing its QR code). There is no public sign-up. Invited people are assumed to be unknown to the product and not technical: the link signs them in with nothing to type, a guided setup asks a few one-tap questions, puts the app on their Home Screen (one tap on Android; the taps spelt out on iPhone, where no page can do it) and turns on alerts with a test.
 
 ## Product Purpose
 
@@ -33,7 +33,7 @@ It answers "is there a place I can actually live near this campus" rather than "
 - The tool runs as one small Node service on Railway with a volume at `/data`, serving the phone web app and sending Web Push.
 - Daft and Rent.ie refuse Railway's IP addresses, so those two sources are fetched by an agent on the admin's Windows laptop (the "Rental Watch Agent" tray app). While the laptop is asleep they are shown as "not checked", not as failed.
 - Typical loop: a push arrives, the user opens the app, triages the card (price, distance, availability, flags, source, route to campus), marks it seen, "Not a fit" or "No longer available", then jumps to the source site to contact the landlord. Speed matters, because good places go fast.
-- Each person tunes their own search (campus, distance, kinds of place, price, dates, keywords, transit rules) under Settings. The admin also sets where each region's sites are read and how often (Settings → Regions) and monitors source health per region (Alerts → Scanner details). The admin can open the app "as" another user, read-only, to debug why they aren't getting alerts.
+- Each person tunes their own search under Settings: first as the setup questions in plain words (what kind of place, budget, dates, sharing, distance), each with Change, then every option (keywords, transit rules, grace days) under All settings. The admin also sets where each region's sites are read and how often (Settings → Regions) and monitors source health per region (Alerts → Scanner details). The admin can open the app "as" another user, read-only, to debug why they aren't getting alerts.
 - The map view (OpenStreetMap via Leaflet) is a secondary way to review matches: price pins, approximate-area shading, campus and radius, transit lines and stops.
 
 ## Capabilities and Constraints

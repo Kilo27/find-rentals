@@ -1,6 +1,7 @@
 import { h, timeAgo, MODE_ICON, describeMatch, badgeRow, leadRow, listingImage, icon } from "./ui.js";
-import { alertsSetup, inviteText, listingFromSearch, summarizeSources } from "./app-model.js";
+import { alertsSetup, answersFromPrefs, cleanSearch, describeAnswers, devicePlatform, homeScreenMode, inviteText, joinFromSearch, linkInviteText, listingFromSearch, safariLayout, summarizeSources } from "./app-model.js";
 import { createMapView } from "./map.js";
+import { alertsAsked, createSetup, iosSteps } from "./setup.js";
 
 const root = document.getElementById("app");
 let state = null;
@@ -29,12 +30,17 @@ let pushState = { supported: false, permission: "default", subscribedHere: false
 let pendingListing = listingFromSearch(location.search); // the listing an alert pointed at, until it has been shown
 let arrivedId = null; // the card to highlight after arriving from an alert
 let moreFor = null; // the card whose extra actions are open
-let lastInvite = null; // what to send someone just added: { username, password, reset }
+let lastInvite = null; // what to send someone just added: { username, name, link } or, after a password reset, { username, password, reset }
 let lastDismissAt = 0;
 let pendingRefresh = false;
 // What a listing's verdict was before it was dismissed, so "Restore" and "Undo" put it back as it was.
 const previousReview = new Map();
-if (pendingListing) history.replaceState(null, "", location.pathname);
+// A sign-in link the page was opened with (see links.js), and what went wrong with it, for the sign-in screen.
+const joinToken = joinFromSearch(location.search);
+let joinError = null;
+let joined = false; // signed in by that link just now, rather than already signed in
+// Neither an alert's listing nor a sign-in link should stay in the address bar, where sharing the page would pass it on.
+if (cleanSearch(location.search) !== location.search) history.replaceState(null, "", location.pathname + cleanSearch(location.search) + location.hash);
 
 const SNAPSHOT_KEY = "rw.snapshot";
 const ALERTS_CARD_KEY = "rw.alertsCardHidden";
@@ -146,6 +152,7 @@ async function api(method, url, body) {
     state = null;
     offline = false;
     unreachable = false;
+    setup.reset();
     clearSnapshot();
     render();
     const err = new Error("Your session ended. Please log in again.");
@@ -171,8 +178,149 @@ function inFuture(iso) {
 
 const kv = (k, v) => h("div", { class: "kv" }, h("span", {}, k), h("span", {}, v));
 
-const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+const platform = devicePlatform({ ua: navigator.userAgent, standalone: isStandalone, touchPoints: navigator.maxTouchPoints ?? 0 });
+const isIos = platform.ios;
+
+// The guided setup, shown instead of the app to an account that isn't watching anywhere yet.
+const setup = createSetup({
+  state: () => state,
+  api: (...args) => api(...args),
+  loadState: () => loadState(),
+  render: () => render(),
+  showToast: (...args) => showToast(...args),
+  platform,
+  alertsMode: () => setupMode(),
+  refreshPush: () => refreshPushState(),
+  turnOnAlerts: () => enableAlerts(),
+  prepareHomeScreen: () => prepareHomeScreen(),
+  homeScreenMode: () => homeScreenMode({ platform, canPrompt: Boolean(installPrompt) }),
+  promptInstall: () => promptInstall(),
+  signInLink: () => signInLink(),
+  waitForFirstCheck: () => waitForFirstCheck(),
+  done: (where) => {
+    tab = where;
+    if (where === "matches") view = "list";
+    settingsCache = null;
+    render();
+    window.scrollTo(0, 0);
+  },
+});
+
+// After signing in: a new account goes through the setup, and a device that arrived by a sign-in link, or an iPhone's
+// Home Screen app opened for the first time, is walked through turning on alerts.
+function maybeStartSetup() {
+  if (!state || state.viewingAs || setup.active()) return;
+  if (!state.campus) return setup.start();
+  const mode = setupMode();
+  const firstTimeHere = (joined || (platform.ios && platform.standalone)) && !alertsAsked();
+  if (firstTimeHere && mode === "install") setup.start({ step: "home" });
+  else if (firstTimeHere && ["off", "blocked"].includes(mode)) setup.start({ step: "alerts", welcome: platform.standalone });
+}
+
+// Browsers that can install the app themselves (Chrome, Edge and Samsung Internet on Android) offer it with this event,
+// once the person has spent a little while on the page. It is kept for the Add to Home Screen button, which can only use
+// it once, from a tap.
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  // Only screens that offer the button are drawn again, so nothing half-typed elsewhere is lost.
+  if (state && (setup.active() || tab === "matches")) render();
+});
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  if (state && !setup.active() && tab === "matches") render();
+});
+
+// Opened from the Home Screen: say so, so the Safari page that showed the steps can tell the person it worked.
+let homeScreenNoted = false;
+function noteHomeScreen() {
+  if (homeScreenNoted || !platform.standalone || !state || state.viewingAs) return;
+  homeScreenNoted = true;
+  api("POST", "/api/account/home-screen").catch(() => (homeScreenNoted = false));
+}
+
+async function promptInstall() {
+  const offer = installPrompt;
+  if (!offer) return "unavailable";
+  installPrompt = null;
+  try {
+    await offer.prompt();
+    return (await offer.userChoice).outcome;
+  } catch {
+    return "unavailable";
+  }
+}
+
+// A link that signs this account in, for opening in Safari from another browser on the same phone. Asked for once.
+let signInLinkPromise = null;
+function signInLink() {
+  signInLinkPromise ??= api("POST", "/api/account/link").then((r) => `${location.origin}/?join=${r.token}`);
+  signInLinkPromise.catch(() => (signInLinkPromise = null));
+  return signInLinkPromise;
+}
+
+// An iPhone's Home Screen app has cookies of its own, so on its first launch it isn't signed in. The manifest the app is
+// added from names the address it opens at; pointing that at a sign-in link of this device's own makes it open signed in.
+// The link is kept so the next visit reuses it instead of asking for another.
+const DEVICE_LINK_KEY = "rw.deviceLink";
+let homeScreenReady = null;
+function prepareHomeScreen() {
+  if (!platform.ios || platform.standalone || !state || state.viewingAs) return Promise.resolve();
+  homeScreenReady ??= (async () => {
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(DEVICE_LINK_KEY));
+    } catch {}
+    let token = saved?.username === state.user.username && Date.parse(saved.expiresAt) > Date.now() + 30 * 86400_000 ? saved.token : null;
+    if (!token) {
+      const r = await api("POST", "/api/account/link");
+      token = r.token;
+      try {
+        localStorage.setItem(DEVICE_LINK_KEY, JSON.stringify({ username: state.user.username, token, expiresAt: r.expiresAt }));
+      } catch {}
+    }
+    document.querySelector('link[rel="manifest"]')?.setAttribute("href", `/manifest.webmanifest?join=${token}`);
+  })().catch(() => (homeScreenReady = null));
+  return homeScreenReady;
+}
+
+// Signing out leaves nothing behind that would sign this device in again.
+function forgetDeviceLinks() {
+  try {
+    localStorage.removeItem(DEVICE_LINK_KEY);
+  } catch {}
+  homeScreenReady = null;
+  signInLinkPromise = null;
+  document.querySelector('link[rel="manifest"]')?.setAttribute("href", "/manifest.webmanifest");
+}
+
+// Turns alerts on for this device and sends a test, for the setup's alerts step. Throws with a message to show.
+async function enableAlerts() {
+  await enablePush();
+  await refreshPushState();
+  await loadState();
+  await api("POST", "/api/test-push").catch(() => null);
+}
+
+// Signs in with the link the page was opened with. In a browser tab that is what opening the link means, even when someone
+// else was signed in. The Home Screen app opens at its link every time, so there it is only used when the app has lost its
+// sign-in. A link that doesn't work is reported on the sign-in screen if there is no other sign-in to fall back on.
+async function useJoinLink() {
+  if (!joinToken) return;
+  if (platform.standalone) {
+    const res = await fetch("/api/state", { credentials: "same-origin" }).catch(() => null);
+    if (!res || res.status !== 401) return;
+  }
+  try {
+    await api("POST", "/api/join", { token: joinToken });
+    joined = true;
+    clearSnapshot();
+  } catch (err) {
+    if (!err.offline) joinError = err.message;
+  }
+}
 
 async function loadState() {
   state = await api("GET", "/api/state");
@@ -198,6 +346,7 @@ async function boot() {
       if (e.data?.type === "open-listing") openListing(e.data.listing);
     });
   }
+  await useJoinLink();
   try {
     await loadState();
     await refreshPushState();
@@ -212,7 +361,11 @@ async function boot() {
       unreachableWhy = err.offline ? null : "Rental Watch isn't responding properly right now.";
     }
   }
+  noteHomeScreen();
+  maybeStartSetup();
   render();
+  // Signed in already, so an old link that didn't work changes nothing; say so rather than leave them wondering.
+  if (state && joinError) showToast(`That sign-in link didn't work, so you're still signed in as ${state.user.name ?? state.user.username}.`);
   if (state && pendingListing) openListing(pendingListing);
   setInterval(refresh, 60_000);
   document.addEventListener("visibilitychange", () => !document.hidden && refresh());
@@ -238,10 +391,14 @@ async function refresh({ manual = false } = {}) {
   }
   if (wasOffline) {
     await refreshPushState();
+    noteHomeScreen();
+    maybeStartSetup();
     render();
     if (pendingListing) openListing(pendingListing);
     return;
   }
+  // The setup has fields being filled in; it draws itself again when it needs to.
+  if (setup.active()) return;
   if (tab !== "matches" || before === listSignature()) return;
   if (view === "list" && window.scrollY > 160) {
     pendingRefresh = true;
@@ -274,8 +431,10 @@ function render() {
     pendingRefresh = false;
     refreshNote.replaceChildren();
   }
-  root.classList.toggle("wide", Boolean(state) && tab === "matches" && view === "map");
-  root.replaceChildren(state ? renderMain() : unreachable ? renderUnreachable() : renderLogin());
+  const inSetup = Boolean(state) && setup.active();
+  root.classList.toggle("wide", Boolean(state) && !inSetup && tab === "matches" && view === "map");
+  document.body.classList.toggle("in-setup", inSetup);
+  root.replaceChildren(inSetup ? setup.render() : state ? renderMain() : unreachable ? renderUnreachable() : renderLogin());
   if (key) focusKey(key);
 }
 
@@ -343,10 +502,20 @@ async function openListing(id) {
 function renderLogin() {
   const msg = msgBox("err");
   msg.setAttribute("role", "alert");
-  if (sessionEnded) msg.textContent = "Your session ended. Please log in again.";
+  if (sessionEnded) msg.textContent = "You've been signed out. Sign in again below, or use your link again.";
   const name = h("input", { type: "text", placeholder: "Username", "aria-label": "Username", autocomplete: "username", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
   const input = h("input", { type: "password", placeholder: "Password", "aria-label": "Password", autocomplete: "current-password" });
-  const submit = h("button", { class: "primary", type: "submit" }, "Log in");
+  const submit = h("button", { class: "primary", type: "submit" }, "Sign in");
+  // Most people never had a password: they were sent a link. So the link comes first, and what to do when it has run out.
+  const linkNote = joinError
+    ? h(
+        "div",
+        { class: "panel setup link-problem", role: "alert" },
+        h("h2", {}, "That link didn't work"),
+        h("p", {}, joinError),
+        platform.standalone ? h("p", { class: "hint" }, "When you get the new link, open it in Safari and add Rentals to your Home Screen again (you can delete this one).") : null,
+      )
+    : h("p", { class: "hint" }, "Were you sent a link? Tap it again on this device and you'll be signed in. Otherwise, use your username and password.");
   const form = h(
     "form",
     {
@@ -358,9 +527,12 @@ function renderLogin() {
         try {
           await api("POST", "/api/login", { username: name.value, password: input.value });
           sessionEnded = false;
+          joinError = null;
           await loadState();
           await refreshPushState();
           tab = "matches";
+          noteHomeScreen();
+          maybeStartSetup();
           render();
           syncSubscription();
           if (pendingListing) openListing(pendingListing);
@@ -371,8 +543,8 @@ function renderLogin() {
       },
     },
     h("h1", {}, "Rental Watch"),
-    h("p", { class: "lede" }, "Alerts for new rentals near your campus."),
-    h("p", { class: "hint" }, "Log in with the username and password you were given. You only need to do this once per device."),
+    h("p", { class: "lede" }, "Alerts for new rentals near your college."),
+    linkNote,
     name,
     input,
     submit,
@@ -508,10 +680,10 @@ function renderCampusPrompt() {
   if (state.viewingAs) return h("div", { class: "empty" }, `${state.viewingAs.username} hasn't chosen a campus yet, so nothing is being watched for them.`);
   return h(
     "section",
-    { class: "panel setup", "aria-label": "Choose your campus" },
-    h("h2", {}, "Which campus are you near?"),
-    h("p", {}, "Rental Watch looks for places near your campus and tells you when a new one is listed. You can change this later in Settings."),
-    renderCampusPicker({ first: true }),
+    { class: "panel setup", "aria-label": "Get started" },
+    h("h2", {}, "Let's get you set up"),
+    h("p", {}, "Rental Watch looks for places near your college and tells you when a new one is listed. A few quick questions and it starts watching."),
+    h("button", { class: "primary", type: "button", "data-fk": "setup:begin", onclick: () => setup.start() }, "Get started"),
   );
 }
 
@@ -528,7 +700,7 @@ function renderMatches() {
     mapView.update({ ...state, matches: state.matches.filter((m) => !isDismissed(m)) });
     return [toggle, mapView.el];
   }
-  return [renderAlertsCard(), toggle, renderSourceStrip(), ...[renderList()].flat()];
+  return [renderAlertsCard(), renderInstallOffer(), toggle, renderSourceStrip(), ...[renderList()].flat()];
 }
 
 // Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server
@@ -641,15 +813,63 @@ const hideAlertsCard = () => {
 
 const setupMode = () => alertsSetup({ ...pushState, viewing: Boolean(state.viewingAs), isIos, standalone: isStandalone });
 
-// The three ways to put the app on an iPhone's Home Screen, which is the only way an iPhone can receive alerts.
-const installSteps = () =>
-  h(
-    "ol",
-    { class: "steps" },
-    h("li", {}, "In Safari, tap Share ", icon("share"), "."),
-    h("li", {}, "Choose Add to Home Screen."),
-    h("li", {}, "Open Rental Watch from your Home Screen, log in, and tap Turn on alerts."),
+// The three steps to put the app on an iPhone's Home Screen, which is the only way an iPhone can receive alerts. The app
+// added from here opens signed in (prepareHomeScreen).
+function installSteps() {
+  prepareHomeScreen();
+  if (!platform.safari) return h("p", { class: "hint" }, "Open this page in Safari first: only Safari can add it to your Home Screen.");
+  return iosSteps(safariLayout(platform));
+}
+
+// On Android, where the browser can install the app with one tap, a quiet offer above the list until it is taken or put away.
+const INSTALL_CARD_KEY = "rw.installCardHidden";
+function renderInstallOffer() {
+  if (!installPrompt || platform.ios || state.viewingAs) return null;
+  try {
+    if (Number(localStorage.getItem(INSTALL_CARD_KEY)) > Date.now() - 14 * 86400_000) return null;
+  } catch {}
+  return h(
+    "div",
+    { class: "strip quiet install-offer" },
+    icon("add-home"),
+    h(
+      "div",
+      { class: "strip-text" },
+      h("span", { class: "strip-head" }, "Put Rentals on your Home Screen"),
+      h(
+        "span",
+        {},
+        h(
+          "button",
+          {
+            class: "linklike",
+            "data-fk": "install:add",
+            onclick: async () => {
+              const outcome = await promptInstall();
+              render();
+              if (outcome === "accepted") showToast("Added. Open Rentals from your Home Screen any time.");
+            },
+          },
+          "Add",
+        ),
+        h(
+          "button",
+          {
+            class: "linklike",
+            "data-fk": "install:later",
+            onclick: () => {
+              try {
+                localStorage.setItem(INSTALL_CARD_KEY, String(Date.now()));
+              } catch {}
+              render();
+            },
+          },
+          "Not now",
+        ),
+      ),
+    ),
   );
+}
 
 const blockedSteps = () =>
   h(
@@ -819,15 +1039,15 @@ function renderCard(m) {
   );
 }
 
-// Chooses a campus, which starts watching there afresh, then shows the first matches (or says they are on their way).
-// `first` is a new account's first choice, which has nothing to lose, so it asks nothing more of them.
-function renderCampusPicker({ first = false } = {}) {
+// Moves to another campus, which starts watching there afresh, then shows the first matches (or says they are on their
+// way). A new account chooses its first campus in the guided setup instead.
+function renderCampusPicker() {
   const msg = msgBox();
   const current = state.campus?.id ?? null;
   let picked = current;
   const groups = new Map();
   for (const c of state.searchCampuses) groups.set(c.region, [...(groups.get(c.region) ?? []), c]);
-  const go = h("button", { class: "primary", type: "button", disabled: true }, first ? "Start watching" : "Switch campus");
+  const go = h("button", { class: "primary", type: "button", disabled: true }, "Switch campus");
   const choose = (id) => {
     picked = id;
     go.disabled = picked === current;
@@ -870,7 +1090,7 @@ function renderCampusPicker({ first = false } = {}) {
   });
   return [
     list,
-    h("div", { class: "hint" }, first ? "Only these campuses are set up so far." : "Switching clears your current list and starts fresh, so you aren't alerted to places that were already listed."),
+    h("div", { class: "hint" }, "Switching clears your current list and starts fresh, so you aren't alerted to places that were already listed."),
     go,
     msg,
   ];
@@ -886,7 +1106,7 @@ async function waitForFirstCheck() {
     for (let i = 0; i < 24 && state && !state.lastRun; i++) {
       await new Promise((resolve) => setTimeout(resolve, 5000));
       await loadState();
-      if (state.lastRun && tab === "matches") render();
+      if (state.lastRun && (tab === "matches" || setup.active())) render();
     }
   } catch {
     /* the regular refresh carries on */
@@ -911,13 +1131,50 @@ function renderCampusPanel() {
         ]
       : viewing
         ? h("div", { class: "hint" }, `${state.viewingAs.username} hasn't chosen a campus yet.`)
-        : [h("div", { class: "hint" }, "Choose the campus you want places near."), renderCampusPicker({ first: true })],
+        : [h("div", { class: "hint" }, "Choose the college you want places near."), h("button", { class: "primary", type: "button", onclick: () => setup.start() }, "Get started")],
   );
 }
 
 function renderSettings() {
   const admin = state.user.isAdmin && !state.viewingAs;
-  return [renderCampusPanel(), state.config ? renderPrefs() : null, admin ? renderRegions() : null];
+  return [
+    renderCampusPanel(),
+    state.config ? renderSearchSummary() : null,
+    state.config
+      ? h(
+          "details",
+          { class: "all-settings", open: openSections.allSettings === true, ontoggle: (e) => (openSections.allSettings = e.target.open) },
+          h("summary", {}, "All settings"),
+          h("div", { class: "hint" }, "Every option, including price ranges, bedrooms, keywords and public transport."),
+          renderPrefs(),
+        )
+      : null,
+    admin ? renderRegions() : null,
+  ];
+}
+
+// What the account is looking for, in the words of the setup questions, each with a way to change just that answer.
+function renderSearchSummary() {
+  const viewing = Boolean(state.viewingAs);
+  const answers = answersFromPrefs(state.prefs);
+  const said = describeAnswers(answers, state.campus, { transitMaxKm: state.config.transitMaxKm });
+  const row = (id, label, text) =>
+    h(
+      "div",
+      { class: "answer" },
+      h("div", {}, h("div", { class: "answer-label" }, label), h("div", { class: "answer-text" }, text)),
+      viewing ? null : h("button", { type: "button", class: "linklike", "data-fk": `change:${id}`, "aria-label": `Change ${label.toLowerCase()}`, onclick: () => setup.start({ edit: id }) }, "Change"),
+    );
+  return h(
+    "div",
+    { class: "panel" },
+    h("h2", {}, "What you're looking for"),
+    row("kind", "Looking for", said.kind),
+    row("budget", "Budget", said.budget),
+    row("dates", "When", said.dates),
+    answers.kind === "whole" ? null : row("sharing", "Sharing", said.sharing),
+    row("distance", "Distance", said.distance),
+  );
 }
 
 // Kept while someone visits other tabs, so a half-made change isn't lost. It is rebuilt only when the saved
@@ -1421,29 +1678,32 @@ function renderRegionStatus(r) {
 function renderAccount() {
   const msg = msgBox();
   const { user, viewingAs } = state;
-  const current = h("input", { type: "password", placeholder: "Current password", "aria-label": "Current password", autocomplete: "current-password" });
+  // Someone who came in by a link has no password and doesn't need one; they can set one to sign in without a link.
+  const first = !user.hasPassword;
+  const current = first ? null : h("input", { type: "password", placeholder: "Current password", "aria-label": "Current password", autocomplete: "current-password" });
   const next = h("input", { type: "password", placeholder: "New password (8+ characters)", "aria-label": "New password", autocomplete: "new-password" });
+  const fields = [current, next, h("button", { class: "secondary", type: "submit" }, first ? "Set password" : "Change password"), msg];
   const change = h(
     "form",
     {
       onsubmit: async (e) => {
         e.preventDefault();
         try {
-          await api("POST", "/api/account/password", { current: current.value, next: next.value });
-          current.value = next.value = "";
+          await api("POST", "/api/account/password", { current: current?.value, next: next.value });
+          next.value = "";
+          if (current) current.value = "";
           msg.className = "msg ok";
-          msg.textContent = "Password changed. Your other devices have been signed out.";
+          msg.textContent = first ? `Password set. Your username is ${user.username}.` : "Password changed. Your other devices have been signed out.";
+          await loadState();
         } catch (err) {
           msg.className = "msg err";
           msg.textContent = err.message;
         }
       },
     },
-    h("h3", {}, "Change password"),
-    current,
-    next,
-    h("button", { class: "secondary", type: "submit" }, "Change password"),
-    msg,
+    first
+      ? h("details", {}, h("summary", {}, "Set a password (optional)"), h("div", { class: "hint" }, "You signed in with a link, so you don't need one. A password lets you sign in on another device without asking for a new link."), fields)
+      : [h("h3", {}, "Change password"), fields],
   );
 
   return h(
@@ -1459,14 +1719,18 @@ function renderAccount() {
       {
         class: "secondary",
         onclick: async () => {
+          // With no password, the only way back in is a link, and the one they were sent may have run out.
+          if (!viewingAs && !user.hasPassword && !confirm("You don't have a password, so to sign in again you'll need your link (or a new one from whoever added you). Sign out?")) return;
           await api("POST", "/api/logout").catch(() => {});
           state = null;
           sessionEnded = false;
+          setup.reset();
+          forgetDeviceLinks();
           clearSnapshot();
           render();
         },
       },
-      "Log out",
+      "Sign out",
     ),
   );
 }
@@ -1479,12 +1743,29 @@ function randomPassword() {
   return Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => chars[b % chars.length]).join("");
 }
 
-// The message to send someone just added (or whose password was reset), ready to copy or share. The password is only
-// ever held here, in memory, until the admin says they're done.
+// A QR code for a link, drawn by the QR library the server hands out. Without it (offline, say) there is just no code.
+function qrCode(text, label) {
+  const el = h("div", { class: "qr", role: "img", "aria-label": label });
+  import("/vendor/qrcode/qrcode.mjs")
+    .then(({ default: qrcode }) => {
+      const qr = qrcode(0, "M");
+      qr.addData(text);
+      qr.make();
+      el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+      el.firstElementChild?.setAttribute("aria-hidden", "true");
+    })
+    .catch(() => el.remove());
+  return el;
+}
+
+// The message to send someone just added, or their new link, ready to share, copy or scan. A reset password is shown
+// the old way. The link and the password are only ever held here, in memory, until the admin says they're done.
 function renderInvite() {
   if (!lastInvite) return null;
-  const text = inviteText({ url: location.origin, ...lastInvite });
-  const box = h("textarea", { readonly: true, rows: "9", spellcheck: "false", "aria-label": `Message for ${lastInvite.username}`, value: text });
+  const who = lastInvite.name ?? lastInvite.username;
+  const link = lastInvite.link ? `${location.origin}/?join=${lastInvite.link}` : null;
+  const text = link ? linkInviteText({ name: lastInvite.name, link, fresh: lastInvite.fresh }) : inviteText({ url: location.origin, ...lastInvite });
+  const box = h("textarea", { readonly: true, rows: link ? "7" : "9", spellcheck: "false", "aria-label": `Message for ${who}`, value: text });
   const note = msgBox();
   const copy = async () => {
     let ok = false;
@@ -1501,18 +1782,28 @@ function renderInvite() {
     note.className = `msg ${ok ? "ok" : "err"}`;
     note.textContent = ok ? "Copied. Paste it into a message to them." : "Couldn't copy. Select the text above and copy it.";
   };
+  const share = navigator.share ? h("button", { class: "primary", type: "button", onclick: () => navigator.share({ text }).catch(() => {}) }, "Share") : null;
   return h(
     "div",
     { class: "panel invite" },
-    h("h2", {}, lastInvite.reset ? `New password for ${lastInvite.username}` : `${lastInvite.username} is ready`),
-    h("div", { class: "hint" }, "Send them this. The password is only shown here, so copy it before you click Done."),
+    h("h2", {}, lastInvite.reset ? `New password for ${lastInvite.username}` : `Send this to ${who}`),
+    h(
+      "div",
+      { class: "hint" },
+      link
+        ? `The link signs ${who} in on their phone, with no username or password, and walks them through the rest. It works for 2 weeks; make a new one any time.`
+        : "Send them this. The password is only shown here, so copy it before you click Done.",
+    ),
     box,
-    h("button", { class: "primary", type: "button", onclick: copy }, "Copy message"),
-    navigator.share
+    share,
+    h("button", { class: share ? "secondary" : "primary", type: "button", onclick: copy }, "Copy message"),
+    link
       ? h(
-          "button",
-          { class: "secondary", type: "button", onclick: () => navigator.share({ text }).catch(() => {}) },
-          "Share",
+          "details",
+          { class: "qr-box" },
+          h("summary", {}, "With them now? Show a QR code"),
+          h("div", { class: "hint" }, "They point their phone's camera at it and tap the link that appears. On an iPhone that opens Safari, which is what's needed."),
+          qrCode(link, `QR code of ${who}'s sign-in link`),
         )
       : null,
     h(
@@ -1551,39 +1842,37 @@ function renderUsers() {
     }
   };
 
-  const name = h("input", { type: "text", placeholder: "Username", "aria-label": "Username", "data-fk": "users:name", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
-  const pass = h("input", { type: "text", placeholder: "Password (8+ characters)", "aria-label": "Password", autocomplete: "off", autocapitalize: "off", autocorrect: "off", spellcheck: "false" });
+  // Adding someone takes their name and nothing else: the username is made from it, and they get a link, not a password.
+  const name = h("input", { type: "text", placeholder: "Their name, e.g. Sam", "aria-label": "Their name", "data-fk": "users:name", autocomplete: "off", autocapitalize: "words", spellcheck: "false" });
   const add = h(
     "form",
     {
       onsubmit: (e) => {
         e.preventDefault();
         act(async () => {
-          const username = name.value.trim().toLowerCase();
-          const password = pass.value;
-          await api("POST", "/api/users", { username, password });
-          lastInvite = { username, password, reset: false };
-          say(`Created ${username}. They can change their password under Alerts.`);
+          const r = await api("POST", "/api/users", { name: name.value });
+          lastInvite = { username: r.user.username, name: r.user.name, link: r.link.token };
+          say(`Added ${r.user.name ?? r.user.username} (username ${r.user.username}).`);
         })();
       },
     },
     name,
-    pass,
-    h("button", { class: "secondary", type: "button", onclick: () => (pass.value = randomPassword()) }, "Generate password"),
-    h("button", { class: "primary", type: "submit" }, "Create user"),
+    h("button", { class: "primary", type: "submit" }, "Add and get their link"),
   );
 
   const userPanel = (u) =>
     h(
       "div",
       { class: "panel" },
-      h("h2", {}, u.username),
+      h("h2", {}, u.name ? `${u.name} (${u.username})` : u.username),
+      kv("Signs in with", u.hasPassword ? "a link or a password" : "a link"),
       kv("Campus", u.campus ? u.campus.name : "not chosen yet, so nothing is watched for them"),
       u.campus ? kv("Matches now", String(u.matches)) : null,
       u.campus ? kv("Last checked", u.lastCheckAt ? timeAgo(u.lastCheckAt) : "not yet") : null,
       kv("Last signed in", u.lastLoginAt ? timeAgo(u.lastLoginAt) : "never"),
       kv("Last active", u.lastSeenAt ? timeAgo(u.lastSeenAt) : "never"),
       kv("Devices subscribed", String(u.devices.length)),
+      kv("Home Screen app", u.homeScreenAt ? `last opened ${timeAgo(u.homeScreenAt)}` : "not opened yet"),
       u.devices.map((d) => kv(deviceName(d.userAgent), d.lastError ? `error: ${d.lastError}` : `added ${timeAgo(d.addedAt)}`)),
       h(
         "button",
@@ -1614,19 +1903,33 @@ function renderUsers() {
         },
         "Send test",
       ),
+      // For a new phone, a lost one, or a link that ran out. It replaces the last link sent and signs nobody out.
       h(
         "button",
         {
           class: "secondary",
           onclick: act(async () => {
-            const password = prompt(`New password for ${u.username} (8+ characters). They will be signed out everywhere.`);
+            const r = await api("POST", `/api/users/${encodeURIComponent(u.username)}/link`);
+            lastInvite = { username: u.username, name: u.name, link: r.link.token, fresh: true };
+            say(`New link for ${u.name ?? u.username}. The last one sent no longer works.`);
+            window.scrollTo(0, 0);
+          }),
+        },
+        "New sign-in link",
+      ),
+      h(
+        "button",
+        {
+          class: "secondary",
+          onclick: act(async () => {
+            const password = prompt(`${u.hasPassword ? "New password" : "A password"} for ${u.username} (8+ characters). They will be signed out everywhere, and their links stop working.`, randomPassword());
             if (!password) return;
             await api("PUT", `/api/users/${encodeURIComponent(u.username)}/password`, { password });
             lastInvite = { username: u.username, password, reset: true };
             say(`Password for ${u.username} changed.`);
           }),
         },
-        "Reset password",
+        u.hasPassword ? "Reset password" : "Give a password",
       ),
       h(
         "button",
@@ -1648,8 +1951,8 @@ function renderUsers() {
     h(
       "div",
       { class: "panel" },
-      h("h2", {}, "Add a user"),
-      h("div", { class: "hint" }, "Only you can add people. Each person chooses their own campus and has their own settings, matches and alerts, and nothing one person does changes what another sees."),
+      h("h2", {}, "Add someone"),
+      h("div", { class: "hint" }, "Type their name and send them the link you get. It signs them in and walks them through choosing their college, what they're after and turning on alerts. Each person has their own search, matches and alerts."),
       add,
       note,
     ),

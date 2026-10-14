@@ -2,6 +2,7 @@
   "name": "Rental Watch",
   "short_name": "Rentals",
   "description": "Alerts for new rentals near you",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
