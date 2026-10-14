@@ -4,7 +4,7 @@ import { createScanner } from "../src/scan.js";
 import { createGeocoder, addressQueries } from "../src/geocode.js";
 import { dedupe } from "../src/dedupe.js";
 import { makeListing } from "../src/listing.js";
-import { daftPage, noSleep, rawListing, router, tempStore, fakePusher, UL, kmNorth } from "./helpers.js";
+import { configure, daftPage, noSleep, rawListing, router, searchOf, tempStore, fakePusher, UL, kmNorth } from "./helpers.js";
 
 const UL_LIST = "https://www.accommodation.ul.ie/SearchResults/Print/All";
 const advert = (id) => `https://www.accommodation.ul.ie/Advert/${id}`;
@@ -51,7 +51,7 @@ function nominatim(map) {
 
 function setup(sources, cfg = {}, pusher = fakePusher()) {
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sources, ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [], ...cfg };
+  configure(store, { sources, ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [], ...cfg });
   return { store, pusher };
 }
 
@@ -100,14 +100,14 @@ test("UL portal: decisions come from the list page; advert shells and their map 
   assert.equal(run.candidates, 8);
   assert.equal(fetchImpl.count(/\/Advert\/\d+/), 0, "the JavaScript shell pages are not fetched at all");
 
-  const ids = store.data.matches.map((m) => m.id).sort();
+  const ids = searchOf(store).matches.map((m) => m.id).sort();
   assert.deepEqual(ids, ["ul:2001", "ul:2005", "ul:2006"], "owner-occupied, far, late, weekday-only and locationless adverts are excluded");
 
-  for (const m of store.data.matches) {
+  for (const m of searchOf(store).matches) {
     assert.notEqual(m.distanceSource, "source", "no page coordinate was trusted");
     assert.ok(Math.abs(m.lat - CAMPUS_CONSTANT.lat) > 0.001 || Math.abs(m.lng - CAMPUS_CONSTANT.lng) > 0.001, "never the campus constant");
   }
-  const by = (id) => store.data.matches.find((m) => m.id === id);
+  const by = (id) => searchOf(store).matches.find((m) => m.id === id);
   assert.equal(by("ul:2001").distanceSource, "geocoded");
   assert.ok(Math.abs(by("ul:2001").distanceKm - 1.0) < 0.05);
   assert.ok(Math.abs(by("ul:2005").distanceKm - 1.6) < 0.05);
@@ -121,7 +121,7 @@ test("UL portal: marketing text naming a nearby area does not make an unlocatabl
   const fetchImpl = router([[UL_LIST, UL_REAL_LIST], nominatim({})]);
   const { store, pusher } = setup(["ul"], { unverifiedDistance: "locality" });
   await scannerFor(store, pusher, fetchImpl).run();
-  assert.ok(!store.data.matches.some((m) => m.id === "ul:2007"), "Mystery Place stays excluded");
+  assert.ok(!searchOf(store).matches.some((m) => m.id === "ul:2007"), "Mystery Place stays excluded");
 });
 
 test("a coordinate shared by many different listings is a site-wide position and is ignored, even for new listings later", async () => {
@@ -141,8 +141,8 @@ test("a coordinate shared by many different listings is a site-wide position and
 
   assert.equal(run.coordsIgnored.rent, 4, "all four carried the same map position");
   assert.deepEqual(store.data.siteConstants.rent, [`${CAMPUS_CONSTANT.lat.toFixed(4)},${CAMPUS_CONSTANT.lng.toFixed(4)}`]);
-  assert.deepEqual(store.data.matches.map((m) => m.id), ["rent:555101"], "the near one, located from its address; the 10 km one rejected; unlocatable ones excluded");
-  assert.equal(store.data.matches[0].distanceSource, "geocoded");
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id), ["rent:555101"], "the near one, located from its address; the 10 km one rejected; unlocatable ones excluded");
+  assert.equal(searchOf(store).matches[0].distanceSource, "geocoded");
 
   ids = [555105];
   const again = await scanner.run();
@@ -161,7 +161,7 @@ test("an advert page that is a loading shell contributes no location, and is not
   const scanner = scannerFor(store, pusher, fetchImpl);
   const run = await scanner.run();
   assert.match(run.sources[0].notes[0].warning, /JavaScript-rendered/);
-  const m = store.data.matches[0];
+  const m = searchOf(store).matches[0];
   assert.equal(m.distanceSource, "geocoded");
   assert.ok(Math.abs(m.distanceKm - 1.1) < 0.05);
   await scanner.run();
@@ -195,7 +195,7 @@ test("card-level coordinates that are unique and agree with the address are used
   ]);
   const { store, pusher } = setup(["rent"], { rentUrls: [RENT] });
   await scannerFor(store, pusher, fetchImpl).run();
-  const m = store.data.matches[0];
+  const m = searchOf(store).matches[0];
   assert.equal(m.distanceSource, "source");
   assert.ok(Math.abs(m.distanceKm - 0.9) < 0.02);
 });
@@ -224,12 +224,12 @@ test("detail budget: un-enriched listings are pending, not alerted, and baseline
 
   const first = await scanner.run();
   assert.equal(first.pending, 2);
-  assert.equal(store.data.baselineDone, false);
+  assert.equal(searchOf(store).baselineDone, false);
   assert.equal(pusher.sent.length, 0, "no premature 'watching started'");
   const second = await scanner.run();
   assert.equal(second.pending, 0);
-  assert.equal(store.data.baselineDone, true);
-  assert.equal(store.data.matches.length, 4);
+  assert.equal(searchOf(store).baselineDone, true);
+  assert.equal(searchOf(store).matches.length, 4);
 });
 
 test("UL portal: a robots.txt disallow is respected and reported", async () => {
@@ -248,7 +248,7 @@ test("UL portal: a layout change yields a warning, not garbage", async () => {
   assert.equal(run.ok, true);
   assert.equal(run.matches, 0);
   assert.match(run.sources[0].notes[0].warning, /no listings were recognised/);
-  assert.ok(store.data.debug[`ul:${UL_LIST}`].head, "raw head saved for diagnosis");
+  assert.ok(store.data.debug[`limerick/ul:${UL_LIST}`].head, "raw head saved for diagnosis");
 });
 
 test("a source that keeps returning nothing usable triggers a health alert, then recovery", async () => {
@@ -292,10 +292,10 @@ test("same property on Daft and Rent.ie is alerted once, with a cross-link", asy
 
   assert.equal(run.candidates, 3);
   assert.equal(run.matches, 2, "Plassey Park merged; Dromroe separate");
-  const merged = store.data.matches.find((m) => m.title.includes("Plassey"));
+  const merged = searchOf(store).matches.find((m) => m.title.includes("Plassey"));
   assert.equal(merged.source, "daft", "Daft wins ties (API coordinates)");
   assert.deepEqual(merged.alsoOn.map((a) => a.label), ["Rent.ie"]);
-  assert.ok(store.data.seen["daft:77"] && store.data.seen["rent:555001"], "both ids marked seen");
+  assert.ok(searchOf(store).seen["daft:77"] && searchOf(store).seen["rent:555001"], "both ids marked seen");
 
   // the Daft copy vanishes: the Rent.ie copy must NOT re-alert as new
   pusher.sent.length = 0;
@@ -349,8 +349,8 @@ test("structured data sources (MyHome-style Next.js JSON) are scraped with coord
   const { store, pusher } = setup(["myhome"], { myhomeUrls: [MYHOME] });
   const run = await scannerFor(store, pusher, fetchImpl).run();
   assert.equal(run.candidates, 2);
-  assert.deepEqual(store.data.matches.map((m) => m.id), ["myhome:4400123"]);
-  assert.equal(store.data.matches[0].kind, "property");
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id), ["myhome:4400123"]);
+  assert.equal(searchOf(store).matches[0].kind, "property");
 });
 
 test("geocoder: caches results, rejects far matches, falls back to area, honours budget", async () => {
@@ -441,9 +441,9 @@ test("MyHome-style list JSON with null coordinates falls through to the real one
   const { store, pusher } = setup(["myhome"], { myhomeUrls: [MYHOME] });
   const run = await scannerFor(store, pusher, fetchImpl).run();
   assert.deepEqual(run.coordsIgnored, {}, "no phantom shared 0,0 coordinate");
-  assert.deepEqual(store.data.matches.map((m) => m.id), ["myhome:7001"], "3.0 km and 22 km are outside 2 km");
-  assert.equal(store.data.matches[0].distanceSource, "source");
-  assert.ok(Math.abs(store.data.matches[0].distanceKm - 0.8) < 0.02);
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id), ["myhome:7001"], "3.0 km and 22 km are outside 2 km");
+  assert.equal(searchOf(store).matches[0].distanceSource, "source");
+  assert.ok(Math.abs(searchOf(store).matches[0].distanceKm - 0.8) < 0.02);
 });
 
 test("an empty trailing results page is normal, not a layout warning", async () => {
@@ -491,8 +491,8 @@ test("list data carrying literal 0,0 or NaN coordinates still gets the advert pa
   const run = await scannerFor(store, pusher, fetchImpl).run();
 
   assert.equal(run.candidates, 3);
-  assert.deepEqual(store.data.matches.map((m) => m.id).sort(), ["myhome:7101", "myhome:7103"], "the 3.0 km one is rejected on its real coordinates");
-  for (const m of store.data.matches) assert.equal(m.distanceSource, "source", `${m.id} uses the advert page's coordinates, not a guess`);
-  assert.ok(Math.abs(store.data.matches.find((m) => m.id === "myhome:7101").distanceKm - 0.8) < 0.02);
-  assert.ok(Math.abs(store.data.matches.find((m) => m.id === "myhome:7103").distanceKm - 1.2) < 0.02);
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id).sort(), ["myhome:7101", "myhome:7103"], "the 3.0 km one is rejected on its real coordinates");
+  for (const m of searchOf(store).matches) assert.equal(m.distanceSource, "source", `${m.id} uses the advert page's coordinates, not a guess`);
+  assert.ok(Math.abs(searchOf(store).matches.find((m) => m.id === "myhome:7101").distanceKm - 0.8) < 0.02);
+  assert.ok(Math.abs(searchOf(store).matches.find((m) => m.id === "myhome:7103").distanceKm - 1.2) < 0.02);
 });

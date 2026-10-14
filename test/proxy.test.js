@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { proxyFromEnv } from "../src/proxy.js";
 import { createScanner } from "../src/scan.js";
-import { daftPage, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
+import { configure, daftPage, noSleep, rawListing, router, searchOf, tempStore, fakePusher } from "./helpers.js";
 
 test("proxyFromEnv: off unless a valid http(s) URL is set; sources default to daft and rent", () => {
   const warnings = [];
@@ -28,7 +28,7 @@ test("scanner: only the listed sources go through the proxy; others and the geoc
   const viaProxy = router([[DAFT, daftPage([rawListing({ id: 9, km: 0.9 })])]]);
 
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] };
+  configure(store, { sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] });
   const scanner = createScanner({
     store,
     pusher: fakePusher(),
@@ -45,12 +45,12 @@ test("scanner: only the listed sources go through the proxy; others and the geoc
   assert.ok(viaProxy.count(/www\.daft\.ie\/sharing\//) >= 1);
   assert.equal(viaProxy.count(/accommodation\.ul\.ie/), 0, "UL never goes through the proxy");
   assert.ok(direct.count(/SearchResults/) >= 1);
-  assert.ok(store.data.matches.some((m) => m.id === "daft:9"), "the Daft listing arrived via the proxy");
+  assert.ok(searchOf(store).matches.some((m) => m.id === "daft:9"), "the Daft listing arrived via the proxy");
 });
 
 test("scanner: with no proxy configured nothing is proxied", async () => {
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sources: ["daft"], sections: ["sharing"] };
+  configure(store, { sources: ["daft"], sections: ["sharing"] });
   const direct = router([[/^https:\/\/www\.daft\.ie\/sharing\//, daftPage([])]]);
   const scanner = createScanner({ store, pusher: fakePusher(), fetchImpl: direct, sleep: noSleep, politenessMs: 0, geocodeDelayMs: 0, proxy: { fetch: null, sources: new Set() } });
   const run = await scanner.run();

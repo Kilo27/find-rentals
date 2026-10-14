@@ -1,22 +1,30 @@
-// Live check of every scraper: node scripts/probe-sources.mjs [daft|ul|rent|myhome|web ...] [--region=limerick|cork|galway] [--url=https://...]
+// Live check of every scraper: node scripts/probe-sources.mjs [daft|ul|rent|myhome|web ...] [--region=limerick|cork|galway] [--campus=mic] [--url=https://...]
 // Prints what each source recognised so selector/markup problems are obvious. Nothing is saved or notified.
-// With --region it checks that region's pages (scripts/lib/regions.mjs) and, unless sources are named, only the sources it uses.
+// With --region or --campus it checks that region's or campus's pages (src/catalogue.js) and, unless sources are named, only the sources it uses.
 import { DEFAULT_CONFIG, normalizeConfig } from "../src/config.js";
 import { createFetcher } from "../src/html.js";
 import { ADAPTERS } from "../src/sources/index.js";
 import { analyzeListing, evaluateNonLocation } from "../src/filter.js";
-import { REGIONS, regionConfig } from "./lib/regions.mjs";
+import { REGIONS, campusConfig, regionConfig } from "./lib/regions.mjs";
 
 const args = process.argv.slice(2);
 const urlArg = args.find((a) => a.startsWith("--url="))?.slice(6);
 const regionArg = args.find((a) => a.startsWith("--region="))?.slice(9);
+const campusArg = args.find((a) => a.startsWith("--campus="))?.slice(9);
 const wanted = args.filter((a) => !a.startsWith("--"));
 
 if (regionArg && !REGIONS[regionArg]) {
   console.error(`Unknown region "${regionArg}". Known regions: ${Object.keys(REGIONS).join(", ")}`);
   process.exit(1);
 }
-const base = regionArg ? regionConfig(regionArg) : DEFAULT_CONFIG;
+let base = DEFAULT_CONFIG;
+try {
+  if (campusArg) base = campusConfig(campusArg);
+  else if (regionArg) base = regionConfig(regionArg);
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
 const ids = wanted.length ? wanted : base.sources;
 
 const config = normalizeConfig({
@@ -26,9 +34,9 @@ const config = normalizeConfig({
 });
 const now = new Date();
 
-if (regionArg) {
+if (regionArg || campusArg) {
   console.log(
-    `Region ${REGIONS[regionArg].name}: centre ${config.center.label}, Daft area ${config.daftLocation}, ` +
+    `${regionArg ? `Region ${REGIONS[regionArg].name}` : `Campus ${campusArg}`}: centre ${config.center.label}, Daft area ${config.daftLocation}, ` +
       `${config.rentUrls.length} Rent.ie page(s), ${config.myhomeUrls.length} MyHome page(s)`,
   );
 }

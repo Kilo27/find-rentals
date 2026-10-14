@@ -7,7 +7,10 @@ export { parsePriceMonthly };
 export const DAFT_BASE = "https://www.daft.ie";
 
 const RADIUS_SHAPES_M = [1000, 3000, 5000, 10000, 20000];
-const OWNER_FILTER_SECTIONS = new Set(["sharing", "student-accommodation-to-share"]);
+// The key that stands for a lease-length range in a region's collected results.
+export const leaseKey = (min, max) => `${min ?? ""}-${max ?? ""}`;
+
+export const OWNER_FILTER_SECTIONS = new Set(["sharing", "student-accommodation-to-share"]);
 const BEDS_SECTIONS = new Set(["residential-to-rent"]);
 
 // Daft's website path for each section; only houses & apartments is named differently.
@@ -100,7 +103,22 @@ export async function fetchSection(config, section, { fetcher = createFetcher() 
     if (items.length === 0 || received >= total) break;
   }
 
-  return { listings, total, rawSample };
+  // `complete`: every result was read, because the search ran out before the page limit did.
+  return { listings, total, rawSample, complete: received >= total };
+}
+
+// Daft's search results don't say whether the owner lives there, but Daft's own filter can be asked. What it returns is
+// not owner-occupied; what it leaves out, as far back as it looked, is. `all` and `notOwner` are fetchSection() results for
+// the same search without and with the filter. Looking only at what both reached keeps a listing from being called
+// owner-occupied just because the filtered search stopped paging sooner.
+export function tagOwnerOccupied(all, notOwner) {
+  const kept = new Set(notOwner.listings.map((l) => l.id));
+  const oldest = (ls) => ls.map((l) => l.publishedAt).filter(Boolean).sort()[0] ?? null;
+  const reachedAll = notOwner.complete || (oldest(notOwner.listings) !== null && oldest(all.listings) !== null && oldest(notOwner.listings) <= oldest(all.listings));
+  for (const l of all.listings) {
+    if (kept.has(l.id)) l.ownerOccupied = false;
+    else if (reachedAll && l.ownerOccupied === null) l.ownerOccupied = true;
+  }
 }
 
 function expandGrouped(item) {

@@ -1,5 +1,5 @@
 import { isSafeUrl } from "./html.js";
-import { campusById } from "./transit/campuses.js";
+import { campusById, campusIdsFor } from "./transit/campuses.js";
 
 export const SECTIONS = {
   "residential-to-rent": "Houses & apartments",
@@ -214,4 +214,127 @@ export function normalizeConfig(input = {}) {
 
   if (errors.length) throw new ConfigError(errors);
   return out;
+}
+
+// --- Who owns which setting (#12) ------------------------------------------------------------------------------------
+//
+// normalizeConfig() above describes one complete search, which is the shape the filters and the sources read. That
+// search is put together from three owners, so that one person's choices can't change anyone else's:
+//   - the account's PREFERENCES: which campus, how far, what kind of place, price, dates, keywords;
+//   - the REGION, which only the admin edits: where to look (the Daft area, Rent.ie and MyHome pages, the accommodation
+//     board), which sites, and how often and how hard to look;
+//   - the CAMPUS, from the catalogue: its name, position and the neighbourhood names around it.
+// effectiveConfig() puts them together again.
+
+export const PREF_KEYS = [
+  "radiusKm",
+  "sections",
+  "excludeOwnerOccupied",
+  "excludeWeekdayOnly",
+  "needFrom",
+  "stayUntil",
+  "availabilityGraceDays",
+  "endGraceDays",
+  "priceMin",
+  "priceMax",
+  "bedsMin",
+  "bedsMax",
+  "leaseMinMonths",
+  "leaseMaxMonths",
+  "includeKeywords",
+  "excludeKeywords",
+  "unverifiedDistance",
+  "transitEnabled",
+  "transitMaxKm",
+  "transitWalkM",
+  "transitMaxRideMin",
+  "transitMinPerDay",
+];
+
+const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => k in obj).map((k) => [k, obj[k]]));
+
+export const DEFAULT_PREFS = Object.freeze(pick(DEFAULT_CONFIG, PREF_KEYS));
+
+// An account's preferences. Anything that isn't a preference (a centre point, page addresses, sources) is ignored, so
+// an account can't set it however the request is written. `maxRadiusKm` is the campus's limit on how far out to look.
+export function normalizePrefs(input = {}, { maxRadiusKm = 20 } = {}) {
+  const errors = [];
+  let full = null;
+  try {
+    full = normalizeConfig({ ...DEFAULT_CONFIG, ...pick(input, PREF_KEYS) });
+  } catch (err) {
+    if (!(err instanceof ConfigError)) throw err;
+    errors.push(...err.errors.map((e) => (/Daft section/.test(e) ? "choose at least one kind of place" : e)));
+  }
+  if (full) {
+    if (full.radiusKm > maxRadiusKm) errors.push(`radiusKm must be at most ${maxRadiusKm} for this campus`);
+    if (full.transitMaxKm > maxRadiusKm) errors.push(`transitMaxKm must be at most ${maxRadiusKm} for this campus`);
+  }
+  if (errors.length) throw new ConfigError(errors);
+  return pick(full, PREF_KEYS);
+}
+
+// The admin's settings for one region: where its sites are searched and how. `radiusKm` is how far around the Daft area
+// to ask for, which has to reach every campus in the region.
+export function normalizeRegion(input = {}) {
+  const errors = [];
+  const out = {
+    name: String(input.name ?? "").trim().slice(0, 60),
+    enabled: parseBool(errors, "enabled", input.enabled ?? true),
+    intervalMinutes: parseNumber(errors, "intervalMinutes", input.intervalMinutes ?? DEFAULT_CONFIG.intervalMinutes, { min: 5, max: 1440, int: true }),
+    radiusKm: parseNumber(errors, "radiusKm", input.radiusKm ?? 5, { min: 1, max: 20 }),
+    daftLocation: String(input.daftLocation ?? "").trim().toLowerCase(),
+    sources: [],
+    ulUrls: parseUrls(errors, "ulUrls", input.ulUrls),
+    rentUrls: parseUrls(errors, "rentUrls", input.rentUrls),
+    myhomeUrls: parseUrls(errors, "myhomeUrls", input.myhomeUrls),
+    webUrls: parseUrls(errors, "webUrls", input.webUrls),
+    geocode: parseBool(errors, "geocode", input.geocode ?? true),
+    respectRobots: parseBool(errors, "respectRobots", input.respectRobots ?? true),
+    maxDetailFetches: parseNumber(errors, "maxDetailFetches", input.maxDetailFetches ?? DEFAULT_CONFIG.maxDetailFetches, { min: 0, max: 200, int: true }),
+    maxPages: parseNumber(errors, "maxPages", input.maxPages ?? DEFAULT_CONFIG.maxPages, { min: 1, max: 10, int: true }),
+  };
+  if (!out.name) errors.push("name is required");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(out.daftLocation)) {
+    errors.push("daftLocation must be the area name from a Daft search URL, like university-of-limerick-limerick");
+  }
+  const sources = Array.isArray(input.sources) ? input.sources : [];
+  for (const id of sources) if (!(id in SOURCES)) errors.push(`unknown source "${id}"`);
+  out.sources = [...new Set(sources.filter((id) => id in SOURCES))];
+  if (out.enabled && out.sources.length === 0) errors.push("select at least one source");
+  if (errors.length) throw new ConfigError(errors);
+  return out;
+}
+
+const sameList = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+// The complete search for one account: its region's settings, its campus and its preferences, in the shape
+// normalizeConfig() returns, so the filters and the sources read it as they always have. `campus` carries the
+// catalogue's name, position, hints and limits.
+export function effectiveConfig(region, campus, prefs) {
+  const maxKm = campus.maxRadiusKm ?? 20;
+  // The campus at the centre is what the transport rules look for unless another is named, so only name it when that
+  // wouldn't be found anyway.
+  const found = campusIdsFor({ center: campus, transitCampuses: [] });
+  return normalizeConfig({
+    ...DEFAULT_PREFS,
+    ...prefs,
+    enabled: region.enabled,
+    intervalMinutes: region.intervalMinutes,
+    center: { label: campus.name, lat: campus.lat, lng: campus.lng },
+    radiusKm: Math.min(prefs.radiusKm ?? DEFAULT_PREFS.radiusKm, maxKm),
+    transitMaxKm: Math.min(prefs.transitMaxKm ?? DEFAULT_PREFS.transitMaxKm, maxKm),
+    transitCampuses: sameList(found, [campus.id]) ? [] : [campus.id],
+    daftLocation: region.daftLocation,
+    sources: region.sources,
+    ulUrls: region.ulUrls,
+    rentUrls: region.rentUrls,
+    myhomeUrls: region.myhomeUrls,
+    webUrls: region.webUrls,
+    geocode: region.geocode,
+    respectRobots: region.respectRobots,
+    maxDetailFetches: region.maxDetailFetches,
+    maxPages: region.maxPages,
+    localityHints: campus.localityHints ?? [],
+  });
 }

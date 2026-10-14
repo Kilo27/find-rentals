@@ -4,15 +4,16 @@ import path from "node:path";
 import { Store } from "../src/store.js";
 import { SECTION_PATHS } from "../src/daft.js";
 import { ADMIN_OWNER } from "../src/push.js";
+import { PREF_KEYS } from "../src/config.js";
 
 export const UL = { lat: 52.6733, lng: -8.5739 };
 
-// ~0.009 degrees of latitude is ~1 km
-export const kmNorth = (km) => ({ lat: UL.lat + km / 111.19, lng: UL.lng });
+// ~0.009 degrees of latitude is ~1 km. `from` is the point to measure from (UL unless another campus is given).
+export const kmNorth = (km, from = UL) => ({ lat: from.lat + km / 111.19, lng: from.lng });
 
 export function rawListing(over = {}) {
-  const { id = 1, km = 1, price = "€650 per month", title = `Room ${id}, Castletroy, Co. Limerick`, extra = {} } = over;
-  const pos = kmNorth(km);
+  const { id = 1, km = 1, price = "€650 per month", title = `Room ${id}, Castletroy, Co. Limerick`, extra = {}, from = UL } = over;
+  const pos = kmNorth(km, from);
   return {
     listing: {
       id,
@@ -66,29 +67,57 @@ export function tempStore() {
   return { store: new Store(dir), dir };
 }
 
+// The notes about how the scanner is doing, which go to the admin and are not alerts about places.
+const isOp = (payload) => /^(scan-failure|source-|laptop)/.test(payload.tag ?? "");
+
+// `subscribers` is how many devices every account has, or an object giving it per account ({ bob: 2 }, others 0).
 export function fakePusher({ subscribers = 1, sendResult } = {}) {
+  // What the admin's devices were sent about places: the alerts and the "watching started" note, as payloads.
   const sent = [];
-  // Pushes aimed at one account's devices, as { owner, payload }. The scanner sends its own health notes to the admin.
+  // Every push, as { owner, payload }.
   const sentToOwner = [];
+  const devices = (owner) => (typeof subscribers === "number" ? subscribers : subscribers[owner] ?? 0);
   return {
     sent,
     sentToOwner,
-    ops: () => sentToOwner.filter((s) => s.owner === ADMIN_OWNER).map((s) => s.payload),
+    // The scanner's own health notes to the admin.
+    ops: () => sentToOwner.filter((s) => s.owner === ADMIN_OWNER && isOp(s.payload)).map((s) => s.payload),
+    // The alerts one account was sent.
+    to: (owner) => sentToOwner.filter((s) => s.owner === owner && !isOp(s.payload)).map((s) => s.payload),
     publicKey: "test-public-key",
-    count: () => subscribers,
+    count: (owner) => devices(owner),
     sendToAll: async (payload) => {
       sent.push(payload);
       return sendResult ? sendResult(payload) : { sent: subscribers, failed: 0, removed: 0 };
     },
     sendToOwner: async (owner, payload) => {
       sentToOwner.push({ owner, payload });
-      return { sent: 0, failed: 0, removed: 0 };
+      if (isOp(payload)) return { sent: 0, failed: 0, removed: 0 };
+      if (owner === ADMIN_OWNER) sent.push(payload);
+      return sendResult ? sendResult(payload, owner) : { sent: devices(owner), failed: 0, removed: 0 };
     },
     subscriptionsOf: () => [],
     addSubscription() {},
     removeSubscription() {},
     removeOwner() {},
   };
+}
+
+// An account's search, and a region's settings.
+export const searchOf = (store, owner = ADMIN_OWNER) => store.data.searches[owner];
+export const regionOf = (store, id = "limerick") => store.data.regions[id];
+
+const REGION_KEYS = ["enabled", "intervalMinutes", "daftLocation", "sources", "ulUrls", "rentUrls", "myhomeUrls", "webUrls", "geocode", "respectRobots", "maxDetailFetches", "maxPages"];
+
+// Sets up a search in the way the tests used to change the one shared config: settings about where to look go to the region
+// (default Limerick), preferences to the account (default the admin, who is at UL).
+export function configure(store, over = {}, { region = "limerick", owner = ADMIN_OWNER } = {}) {
+  for (const [k, v] of Object.entries(over)) {
+    if (REGION_KEYS.includes(k)) store.data.regions[region][k] = v;
+    else if (PREF_KEYS.includes(k)) store.data.searches[owner].prefs[k] = v;
+    else throw new Error(`configure: "${k}" is neither a region setting nor a preference`);
+  }
+  return store;
 }
 
 // Routes by exact URL (string) or RegExp. Unmatched URLs return 404.

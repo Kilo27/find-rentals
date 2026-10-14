@@ -95,7 +95,8 @@ function clearSnapshot() {
 function useSnapshot() {
   try {
     const snap = JSON.parse(localStorage.getItem(SNAPSHOT_KEY));
-    if (snap?.state?.user && Array.isArray(snap.state.matches)) {
+    // A copy saved before every account had its own campus and preferences has no `prefs`, and the screens need them.
+    if (snap?.state?.user && snap.state.prefs && Array.isArray(snap.state.matches)) {
       state = { areas: {}, vapidPublicKey: null, ...snap.state };
       loadedAt = snap.savedAt;
       offline = true;
@@ -427,13 +428,11 @@ async function stopViewing() {
 }
 
 function renderMain() {
-  // Only the admin can change the one shared search or manage users.
+  // Everyone has a search of their own, so everyone has Settings; only the admin manages users.
   const admin = state.user.isAdmin;
-  const tabs = [["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`]];
-  if (admin) tabs.push(["settings", "Settings"]);
-  tabs.push(["alerts", "Alerts"]);
+  const tabs = [["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`], ["settings", "Settings"], ["alerts", "Alerts"]];
   if (admin) tabs.push(["users", "Users"]);
-  if ((tab === "users" || tab === "settings") && !admin) tab = "matches";
+  if (tab === "users" && !admin) tab = "matches";
   const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : tab === "users" ? renderUsers() : renderAlerts();
   const c = state.config;
   return h(
@@ -474,7 +473,7 @@ function renderMain() {
       "header",
       {},
       h("h1", {}, "Rental Watch"),
-      h("div", { class: "sub" }, `${c.radiusKm} km of ${c.center.label}`),
+      h("div", { class: "sub" }, c ? `${c.radiusKm} km of ${c.center.label}` : "Choose your campus"),
     ),
     h("main", {}, content),
     h(
@@ -504,7 +503,20 @@ function renderMain() {
   );
 }
 
+// Until a campus is chosen there is nothing to watch. This is the first thing a new account sees.
+function renderCampusPrompt() {
+  if (state.viewingAs) return h("div", { class: "empty" }, `${state.viewingAs.username} hasn't chosen a campus yet, so nothing is being watched for them.`);
+  return h(
+    "section",
+    { class: "panel setup", "aria-label": "Choose your campus" },
+    h("h2", {}, "Which campus are you near?"),
+    h("p", {}, "Rental Watch looks for places near your campus and tells you when a new one is listed. You can change this later in Settings."),
+    renderCampusPicker({ first: true }),
+  );
+}
+
 function renderMatches() {
+  if (!state.config) return renderCampusPrompt();
   const toggle = h(
     "div",
     { class: "seg", role: "group", "aria-label": "Matches view" },
@@ -554,9 +566,7 @@ async function dismiss(m, status) {
   const at = active.findIndex((x) => x.id === m.id);
   const next = active[at + 1] ?? active[at - 1];
   if (await setReview(m.id, status)) {
-    // Verdicts are shared, so when the search is shared say so: one person's "Not a fit" is everyone's.
-    const forEveryone = state.sharedWith ? " for everyone" : "";
-    showToast(`Moved to ${title}${forEveryone}`, {
+    showToast(`Moved to ${title}`, {
       label: "Undo",
       run: async () => {
         if (await setReview(m.id, before)) focusKey(m.id + ":open");
@@ -575,7 +585,8 @@ async function restore(m) {
 
 // Going to the listing's own site is the natural "I've looked at this", so it marks the card seen.
 function openedListing(m) {
-  if (m.review) return;
+  // Looking at someone else's list is not them having looked.
+  if (m.review || state.viewingAs) return;
   // After the browser has followed the link: re-drawing the list first could swallow the click.
   setTimeout(() => setReview(m.id, "seen"), 0);
 }
@@ -752,6 +763,8 @@ function renderCard(m) {
   const more = moreFor === m.id;
   // Every card repeats the same buttons, so each is named with its listing for anyone who can't see the card around it.
   const named = (label) => label + ": " + m.title;
+  // The admin viewing as someone can open a listing but can't put it away or mark it for them.
+  const viewing = Boolean(state.viewingAs);
   return h(
     "article",
     { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id, tabindex: "-1", "aria-label": d.price + ", " + m.title },
@@ -760,7 +773,9 @@ function renderCard(m) {
     h(
       "div",
       { class: "actions" },
-      dismissed
+      viewing
+        ? h("a", { class: "act open", href: m.url, target: "_blank", rel: "noopener noreferrer", "aria-label": named(`Open on ${m.sourceLabel}`) }, `Open on ${m.sourceLabel}`, icon("external"))
+        : dismissed
         ? h("button", { class: "act restore", "aria-label": named(dismissed.undo), "data-fk": m.id + ":restore", onclick: () => restore(m) }, dismissed.undo)
         : [
             h("a", { class: "act open", href: m.url, target: "_blank", rel: "noopener noreferrer", "aria-label": named(`Open on ${m.sourceLabel}`), "data-fk": m.id + ":open", onclick: () => openedListing(m) }, `Open on ${m.sourceLabel}`, icon("external")),
@@ -804,14 +819,118 @@ function renderCard(m) {
   );
 }
 
-// Kept while the admin visits other tabs, so a half-made change isn't lost. It is rebuilt only when the saved
-// settings themselves change.
-let settingsCache = null;
+// Chooses a campus, which starts watching there afresh, then shows the first matches (or says they are on their way).
+// `first` is a new account's first choice, which has nothing to lose, so it asks nothing more of them.
+function renderCampusPicker({ first = false } = {}) {
+  const msg = msgBox();
+  const current = state.campus?.id ?? null;
+  let picked = current;
+  const groups = new Map();
+  for (const c of state.searchCampuses) groups.set(c.region, [...(groups.get(c.region) ?? []), c]);
+  const go = h("button", { class: "primary", type: "button", disabled: true }, first ? "Start watching" : "Switch campus");
+  const choose = (id) => {
+    picked = id;
+    go.disabled = picked === current;
+    msg.textContent = "";
+  };
+  const list = [...groups].map(([region, campuses]) =>
+    h(
+      "fieldset",
+      { class: "campuses" },
+      h("legend", {}, region),
+      campuses.map((c) =>
+        h(
+          "label",
+          { class: "check" },
+          h("input", { type: "radio", name: "campus", value: c.id, checked: c.id === current, onchange: () => choose(c.id) }),
+          c.name,
+        ),
+      ),
+    ),
+  );
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    msg.className = "msg";
+    msg.textContent = "Setting up...";
+    try {
+      const r = await api("PUT", "/api/campus", { campus: picked });
+      await loadState();
+      settingsCache = null;
+      tab = "matches";
+      view = "list";
+      render();
+      window.scrollTo(0, 0);
+      showToast(r.matched ? `Now watching near ${r.campus.short}.` : `Now watching near ${r.campus.short}. The first check is on its way.`);
+      if (!r.matched) waitForFirstCheck();
+    } catch (err) {
+      msg.className = "msg err";
+      msg.textContent = err.message;
+      go.disabled = false;
+    }
+  });
+  return [
+    list,
+    h("div", { class: "hint" }, first ? "Only these campuses are set up so far." : "Switching clears your current list and starts fresh, so you aren't alerted to places that were already listed."),
+    go,
+    msg,
+  ];
+}
+
+// After choosing a campus whose first check hasn't run yet, look again every few seconds for a while, so the first matches
+// appear without the person having to come back to the app.
+let waitingForFirstCheck = false;
+async function waitForFirstCheck() {
+  if (waitingForFirstCheck) return;
+  waitingForFirstCheck = true;
+  try {
+    for (let i = 0; i < 24 && state && !state.lastRun; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await loadState();
+      if (state.lastRun && tab === "matches") render();
+    }
+  } catch {
+    /* the regular refresh carries on */
+  } finally {
+    waitingForFirstCheck = false;
+  }
+}
+
+// The campus the account is watching, and the way to change it.
+function renderCampusPanel() {
+  const viewing = Boolean(state.viewingAs);
+  const c = state.campus;
+  return h(
+    "div",
+    { class: "panel" },
+    h("h2", {}, "Your campus"),
+    c
+      ? [
+          kv("Watching near", c.name),
+          state.config ? kv("Within", `${state.config.radiusKm} km`) : null,
+          viewing ? null : h("details", {}, h("summary", {}, "Change campus"), renderCampusPicker()),
+        ]
+      : viewing
+        ? h("div", { class: "hint" }, `${state.viewingAs.username} hasn't chosen a campus yet.`)
+        : [h("div", { class: "hint" }, "Choose the campus you want places near."), renderCampusPicker({ first: true })],
+  );
+}
 
 function renderSettings() {
-  const cacheKey = JSON.stringify(state.config);
+  const admin = state.user.isAdmin && !state.viewingAs;
+  return [renderCampusPanel(), state.config ? renderPrefs() : null, admin ? renderRegions() : null];
+}
+
+// Kept while someone visits other tabs, so a half-made change isn't lost. It is rebuilt only when the saved
+// preferences themselves change.
+let settingsCache = null;
+
+// The preferences: everything about what this account wants. Where the sites are searched belongs to the region (admin).
+function renderPrefs() {
+  const viewing = Boolean(state.viewingAs);
+  const cacheKey = JSON.stringify([state.prefs, state.campus?.id, viewing]);
   if (settingsCache?.key === cacheKey) return settingsCache.el;
-  const c = state.config;
+  const p = state.prefs;
+  const maxKm = state.campus?.maxRadiusKm ?? 20;
   const msg = msgBox();
   let dirty = false;
   const markDirty = () => {
@@ -823,10 +942,6 @@ function renderSettings() {
   const f = {};
   // A label is tied to its field by id, so a screen reader announces it and tapping the label focuses the field.
   const fid = (name) => "s-" + name;
-  const text = (name, label, value, attrs = {}) => {
-    f[name] = h("input", { type: "text", id: fid(name), value: value ?? "", ...attrs });
-    return [h("label", { for: fid(name) }, label), f[name]];
-  };
   const num = (name, label, value, attrs = {}) => {
     f[name] = h("input", { type: "number", id: fid(name), inputmode: "decimal", step: "any", value: value ?? "", ...attrs });
     return h("div", {}, h("label", { for: fid(name) }, label), f[name]);
@@ -843,15 +958,6 @@ function renderSettings() {
     f[name] = h("textarea", { id: fid(name), value: value.join(", ") });
     return [h("label", { for: fid(name) }, label), f[name], hint ? h("div", { class: "hint" }, hint) : null];
   };
-
-  const sourceChecks = Object.entries(state.sources).map(([id, label]) => {
-    f[`source:${id}`] = h("input", { type: "checkbox", checked: c.sources.includes(id) });
-    return h("label", { class: "check" }, f[`source:${id}`], label);
-  });
-  const urlArea = (name, label, value) => {
-    f[name] = h("textarea", { id: fid(name), value: value.join("\n"), rows: "3", spellcheck: "false", autocapitalize: "off" });
-    return [h("label", { for: fid(name) }, label), f[name]];
-  };
   f.unverifiedDistance = h(
     "select",
     { id: fid("unverifiedDistance") },
@@ -859,53 +965,38 @@ function renderSettings() {
       ["locality", "Only if the area name matches (recommended)"],
       ["include", "Always include (flagged)"],
       ["exclude", "Exclude"],
-    ].map(([v, t]) => h("option", { value: v, selected: c.unverifiedDistance === v }, t)),
+    ].map(([v, t]) => h("option", { value: v, selected: p.unverifiedDistance === v }, t)),
   );
 
   const sectionChecks = Object.entries(state.sections).map(([id, label]) => {
-    f[`section:${id}`] = h("input", { type: "checkbox", checked: c.sections.includes(id) });
+    f[`section:${id}`] = h("input", { type: "checkbox", checked: p.sections.includes(id) });
     return h("label", { class: "check" }, f[`section:${id}`], label);
   });
 
   const numOrNull = (el) => (el.value.trim() === "" ? null : Number(el.value));
   const collect = () => ({
-    enabled: f.enabled.checked,
-    intervalMinutes: Number(f.intervalMinutes.value),
-    center: { label: f.centerLabel.value, lat: Number(f.lat.value), lng: Number(f.lng.value) },
     radiusKm: Number(f.radiusKm.value),
-    transitEnabled: f.transitEnabled.checked,
-    transitCampuses: state.campuses.filter((c) => f[`campus:${c.id}`].checked).map((c) => c.id),
-    transitMaxKm: Number(f.transitMaxKm.value),
-    transitWalkM: Number(f.transitWalkM.value),
-    transitMaxRideMin: Number(f.transitMaxRideMin.value),
-    transitMinPerDay: Number(f.transitMinPerDay.value),
-    sources: Object.keys(state.sources).filter((id) => f[`source:${id}`].checked),
     sections: Object.keys(state.sections).filter((id) => f[`section:${id}`].checked),
-    ulUrls: f.ulUrls.value,
-    rentUrls: f.rentUrls.value,
-    myhomeUrls: f.myhomeUrls.value,
-    webUrls: f.webUrls.value,
     excludeOwnerOccupied: f.excludeOwnerOccupied.checked,
     excludeWeekdayOnly: f.excludeWeekdayOnly.checked,
+    needFrom: f.needFrom.value,
+    stayUntil: f.stayUntil.value,
     availabilityGraceDays: Number(f.availabilityGraceDays.value),
     endGraceDays: Number(f.endGraceDays.value),
-    geocode: f.geocode.checked,
-    unverifiedDistance: f.unverifiedDistance.value,
-    localityHints: f.localityHints.value,
-    respectRobots: f.respectRobots.checked,
-    maxDetailFetches: Number(f.maxDetailFetches.value),
     priceMin: numOrNull(f.priceMin),
     priceMax: numOrNull(f.priceMax),
     bedsMin: numOrNull(f.bedsMin),
     bedsMax: numOrNull(f.bedsMax),
     leaseMinMonths: numOrNull(f.leaseMinMonths),
     leaseMaxMonths: numOrNull(f.leaseMaxMonths),
-    needFrom: f.needFrom.value,
-    stayUntil: f.stayUntil.value,
     includeKeywords: f.includeKeywords.value,
     excludeKeywords: f.excludeKeywords.value,
-    daftLocation: f.daftLocation.value.trim(),
-    maxPages: Number(f.maxPages.value),
+    unverifiedDistance: f.unverifiedDistance.value,
+    transitEnabled: f.transitEnabled.checked,
+    transitMaxKm: Number(f.transitMaxKm.value),
+    transitWalkM: Number(f.transitWalkM.value),
+    transitMaxRideMin: Number(f.transitMaxRideMin.value),
+    transitMinPerDay: Number(f.transitMinPerDay.value),
   });
 
   const save = h(
@@ -917,11 +1008,12 @@ function renderSettings() {
         msg.className = "msg";
         msg.textContent = "Saving...";
         try {
-          const r = await api("PUT", "/api/config", collect());
-          state.config = r.config;
+          const r = await api("PUT", "/api/prefs", collect());
+          await loadState();
           dirty = false;
           msg.className = "msg ok";
-          msg.textContent = "Saved. Changes apply from the next scan (or use Alerts > Scanner details > Scan now to apply them immediately).";
+          msg.textContent = r.matched ? "Saved. Your matches are updated." : "Saved. It applies from the next check.";
+          render();
         } catch (err) {
           msg.className = "msg err";
           msg.textContent = err.message;
@@ -935,84 +1027,59 @@ function renderSettings() {
     "form",
     { onsubmit: (e) => e.preventDefault() },
     h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "What"),
-      check("excludeOwnerOccupied", "Exclude owner-occupied properties", c.excludeOwnerOccupied),
-      h("div", { class: "hint" }, "Uses Daft's owner-occupied filter for rooms, then reads each listing's description for live-in landlord wording. Untick to see them."),
-      check("excludeWeekdayOnly", "Exclude weekday-only lets (Mon-Fri, 5-day)", c.excludeWeekdayOnly),
-      h("div", { class: "row" }, num("priceMin", "Min €/month", c.priceMin), num("priceMax", "Max €/month", c.priceMax)),
-      h("div", { class: "row" }, num("bedsMin", "Min beds (houses)", c.bedsMin), num("bedsMax", "Max beds (houses)", c.bedsMax)),
-    ),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "When"),
-      h("div", { class: "row" }, date("needFrom", "Need from (blank = immediately)", c.needFrom), date("stayUntil", "Stay until", c.stayUntil)),
-      h("div", { class: "row" }, num("availabilityGraceDays", "Accept up to N days after need-from", c.availabilityGraceDays, { step: "1", min: "0" }), num("endGraceDays", "Accept ending up to N days before stay-until", c.endGraceDays, { step: "1", min: "0" })),
-      h("div", { class: "row" }, num("leaseMinMonths", "Min lease (months)", c.leaseMinMonths), num("leaseMaxMonths", "Max lease (months)", c.leaseMaxMonths)),
+      "fieldset",
+      { class: "prefs", disabled: viewing },
       h(
         "div",
-        { class: "hint" },
-        "Availability is read from listing text where stated (UL Accommodation, Rent.ie, MyHome.ie). Daft search results rarely include it, so Daft listings are not date-filtered. Listings that state a start date too late, or an end date too early, are excluded. Lease limits only apply to Daft.",
+        { class: "panel" },
+        h("h2", {}, "What"),
+        check("excludeOwnerOccupied", "Exclude owner-occupied properties", p.excludeOwnerOccupied),
+        h("div", { class: "hint" }, "Rooms where the owner lives there. Daft's own filter is used for rooms, then each listing's description is read for live-in landlord wording. Untick to see them."),
+        check("excludeWeekdayOnly", "Exclude weekday-only lets (Mon-Fri, 5-day)", p.excludeWeekdayOnly),
+        h("h3", {}, "Kinds of place"),
+        sectionChecks,
+        h("div", { class: "row" }, num("priceMin", "Min €/month", p.priceMin), num("priceMax", "Max €/month", p.priceMax)),
+        h("div", { class: "row" }, num("bedsMin", "Min beds (houses)", p.bedsMin), num("bedsMax", "Max beds (houses)", p.bedsMax)),
       ),
-    ),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Where"),
-      text("centerLabel", "Centre name", c.center.label),
       h(
         "div",
-        { class: "row" },
-        num("lat", "Latitude", c.center.lat),
-        num("lng", "Longitude", c.center.lng),
+        { class: "panel" },
+        h("h2", {}, "When"),
+        h("div", { class: "row" }, date("needFrom", "Need from (blank = immediately)", p.needFrom), date("stayUntil", "Stay until", p.stayUntil)),
+        h("div", { class: "row" }, num("availabilityGraceDays", "Accept up to N days after need-from", p.availabilityGraceDays, { step: "1", min: "0" }), num("endGraceDays", "Accept ending up to N days before stay-until", p.endGraceDays, { step: "1", min: "0" })),
+        h("div", { class: "row" }, num("leaseMinMonths", "Min lease (months)", p.leaseMinMonths), num("leaseMaxMonths", "Max lease (months)", p.leaseMaxMonths)),
+        h(
+          "div",
+          { class: "hint" },
+          "Availability is read from listing text where stated (UL Accommodation, Rent.ie, MyHome.ie). Daft search results rarely include it, so Daft listings are not date-filtered. Listings that state a start date too late, or an end date too early, are excluded. Lease limits only apply to Daft, and ask Daft again for you, so they are applied from the next check.",
+        ),
       ),
-      num("radiusKm", "Max distance (km)", c.radiusKm, { min: "0.1", max: "20" }),
-      h("div", { class: "hint" }, "Exact straight-line distance from the centre point."),
-    ),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Where to look"),
-      sourceChecks,
-      h("div", { class: "hint" }, "Daft.ie sections:"),
-      sectionChecks,
-    ),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Keywords"),
-      area("excludeKeywords", "Exclude if title/description contains", c.excludeKeywords, "Comma separated."),
-      area("includeKeywords", "Only if it contains one of (optional)", c.includeKeywords),
-    ),
-    renderTransitSettings(c, f, num, check),
-    h(
-      "div",
-      { class: "panel" },
-      h("h2", {}, "Scanning"),
-      check("enabled", "Scanning enabled", c.enabled),
-      num("intervalMinutes", "Scan every (minutes)", c.intervalMinutes, { min: "5", max: "1440", step: "1" }),
+      h(
+        "div",
+        { class: "panel" },
+        h("h2", {}, "How far"),
+        num("radiusKm", "Max distance from your campus (km)", p.radiusKm, { min: "0.1", max: String(maxKm) }),
+        h("div", { class: "hint" }, `Exact straight-line distance. Up to ${maxKm} km for this campus.`),
+      ),
+      h(
+        "div",
+        { class: "panel" },
+        h("h2", {}, "Keywords"),
+        area("excludeKeywords", "Exclude if title/description contains", p.excludeKeywords, "Comma separated."),
+        area("includeKeywords", "Only if it contains one of (optional)", p.includeKeywords),
+      ),
+      renderTransitSettings(p, maxKm, f, num, check),
       h(
         "details",
-        {},
+        { class: "panel" },
         h("summary", {}, "Advanced"),
-        urlArea("ulUrls", "UL Accommodation pages (one per line)", c.ulUrls),
-        urlArea("rentUrls", "Rent.ie search pages", c.rentUrls),
-        urlArea("myhomeUrls", "MyHome.ie search pages", c.myhomeUrls),
-        urlArea("webUrls", "Custom pages (any listings site; enable under Where to look)", c.webUrls),
         h("label", { for: fid("unverifiedDistance") }, "If a listing has no coordinates"),
         f.unverifiedDistance,
-        area("localityHints", "Area names that count as nearby", c.localityHints, "Used only for listings whose location can't be determined."),
-        check("geocode", "Look up coordinates from addresses (OpenStreetMap)", c.geocode),
-        check("respectRobots", "Respect robots.txt on scraped sites", c.respectRobots),
-        num("maxDetailFetches", "Max detail pages fetched per scan", c.maxDetailFetches, { step: "1", min: "0" }),
-        text("daftLocation", "Daft area", c.daftLocation, { autocapitalize: "off", spellcheck: "false" }),
-        h("div", { class: "hint" }, "The area name in a Daft search URL: daft.ie/sharing/<this>. Search the area on daft.ie and copy it from the address bar."),
-        num("maxPages", "Max result pages per search (Daft: 20 per page)", c.maxPages, { min: "1", max: "10", step: "1" }),
+        h("div", { class: "hint" }, "Only listings whose location can't be worked out. Area names near your campus decide whether they count."),
       ),
+      viewing ? null : h("div", { class: "savebar" }, save, msg),
     ),
-    h("div", { class: "savebar" }, save, msg),
+    viewing ? h("div", { class: "hint" }, `You're viewing as ${state.viewingAs.username}, so these can be read but not changed.`) : null,
   );
   form.addEventListener("input", markDirty);
   form.addEventListener("change", markDirty);
@@ -1020,34 +1087,120 @@ function renderSettings() {
   return form;
 }
 
-const mapLink = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+// The admin's settings for each region: which sites and pages are read for everyone in it, and how often.
+function renderRegions() {
+  const regions = state.regions ?? [];
+  const msg = msgBox();
+  return h(
+    "div",
+    {},
+    h("h2", { class: "section-title" }, "Regions"),
+    h("div", { class: "hint" }, "Where to look is set per region, for everyone watching there. Only a region with someone watching is scanned."),
+    regions.map((r) => renderRegionForm(r, msg)),
+    msg,
+  );
+}
 
-// "Public transport": accept homes beyond the radius that have a direct route to the campus, and browse
-// the stops that go there (with coordinates, to open in a maps app or export).
-function renderTransitSettings(c, f, num, check) {
-  const byRegion = new Map();
-  for (const campus of state.campuses) {
-    if (!byRegion.has(campus.region)) byRegion.set(campus.region, []);
-    byRegion.get(campus.region).push(campus);
-  }
-  const auto = state.autoCampuses.map((id) => state.campuses.find((x) => x.id === id)?.name).filter(Boolean);
-  const campusBoxes = [...byRegion].map(([region, list]) =>
-    h(
-      "details",
-      { open: list.some((x) => c.transitCampuses.includes(x.id)) },
-      h("summary", {}, region),
-      list.map((x) => {
-        f[`campus:${x.id}`] = h("input", { type: "checkbox", checked: c.transitCampuses.includes(x.id) });
-        return h("label", { class: "check" }, f[`campus:${x.id}`], x.name);
-      }),
-    ),
+function renderRegionForm(r, msg) {
+  const s = r.settings;
+  const f = {};
+  const id = (name) => `r-${r.id}-${name}`;
+  const text = (name, label, value, attrs = {}) => {
+    f[name] = h("input", { type: "text", id: id(name), value: value ?? "", autocapitalize: "off", spellcheck: "false", ...attrs });
+    return [h("label", { for: id(name) }, label), f[name]];
+  };
+  const num = (name, label, value, attrs = {}) => {
+    f[name] = h("input", { type: "number", id: id(name), inputmode: "decimal", step: "1", value: value ?? "", ...attrs });
+    return h("div", {}, h("label", { for: id(name) }, label), f[name]);
+  };
+  const check = (name, label, value) => {
+    f[name] = h("input", { type: "checkbox", checked: value });
+    return h("label", { class: "check" }, f[name], label);
+  };
+  const urls = (name, label, value) => {
+    f[name] = h("textarea", { id: id(name), value: value.join("\n"), rows: "3", spellcheck: "false", autocapitalize: "off" });
+    return [h("label", { for: id(name) }, label), f[name]];
+  };
+  const sourceChecks = Object.entries(state.sources).map(([sid, label]) => {
+    f[`source:${sid}`] = h("input", { type: "checkbox", checked: s.sources.includes(sid) });
+    return h("label", { class: "check" }, f[`source:${sid}`], label);
+  });
+  const watching = r.campuses.filter((c) => c.watching).map((c) => `${c.short} ${c.watching}`);
+
+  const save = h(
+    "button",
+    {
+      class: "primary",
+      type: "button",
+      onclick: async (e) => {
+        e.target.disabled = true;
+        msg.className = "msg";
+        msg.textContent = `Saving ${s.name}...`;
+        try {
+          const body = {
+            enabled: f.enabled.checked,
+            intervalMinutes: Number(f.intervalMinutes.value),
+            daftLocation: f.daftLocation.value.trim(),
+            radiusKm: Number(f.radiusKm.value),
+            sources: Object.keys(state.sources).filter((sid) => f[`source:${sid}`].checked),
+            ulUrls: f.ulUrls.value,
+            rentUrls: f.rentUrls.value,
+            myhomeUrls: f.myhomeUrls.value,
+            webUrls: f.webUrls.value,
+            geocode: f.geocode.checked,
+            respectRobots: f.respectRobots.checked,
+            maxDetailFetches: Number(f.maxDetailFetches.value),
+            maxPages: Number(f.maxPages.value),
+          };
+          await api("PUT", `/api/regions/${r.id}`, body);
+          await loadState();
+          msg.className = "msg ok";
+          msg.textContent = `Saved ${s.name}. Changes apply from its next scan.`;
+        } catch (err) {
+          msg.className = "msg err";
+          msg.textContent = err.message;
+        }
+        e.target.disabled = false;
+      },
+    },
+    `Save ${s.name}`,
   );
 
+  return h(
+    "details",
+    { class: "panel region", open: openSections[`region:${r.id}`] === true, ontoggle: (e) => (openSections[`region:${r.id}`] = e.target.open) },
+    h("summary", {}, `${s.name}${s.enabled ? "" : " (off)"} · ${watching.length ? watching.join(", ") : "nobody watching"}`),
+    check("enabled", "Scan this region", s.enabled),
+    h("div", { class: "row" }, num("intervalMinutes", "Scan every (minutes)", s.intervalMinutes, { min: "5", max: "1440" }), num("maxPages", "Result pages per search (Daft: 20 a page)", s.maxPages, { min: "1", max: "10" })),
+    h("h3", {}, "Sites"),
+    sourceChecks,
+    text("daftLocation", "Daft area", s.daftLocation),
+    h("div", { class: "hint" }, "The area name in a Daft search URL: daft.ie/sharing/<this>. Search the area on daft.ie and copy it from the address bar."),
+    num("radiusKm", "Daft radius around it (km)", s.radiusKm, { min: "1", max: "20" }),
+    h("div", { class: "hint" }, "How far around the area to ask for. It has to reach every campus in the region."),
+    urls("ulUrls", "UL Accommodation pages (one per line)", s.ulUrls),
+    urls("rentUrls", "Rent.ie search pages", s.rentUrls),
+    urls("myhomeUrls", "MyHome.ie search pages", s.myhomeUrls),
+    urls("webUrls", "Custom pages (any listings site; tick Custom pages above)", s.webUrls),
+    h("div", { class: "hint" }, "A campus's own extra pages are added to these while someone has chosen it."),
+    h("h3", {}, "How"),
+    check("geocode", "Look up coordinates from addresses (OpenStreetMap)", s.geocode),
+    check("respectRobots", "Respect robots.txt on scraped sites", s.respectRobots),
+    num("maxDetailFetches", "Max detail pages fetched per scan", s.maxDetailFetches, { min: "0", max: "200" }),
+    save,
+  );
+}
+
+const mapLink = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+// "Public transport": accept homes beyond the distance that have a direct route to the campus, and browse
+// the stops that go there (with coordinates, to open in a maps app or export).
+function renderTransitSettings(p, maxKm, f, num, check) {
   const result = h("div", { class: "stops" });
   const pick = h(
     "select",
     { "aria-label": "Campus" },
-    state.campuses.map((x) => h("option", { value: x.id, selected: x.id === (c.transitCampuses[0] ?? state.autoCampuses[0]) }, x.name)),
+    state.campuses.map((x) => h("option", { value: x.id, selected: x.id === state.campus?.id }, x.name)),
   );
   const show = h(
     "button",
@@ -1097,14 +1250,11 @@ function renderTransitSettings(c, f, num, check) {
     "details",
     { class: "panel" },
     h("summary", {}, "Public transport"),
-    check("transitEnabled", "Also accept homes beyond the distance above that are on a direct bus, tram or train route to the campus", c.transitEnabled),
+    check("transitEnabled", "Also accept homes beyond the distance above that are on a direct bus, tram or train route to your campus", p.transitEnabled),
     h("div", { class: "hint" }, "Uses the National Transport Authority's timetables for Bus Éireann, Dublin Bus, Go-Ahead, Luas and Irish Rail. Only services that go straight to the campus count, and only the stops on the side of the road that heads there."),
-    h("div", { class: "row" }, num("transitMaxKm", "Furthest from the centre (km)", c.transitMaxKm, { min: "0.5", max: "20" }), num("transitWalkM", "Walk to the stop (m)", c.transitWalkM, { step: "50", min: "100", max: "2000" })),
-    h("div", { class: "row" }, num("transitMaxRideMin", "Longest ride (minutes)", c.transitMaxRideMin, { step: "1", min: "5", max: "90" }), num("transitMinPerDay", "Fewest trips per weekday", c.transitMinPerDay, { step: "1", min: "1" })),
+    h("div", { class: "row" }, num("transitMaxKm", "Furthest from the campus (km)", p.transitMaxKm, { min: "0.5", max: String(maxKm) }), num("transitWalkM", "Walk to the stop (m)", p.transitWalkM, { step: "50", min: "100", max: "2000" })),
+    h("div", { class: "row" }, num("transitMaxRideMin", "Longest ride (minutes)", p.transitMaxRideMin, { step: "1", min: "5", max: "90" }), num("transitMinPerDay", "Fewest trips per weekday", p.transitMinPerDay, { step: "1", min: "1" })),
     h("div", { class: "hint" }, "The walk is a straight line to the stop, so allow about a quarter more on the ground."),
-    h("h3", {}, "Campuses"),
-    h("div", { class: "hint" }, auto.length ? `Leave all unticked to use the campus at your search centre (now: ${auto.join(", ")}).` : "Nothing is near your search centre, so tick the campus you want."),
-    campusBoxes,
     h(
       "details",
       {},
@@ -1187,7 +1337,6 @@ function renderAlerts() {
 
   const watching = summarizeSources(state);
   const scanMsg = msgBox();
-  const r = state.lastRun;
   const scan = h(
     "button",
     {
@@ -1239,18 +1388,33 @@ function renderAlerts() {
           "details",
           { class: "panel scanner", open: openSections.scanner === true, ontoggle: (e) => (openSections.scanner = e.target.open) },
           h("summary", {}, "Scanner details"),
-          r ? kv("Last scan", `${timeAgo(r.at)} (${r.ok ? "ok" : "failed"})`) : kv("Last scan", "not yet"),
-          r && r.ok ? kv("Found / matching / new", `${r.candidates} / ${r.matches} / ${r.newCount}`) : null,
-          r && r.ok && r.pending ? kv("Waiting for detail pages", String(r.pending)) : null,
-          r && !r.ok ? kv("Error", r.error) : null,
-          kv("Next scan", state.scanning ? "running now" : state.config.enabled ? inFuture(state.nextRunAt) : "paused"),
-          state.failureCount ? kv("Consecutive failures", String(state.failureCount)) : null,
-          watching.rows.map((row) => kv(row.label, row.raw)),
+          (state.regions ?? []).map(renderRegionStatus),
+          h("div", { class: "hint" }, "Each region is scanned on its own timer while someone is watching there. Scan now scans them all."),
           scan,
           scanMsg,
         )
       : null,
     renderAccount(),
+  );
+}
+
+// How one region's last scan went, for the admin: who is being watched for, what it found and how each site did.
+function renderRegionStatus(r) {
+  const run = r.lastRun;
+  const who = r.campuses.filter((c) => c.watching).map((c) => `${c.short} ${c.watching}`);
+  const sites = summarizeSources({ config: { enabled: r.settings.enabled, intervalMinutes: r.settings.intervalMinutes }, lastRun: run, sourceHealth: r.sourceHealth });
+  return h(
+    "div",
+    { class: "region-status" },
+    h("h3", {}, r.settings.enabled ? r.settings.name : `${r.settings.name} (off)`),
+    kv("Watching", who.length ? who.join(", ") : "nobody, so it isn't scanned"),
+    run ? kv("Last scan", `${timeAgo(run.at)} (${run.ok ? "ok" : "failed"})`) : kv("Last scan", "not yet"),
+    run && run.ok && run.accounts ? kv("Found / matching / new", `${run.candidates} / ${run.matches} / ${run.newCount}`) : null,
+    run && run.ok && run.pending ? kv("Waiting for detail pages", String(run.pending)) : null,
+    run && !run.ok ? kv("Error", run.error) : null,
+    kv("Next scan", state.scanning ? "running now" : r.settings.enabled && r.watching ? inFuture(r.nextRunAt) : "not scheduled"),
+    r.failureCount ? kv("Consecutive failures", String(r.failureCount)) : null,
+    sites.rows.map((row) => kv(row.label, row.raw)),
   );
 }
 
@@ -1414,6 +1578,9 @@ function renderUsers() {
       "div",
       { class: "panel" },
       h("h2", {}, u.username),
+      kv("Campus", u.campus ? u.campus.name : "not chosen yet, so nothing is watched for them"),
+      u.campus ? kv("Matches now", String(u.matches)) : null,
+      u.campus ? kv("Last checked", u.lastCheckAt ? timeAgo(u.lastCheckAt) : "not yet") : null,
       kv("Last signed in", u.lastLoginAt ? timeAgo(u.lastLoginAt) : "never"),
       kv("Last active", u.lastSeenAt ? timeAgo(u.lastSeenAt) : "never"),
       kv("Devices subscribed", String(u.devices.length)),
@@ -1482,7 +1649,7 @@ function renderUsers() {
       "div",
       { class: "panel" },
       h("h2", {}, "Add a user"),
-      h("div", { class: "hint" }, "Only you can add people. Everyone sees the same listings from one search that only you can change, and each person gets alerts on their own devices."),
+      h("div", { class: "hint" }, "Only you can add people. Each person chooses their own campus and has their own settings, matches and alerts, and nothing one person does changes what another sees."),
       add,
       note,
     ),

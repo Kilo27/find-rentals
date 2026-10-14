@@ -5,7 +5,7 @@ import { createApp } from "../src/app.js";
 import { createPusher } from "../src/push.js";
 import { Store } from "../src/store.js";
 import { createUsers } from "../src/users.js";
-import { tempStore } from "./helpers.js";
+import { searchOf, tempStore } from "./helpers.js";
 
 let server;
 let base;
@@ -90,29 +90,115 @@ test("only the admin can create users", async () => {
   assert.equal((await call(bob, "DELETE", "/api/users/bob")).status, 403);
   assert.equal((await call(bob, "POST", "/api/users/bob/test-push")).status, 403);
   assert.equal((await call(bob, "GET", "/api/debug")).status, 403);
+  assert.equal((await call(bob, "POST", "/api/scan")).status, 403, "scans are the admin's to start");
+  assert.equal((await call(bob, "PUT", "/api/regions/limerick", { maxPages: 9 })).status, 403);
   assert.equal((await call(bob, "POST", "/api/view-as", { username: "bob" })).status, 403);
   assert.equal(store.data.users.some((u) => u.username === "eve"), false);
 });
 
-test("only the admin can change the shared search settings", async () => {
+test("a new account has a search of its own with no campus yet, so nothing is watched for it", async () => {
+  const bob = (await login("bob", "bobs-password")).j;
+  const { data } = await call(bob, "GET", "/api/state");
+  assert.equal(data.campus, null);
+  assert.equal(data.config, null, "there is no search until there is a campus");
+  assert.deepEqual(data.matches, []);
+  assert.ok(data.searchCampuses.length > 0);
+  assert.equal(data.regions, null, "region settings are the admin's");
+  assert.equal(searchOf(store, "bob").campus, null);
+  assert.equal((await call((await login("kyle", "admin-pass-1")).j, "GET", "/api/state")).data.campus.id, "ul", "the admin's carries on at UL");
+});
+
+test("an account chooses its own campus, from the campuses that are set up", async () => {
+  const bob = (await login("bob", "bobs-password")).j;
+  const admin = (await login("kyle", "admin-pass-1")).j;
+
+  for (const campus of [undefined, "", "hogwarts", "tcd", 7]) {
+    assert.equal((await call(bob, "PUT", "/api/campus", { campus })).status, 400, `${campus}`);
+  }
+  assert.equal(searchOf(store, "bob").campus, null, "a refused choice changes nothing");
+
+  const chose = await call(bob, "PUT", "/api/campus", { campus: "ucc" });
+  assert.equal(chose.status, 200);
+  assert.equal(chose.data.campus.short, "UCC");
+  assert.equal(chose.data.campus.regionId, "cork");
+  const state = (await call(bob, "GET", "/api/state")).data;
+  assert.equal(state.config.center.label, "University College Cork");
+  assert.equal(state.config.daftLocation, "cork-city", "the region's Daft area, not Limerick's");
+  assert.deepEqual(state.config.sources, ["daft", "rent", "myhome"], "Cork has no accommodation board");
+
+  // the admin's own search did not move, and the admin can see where bob is
+  assert.equal((await call(admin, "GET", "/api/state")).data.campus.id, "ul");
+  const row = (await call(admin, "GET", "/api/users")).data.users.find((u) => u.username === "bob");
+  assert.equal(row.campus.id, "ucc");
+  assert.equal(row.matches, 0);
+});
+
+test("switching campus starts watching afresh; choosing the same one again does not", async () => {
+  const bob = (await login("bob", "bobs-password")).j;
+  const search = searchOf(store, "bob");
+  Object.assign(search, { baselineDone: true, seen: { "daft:1": { firstSeenAt: "2026-10-01T00:00:00Z" } }, matches: [{ id: "daft:1", memberIds: ["daft:1"] }], reviews: { "daft:1": { status: "seen", at: "2026-10-01T00:00:00Z" } } });
+
+  await call(bob, "PUT", "/api/campus", { campus: "ucc" });
+  assert.equal(search.baselineDone, true, "the same campus again leaves it alone");
+  assert.equal(search.matches.length, 1);
+
+  await call(bob, "PUT", "/api/campus", { campus: "mtu-cork" });
+  assert.equal(search.baselineDone, false, "a new campus is a new place: what is listed there is marked seen first, not alerted");
+  assert.deepEqual([search.seen, search.matches], [{}, []]);
+  assert.ok(search.reviews["daft:1"], "verdicts are about listings and stay");
+  await call(bob, "PUT", "/api/campus", { campus: "ucc" });
+});
+
+test("each account edits its own preferences, and nobody else's", async () => {
   const admin = (await login("kyle", "admin-pass-1")).j;
   const bob = (await login("bob", "bobs-password")).j;
-  const before = JSON.stringify(store.data.config);
+  const before = JSON.stringify(searchOf(store, "bob").prefs);
 
-  const denied = await call(bob, "PUT", "/api/config", { radiusKm: 9, center: { label: "Elsewhere", lat: 51.9, lng: -8.5 } });
-  assert.equal(denied.status, 403);
-  assert.equal(JSON.stringify(store.data.config), before, "a refused change must not touch the config");
-  assert.equal((await call(bob, "GET", "/api/state")).data.config.radiusKm, store.data.config.radiusKm, "users still see the search");
+  assert.equal((await call(admin, "PUT", "/api/prefs", { radiusKm: 3, priceMax: 800 })).status, 200);
+  assert.equal(searchOf(store, "@admin").prefs.radiusKm, 3);
+  assert.equal(JSON.stringify(searchOf(store, "bob").prefs), before, "bob's did not move");
 
-  assert.equal((await call(admin, "PUT", "/api/config", { radiusKm: 3 })).status, 200);
-  assert.equal(store.data.config.radiusKm, 3);
+  assert.equal((await call(bob, "PUT", "/api/prefs", { radiusKm: 4, priceMax: 500 })).status, 200);
+  assert.equal(searchOf(store, "@admin").prefs.priceMax, 800, "and bob's change left the admin's alone");
+  assert.equal((await call(admin, "GET", "/api/state")).data.config.radiusKm, 3);
+  assert.equal((await call(bob, "GET", "/api/state")).data.config.radiusKm, 4);
 
-  // viewing as bob shows what bob can do
+  // viewing as bob shows bob's, and changes nothing of his
   await call(admin, "POST", "/api/view-as", { username: "bob" });
-  assert.equal((await call(admin, "PUT", "/api/config", { radiusKm: 4 })).status, 403);
+  assert.equal((await call(admin, "GET", "/api/state")).data.config.radiusKm, 4, "bob's real search");
+  for (const [method, path, body] of [["PUT", "/api/prefs", { radiusKm: 1 }], ["PUT", "/api/campus", { campus: "uog" }], ["PUT", "/api/review", { id: "x", status: "seen" }], ["PUT", "/api/regions/limerick", { maxPages: 2 }], ["POST", "/api/scan"]]) {
+    assert.equal((await call(admin, method, path, body)).status, 403, `${method} ${path} while viewing`);
+  }
   await call(admin, "DELETE", "/api/view-as");
-  assert.equal(store.data.config.radiusKm, 3);
-  assert.equal((await call(admin, "PUT", "/api/config", { radiusKm: 2 })).status, 200);
+  assert.equal(searchOf(store, "bob").prefs.radiusKm, 4);
+  assert.equal(searchOf(store, "bob").campus, "ucc");
+
+  await call(admin, "PUT", "/api/prefs", { radiusKm: 2, priceMax: null });
+  await call(bob, "PUT", "/api/prefs", { radiusKm: 2, priceMax: null });
+});
+
+test("where the sites are read is the admin's to change, per region", async () => {
+  const admin = (await login("kyle", "admin-pass-1")).j;
+  const bob = (await login("bob", "bobs-password")).j;
+  const before = JSON.stringify(store.data.regions);
+
+  assert.equal((await call(bob, "PUT", "/api/regions/limerick", { daftLocation: "somewhere-else" })).status, 403);
+  assert.equal(JSON.stringify(store.data.regions), before);
+  assert.equal((await call(admin, "PUT", "/api/regions/nowhere", { maxPages: 3 })).status, 404);
+  const bad = await call(admin, "PUT", "/api/regions/limerick", { daftLocation: "../admin", rentUrls: ["http://not-https.example/"] });
+  assert.equal(bad.status, 400);
+  assert.ok(bad.data.errors.length >= 2);
+
+  const ok = await call(admin, "PUT", "/api/regions/cork", { maxPages: 6, webUrls: "https://example.ie/lettings/cork" });
+  assert.equal(ok.status, 200);
+  assert.equal(store.data.regions.cork.maxPages, 6);
+  assert.deepEqual(store.data.regions.cork.webUrls, ["https://example.ie/lettings/cork"]);
+  assert.equal(store.data.regions.limerick.maxPages, 4, "another region was not touched");
+
+  const seen = (await call(admin, "GET", "/api/state")).data.regions;
+  assert.deepEqual(seen.map((r) => r.id), ["limerick", "cork", "galway"]);
+  assert.equal(seen.find((r) => r.id === "cork").watching, 1, "bob is watching in Cork");
+  await call(admin, "PUT", "/api/regions/cork", { maxPages: 4, webUrls: [] });
 });
 
 test("there is only ever one admin: the admin name is reserved and a role can't be requested", async () => {
@@ -201,29 +287,34 @@ test("the admin sees every user's devices and activity, and can test one user's 
   assert.equal((await call(admin, "POST", "/api/users/nobody/test-push")).status, 404);
 });
 
-test("marks on listings (seen, not a fit) are shared by every account", async () => {
+test("marks on listings (seen, not a fit) are each account's own", async () => {
   const admin = (await login("kyle", "admin-pass-1")).j;
   const bob = (await login("bob", "bobs-password")).j;
-  store.data.matches = [{ id: "daft:1", title: "Room 1", memberIds: ["daft:1"], flags: [] }];
+  const listing = () => ({ id: "daft:1", title: "Room 1", memberIds: ["daft:1"], flags: [] });
+  searchOf(store, "@admin").matches = [listing()];
+  searchOf(store, "bob").matches = [listing()];
   try {
     assert.equal((await call(bob, "PUT", "/api/review", { id: "daft:1", status: "rejected" })).status, 200);
-    assert.equal((await call(admin, "GET", "/api/state")).data.matches[0].review, "rejected");
+    assert.equal((await call(bob, "GET", "/api/state")).data.matches[0].review, "rejected");
+    assert.equal((await call(admin, "GET", "/api/state")).data.matches[0].review, null, "what bob put away is still in front of the admin");
+
+    assert.equal((await call(admin, "PUT", "/api/review", { id: "daft:1", status: "seen" })).status, 200);
+    assert.equal((await call(bob, "GET", "/api/state")).data.matches[0].review, "rejected", "and the admin's mark did not change bob's");
     assert.equal((await call(admin, "PUT", "/api/review", { id: "daft:1", status: null })).status, 200);
-    assert.equal((await call(bob, "GET", "/api/state")).data.matches[0].review, null);
+    assert.equal((await call(bob, "GET", "/api/state")).data.matches[0].review, "rejected");
+
+    // a listing that is only in someone else's matches isn't yours to mark
+    searchOf(store, "bob").matches = [];
+    assert.equal((await call(bob, "PUT", "/api/review", { id: "daft:1", status: "seen" })).status, 404);
   } finally {
-    store.data.matches = [];
-    store.data.reviews = {};
+    for (const owner of ["@admin", "bob"]) Object.assign(searchOf(store, owner), { matches: [], reviews: {} });
   }
 });
 
-test("the state says how many other accounts share the search, so the app can say a verdict is for everyone", async () => {
-  const admin = (await login("kyle", "admin-pass-1")).j;
+test("the state is the account's own: nothing in it says how many others share a search, because none do", async () => {
   const bob = (await login("bob", "bobs-password")).j;
-  const others = store.data.users.length;
-  assert.ok(others >= 1);
-  // Everyone shares with the same number of other people: the admin with each user, a user with the admin and the rest.
-  assert.equal((await call(admin, "GET", "/api/state")).data.sharedWith, others);
-  assert.equal((await call(bob, "GET", "/api/state")).data.sharedWith, others);
+  const { data } = await call(bob, "GET", "/api/state");
+  assert.equal(data.sharedWith, undefined);
 });
 
 test("the admin can view the app as a user, and only the admin", async () => {
@@ -316,11 +407,13 @@ test("removing a user ends their sessions and deletes their devices", async () =
   assert.equal((await login("bob", "bobs-new-password")).status, 401);
   assert.equal(store.data.users.some((u) => u.username === "bob"), false);
   assert.equal(store.data.subscriptions.some((s) => s.endpoint.includes("bobs-phone")), false);
+  assert.equal(store.data.searches.bob, undefined, "their search goes with them");
 
   // a new account with the same name starts clean
   await call(admin, "POST", "/api/users", { username: "bob", password: "bobs-third-pass" });
   const again = (await login("bob", "bobs-third-pass")).j;
   assert.equal((await call(again, "GET", "/api/state")).data.subscriptions.length, 0);
+  assert.equal((await call(again, "GET", "/api/state")).data.campus, null, "and a new bob starts without a campus, not with the old bob's");
   assert.equal((await call(bob, "GET", "/api/state")).status, 401, "the old session does not work for the new account");
 });
 

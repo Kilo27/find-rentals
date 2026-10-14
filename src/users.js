@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { promisify } from "node:util";
+import { newSearch } from "./searches.js";
 
 const scrypt = promisify(crypto.scrypt);
 const KEY_BYTES = 32;
@@ -69,6 +70,8 @@ export function createUsers({ store, adminUsername, now = () => new Date() }) {
         lastSeenAt: null,
       };
       all().push(user);
+      // A new account starts with a search of its own that has no campus yet, so it is not watched until the person chooses one.
+      store.data.searches[username] = newSearch();
       store.save();
       return user;
     },
@@ -88,6 +91,8 @@ export function createUsers({ store, adminUsername, now = () => new Date() }) {
       const user = find(username);
       if (!user) throw new UserError("No such user", 404);
       store.data.users = all().filter((u) => u !== user);
+      // Their search goes with them, so a new account with the same name starts clean.
+      delete store.data.searches[user.username];
       store.save();
     },
 

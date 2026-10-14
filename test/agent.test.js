@@ -9,7 +9,7 @@ import { proxyFromEnv } from "../src/proxy.js";
 import { createScanner } from "../src/scan.js";
 import { DEFAULT_ALERT_AFTER_MS, alertAfterFromEnv, createLaptopWatch } from "../src/laptop-watch.js";
 import { ADMIN_OWNER, createPusher } from "../src/push.js";
-import { daftPage, noSleep, rawListing, router, tempStore, fakePusher } from "./helpers.js";
+import { configure, daftPage, noSleep, rawListing, router, searchOf, tempStore, fakePusher } from "./helpers.js";
 
 const TOKEN = crypto.randomBytes(32).toString("base64url");
 const AUTH = { Authorization: `Bearer ${TOKEN}` };
@@ -280,7 +280,7 @@ test("laptop agent end to end: a scan fetches Daft through the agent while UL an
 
   const direct = router([[UL_LIST, UL_PAGE], [/daft\.ie/, () => new Response("blocked", { status: 403 })], [/nominatim/, []]]);
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] };
+  configure(store, { sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] });
   const lines = [];
   const scanner = createScanner({
     store,
@@ -300,7 +300,7 @@ test("laptop agent end to end: a scan fetches Daft through the agent while UL an
   assert.equal(direct.count(/daft\.ie/), 0, "Daft never goes direct");
   assert.ok(seenFromLaptop.count(/www\.daft\.ie\/sharing\//) >= 1, "the laptop fetched Daft");
   assert.equal(seenFromLaptop.count(/accommodation\.ul\.ie|nominatim/), 0, "UL and the geocoder never go through the laptop");
-  assert.ok(store.data.matches.some((m) => m.id === "daft:9"), "the Daft listing arrived via the laptop");
+  assert.ok(searchOf(store).matches.some((m) => m.id === "daft:9"), "the Daft listing arrived via the laptop");
   assert.match(lines[0], /daft=1 ul=1 .*\| via-laptop=daft$/);
 });
 
@@ -308,7 +308,7 @@ function laptopSetup() {
   const state = { online: true, t: Date.parse("2026-10-01T12:00:00Z") };
   const proxy = { kind: "laptop", fetch: router([[/www\.daft\.ie\/sharing\//, daftPage([rawListing({ id: 4 })])]]), sources: new Set(["daft"]), online: () => state.online };
   const { store } = tempStore();
-  store.data.config = { ...store.data.config, sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] };
+  configure(store, { sources: ["daft", "ul"], sections: ["sharing"], ulUrls: [UL_LIST], rentUrls: [], myhomeUrls: [], webUrls: [] });
   const pusher = fakePusher();
   const lines = [];
   const scanner = createScanner({
@@ -332,16 +332,16 @@ function laptopSetup() {
 test("scan: while the laptop is offline its sources are skipped, not failed, and their matches are kept", async () => {
   const { state, store, pusher, lines, scanAfter } = laptopSetup();
   await scanAfter(0);
-  assert.ok(store.data.matches.some((m) => m.id === "daft:4"));
+  assert.ok(searchOf(store).matches.some((m) => m.id === "daft:4"));
 
   state.online = false;
   for (let i = 0; i < 10; i++) await scanAfter(30);
-  const run = store.data.lastRun;
+  const run = store.data.regionStatus.limerick.lastRun;
   assert.equal(run.sources.find((s) => s.id === "daft").skipped, "laptop agent offline");
   assert.equal(run.laptopOffline, true);
   assert.match(lines.at(-1), /\| daft=skipped ul=1 \|.*\| laptop=offline$/);
-  assert.ok(store.data.matches.some((m) => m.id === "daft:4"), "Daft's matches stay while the laptop sleeps");
-  assert.equal(store.data.sourceHealth.daft.failures, 0, "a sleeping laptop is not a broken source");
+  assert.ok(searchOf(store).matches.some((m) => m.id === "daft:4"), "Daft's matches stay while the laptop sleeps");
+  assert.equal(store.data.regionStatus.limerick.sourceHealth.daft.failures, 0, "a sleeping laptop is not a broken source");
   assert.ok(![...pusher.sent, ...pusher.ops()].some((p) => /looks broken|offline/.test(p.title)), "a scan skipping the laptop's sources sends nothing; the laptop watch does the telling");
 });
 
@@ -349,14 +349,14 @@ test("scan: a fresh install waits for the laptop before finishing its baseline, 
   const { state, store, pusher, scanAfter } = laptopSetup();
   state.online = false;
   await scanAfter(0);
-  assert.equal(store.data.baselineDone, false);
+  assert.equal(searchOf(store).baselineDone, false);
   assert.equal(pusher.sent.length, 0);
 
   state.online = true;
   const run = await scanAfter(1);
   assert.equal(run.mode, "baseline");
-  assert.equal(store.data.baselineDone, true);
-  assert.ok(store.data.seen["daft:4"], "the laptop's listings are part of the baseline");
+  assert.equal(searchOf(store).baselineDone, true);
+  assert.ok(searchOf(store).seen["daft:4"], "the laptop's listings are part of the baseline");
   assert.deepEqual(pusher.sent.map((p) => p.title), ["Watching started: 2 current matches"]);
 });
 
@@ -364,7 +364,7 @@ test("scan: a fresh install waits for the laptop before finishing its baseline, 
 function watchSetup({ alertAfterMs = 5 * 60_000, sources = ["daft", "ul"], store: given } = {}) {
   const state = { online: true, t: Date.parse("2026-10-01T22:00:00Z") };
   const { store } = given ? { store: given } : tempStore();
-  store.data.config = { ...store.data.config, sources };
+  configure(store, { sources });
   const proxy = { kind: "laptop", fetch() {}, sources: new Set(["daft"]), online: () => state.online };
   const pusher = fakePusher();
   const warnings = [];
@@ -458,7 +458,7 @@ test("laptop watch: with no source that needs the laptop switched on, or no lapt
   await s.minutes(1);
   await s.minutes(6);
   assert.equal(s.pusher.ops().length, 1);
-  s.store.data.config.sources = ["ul"];
+  s.store.data.regions.limerick.sources = ["ul"];
   await s.minutes(1);
   assert.equal(s.pusher.ops().length, 1, "no 'back' note for a source nobody is waiting on");
   assert.deepEqual({ ...s.store.data.laptop }, { offlineSince: null, offlineNotified: false });
