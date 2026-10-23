@@ -56,8 +56,8 @@ export function linkInviteText({ name, link, fresh = false }) {
   const hi = name ? `Hi ${name.split(/\s+/)[0]}, ` : "";
   return [
     fresh
-      ? `${hi}${hi ? "here's" : "Here's"} a new link for Rental Watch.`
-      : `${hi}I've set you up on Rental Watch. It tells you when a new place to rent near your college is listed, so you don't have to keep checking Daft and the rest.`,
+      ? `${hi}${hi ? "here's" : "Here's"} a new link for ASAP accommodation.`
+      : `${hi}I've set you up on ASAP accommodation. It tells you when a new place to rent near your college is listed, so you don't have to keep checking Daft and the rest.`,
     "",
     "Open this on your phone to get started. It signs you in, so there's no password:",
     link,
@@ -68,7 +68,7 @@ export function linkInviteText({ name, link, fresh = false }) {
 
 // What the admin sends to someone whose password they have just set or reset. Adding someone sends a link instead.
 export function inviteText({ url, username, password }) {
-  return ["Your Rental Watch password has been changed.", "", `Open: ${url}`, `Username: ${username}`, `Password: ${password}`].join("\n");
+  return ["Your ASAP accommodation password has been changed.", "", `Open: ${url}`, `Username: ${username}`, `Password: ${password}`].join("\n");
 }
 
 // Where this device stands on getting alerts. "on" and "viewing" need no prompt; the rest each have their own message.
@@ -117,7 +117,7 @@ export function devicePlatform({ ua = "", standalone = false, touchPoints = 0 })
   return { ios, ipad, android, standalone, safari, safariVersion: version, inApp: !standalone && inApp, otherBrowser };
 }
 
-// How this device gets Rental Watch onto its Home Screen:
+// How this device gets ASAP accommodation onto its Home Screen:
 //   "installed"      it is running from the Home Screen already
 //   "ios-safari"     Safari on an iPhone or iPad: no page can do it there, so the person is shown the taps
 //   "ios-elsewhere"  another browser, or an app's own browser, on iOS: it has to be opened in Safari first

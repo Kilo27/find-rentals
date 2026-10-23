@@ -1,4 +1,4 @@
-import { h, timeAgo, MODE_ICON, describeMatch, badgeRow, leadRow, listingImage, icon } from "./ui.js";
+import { h, timeAgo, modeIcon, describeMatch, badgeRow, leadRow, listingImage, icon, transitRow, brand, penRing, isNewMatch } from "./ui.js";
 import { alertsSetup, answersFromPrefs, cleanSearch, describeAnswers, devicePlatform, homeScreenMode, inviteText, joinFromSearch, linkInviteText, listingFromSearch, safariLayout, summarizeSources } from "./app-model.js";
 import { createMapView } from "./map.js";
 import { alertsAsked, createSetup, iosSteps } from "./setup.js";
@@ -141,7 +141,7 @@ async function api(method, url, body) {
       credentials: "same-origin",
     });
   } catch {
-    const err = new Error("Can't reach Rental Watch. Check your connection and try again.");
+    const err = new Error("Can't reach ASAP accommodation. Check your connection and try again.");
     err.offline = true;
     throw err;
   }
@@ -358,7 +358,7 @@ async function boot() {
     // login screen that asks for a password the person may not remember.
     if (err.status !== 401) {
       useSnapshot();
-      unreachableWhy = err.offline ? null : "Rental Watch isn't responding properly right now.";
+      unreachableWhy = err.offline ? null : "ASAP accommodation isn't responding properly right now.";
     }
   }
   noteHomeScreen();
@@ -484,7 +484,7 @@ async function openListing(id) {
   view = "list";
   if (!m) {
     render();
-    showToast(cantReach ? "Can't reach Rental Watch to find that listing. Try again in a moment." : "That listing is no longer in your matches.");
+    showToast(cantReach ? "Can't reach ASAP accommodation to find that listing. Try again in a moment." : "That listing is no longer in your matches.");
     return;
   }
   if (isDismissed(m)) openSections[m.review] = true;
@@ -513,7 +513,7 @@ function renderLogin() {
         { class: "panel setup link-problem", role: "alert" },
         h("h2", {}, "That link didn't work"),
         h("p", {}, joinError),
-        platform.standalone ? h("p", { class: "hint" }, "When you get the new link, open it in Safari and add Rentals to your Home Screen again (you can delete this one).") : null,
+        platform.standalone ? h("p", { class: "hint" }, "When you get the new link, open it in Safari and add ASAP to your Home Screen again (you can delete this one).") : null,
       )
     : h("p", { class: "hint" }, "Were you sent a link? Tap it again on this device and you'll be signed in. Otherwise, use your username and password.");
   const form = h(
@@ -542,7 +542,8 @@ function renderLogin() {
         }
       },
     },
-    h("h1", {}, "Rental Watch"),
+    brand("h1"),
+    h("div", { class: "rules", "aria-hidden": "true" }),
     h("p", { class: "lede" }, "Alerts for new rentals near your college."),
     linkNote,
     name,
@@ -559,8 +560,9 @@ function renderUnreachable() {
   return h(
     "div",
     { class: "login" },
-    h("h1", {}, "Rental Watch"),
-    h("p", { class: "lede" }, unreachableWhy ?? "Can't reach Rental Watch."),
+    brand("h1"),
+    h("div", { class: "rules", "aria-hidden": "true" }),
+    h("p", { class: "lede" }, unreachableWhy ?? "Can't reach ASAP accommodation."),
     h("p", { class: "hint" }, unreachableWhy ? "It should come back on its own. This will keep trying, or you can try now." : "Check your connection. This will keep trying on its own, or you can try now."),
     h(
       "button",
@@ -602,8 +604,8 @@ async function stopViewing() {
 function renderMain() {
   // Everyone has a search of their own, so everyone has Settings; only the admin manages users.
   const admin = state.user.isAdmin;
-  const tabs = [["matches", `Matches (${state.matches.filter((m) => !isDismissed(m)).length})`], ["settings", "Settings"], ["alerts", "Alerts"]];
-  if (admin) tabs.push(["users", "Users"]);
+  const tabs = [["matches", "Matches", "column", state.matches.filter((m) => !isDismissed(m)).length], ["settings", "Settings", "sliders"], ["alerts", "Alerts", "bell"]];
+  if (admin) tabs.push(["users", "Users", "users"]);
   if (tab === "users" && !admin) tab = "matches";
   const content = tab === "matches" ? renderMatches() : tab === "settings" ? renderSettings() : tab === "users" ? renderUsers() : renderAlerts();
   const c = state.config;
@@ -623,7 +625,7 @@ function renderMain() {
           "div",
           { class: "offline", role: "status" },
           icon("alert"),
-          h("span", {}, `Can't reach Rental Watch. Showing the list from ${timeAgo(new Date(loadedAt).toISOString())}.`),
+          h("span", {}, `Can't reach ASAP accommodation. Showing the list from ${timeAgo(new Date(loadedAt).toISOString())}.`),
           h(
             "button",
             {
@@ -633,7 +635,7 @@ function renderMain() {
                 await refresh({ manual: true }).catch(() => {});
                 if (offline) {
                   e.target.disabled = false;
-                  showToast("Still can't reach Rental Watch.");
+                  showToast("Still can't reach ASAP accommodation.");
                 }
               },
             },
@@ -643,18 +645,20 @@ function renderMain() {
       : null,
     h(
       "header",
-      {},
-      h("h1", {}, "Rental Watch"),
-      h("div", { class: "sub" }, c ? `${c.radiusKm} km of ${c.center.label}` : "Choose your campus"),
+      { class: "masthead" },
+      brand("h1"),
+      h("div", { class: "rules", "aria-hidden": "true" }),
+      h("div", { class: "edition" }, h("span", {}, c ? `Within ${c.radiusKm} km of ${c.center.label}` : "Choose your campus")),
     ),
     h("main", {}, content),
     h(
       "nav",
       { class: "tabs", "aria-label": "Sections" },
-      tabs.map(([id, label]) =>
+      tabs.map(([id, label, glyph, count]) =>
         h(
           "button",
           {
+            type: "button",
             class: tab === id ? "active" : "",
             "aria-current": tab === id ? "page" : false,
             "data-fk": "tab:" + id,
@@ -668,7 +672,8 @@ function renderMain() {
               window.scrollTo(0, 0);
             },
           },
-          label,
+          icon(glyph, 22),
+          h("span", { class: "tab-label" }, label, count === undefined ? null : h("span", { class: "count" }, String(count))),
         ),
       ),
     ),
@@ -682,7 +687,7 @@ function renderCampusPrompt() {
     "section",
     { class: "panel setup", "aria-label": "Get started" },
     h("h2", {}, "Let's get you set up"),
-    h("p", {}, "Rental Watch looks for places near your college and tells you when a new one is listed. A few quick questions and it starts watching."),
+    h("p", {}, "ASAP accommodation looks for places near your college and tells you when a new one is listed. A few quick questions and it starts watching."),
     h("button", { class: "primary", type: "button", "data-fk": "setup:begin", onclick: () => setup.start() }, "Get started"),
   );
 }
@@ -696,11 +701,20 @@ function renderMatches() {
       h("button", { type: "button", class: view === id ? "active" : "", "aria-pressed": String(view === id), "data-fk": "view:" + id, onclick: () => view !== id && setView(id) }, label),
     ),
   );
+  // The head of the column: what it is, how many places are in it and how many are new, and the way to the map.
+  const active = state.matches.filter((m) => !isDismissed(m));
+  const fresh = active.filter(isNewMatch).length;
+  const head = h(
+    "div",
+    { class: "colhead" },
+    h("div", {}, h("h2", {}, "To let"), h("span", { class: "tally" }, `${active.length} ${active.length === 1 ? "place" : "places"}${fresh ? ` · ${fresh} new` : ""}`)),
+    toggle,
+  );
   if (view === "map") {
-    mapView.update({ ...state, matches: state.matches.filter((m) => !isDismissed(m)) });
-    return [toggle, mapView.el];
+    mapView.update({ ...state, matches: active });
+    return [head, mapView.el];
   }
-  return [renderAlertsCard(), renderInstallOffer(), toggle, renderSourceStrip(), ...[renderList()].flat()];
+  return [renderAlertsCard(), renderInstallOffer(), head, renderSourceStrip(), ...[renderList()].flat()];
 }
 
 // Sets (or, with null, clears) the user's verdict on a match. Updates the screen first and puts it back if the server
@@ -746,6 +760,16 @@ async function dismiss(m, status) {
     });
     if (next && document.activeElement === document.body) focusKey(next.id + ":open");
   }
+}
+
+// Strikes the ad out in pen, then puts it away, as you'd cross one out in the paper. Without motion, straight away. A
+// second tap in the meantime is caught by dismiss()'s own guard.
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+function strikeOut(e, m, status) {
+  const card = e.currentTarget.closest(".card");
+  if (reducedMotion.matches || !card) return dismiss(m, status);
+  card.classList.add("striking");
+  setTimeout(() => dismiss(m, status), 260);
 }
 
 async function restore(m) {
@@ -835,7 +859,7 @@ function renderInstallOffer() {
     h(
       "div",
       { class: "strip-text" },
-      h("span", { class: "strip-head" }, "Put Rentals on your Home Screen"),
+      h("span", { class: "strip-head" }, "Put ASAP on your Home Screen"),
       h(
         "span",
         {},
@@ -847,7 +871,7 @@ function renderInstallOffer() {
             onclick: async () => {
               const outcome = await promptInstall();
               render();
-              if (outcome === "accepted") showToast("Added. Open Rentals from your Home Screen any time.");
+              if (outcome === "accepted") showToast("Added. Open ASAP from your Home Screen any time.");
             },
           },
           "Add",
@@ -876,7 +900,7 @@ const blockedSteps = () =>
     "div",
     { class: "hint" },
     isIos
-      ? "Open Settings, then Notifications, then Rental Watch, and switch on Allow Notifications. Then come back here."
+      ? "Open Settings, then Notifications, then ASAP, and switch on Allow Notifications. Then come back here."
       : "Allow notifications for this site in your browser's site settings, then reload this page.",
   );
 
@@ -928,7 +952,7 @@ function renderAlertsCard() {
     "Not now",
   );
   if (mode === "install") {
-    return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Get alerts on your iPhone"), h("p", {}, "Rental Watch can only send alerts once it is on your Home Screen."), installSteps(), h("div", { class: "hint" }, "Needs iOS 16.4 or later."), notNow);
+    return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Get alerts on your iPhone"), h("p", {}, "ASAP accommodation can only send alerts once it is on your Home Screen."), installSteps(), h("div", { class: "hint" }, "Needs iOS 16.4 or later."), notNow);
   }
   if (mode === "blocked") {
     return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Alerts are blocked on this device"), blockedSteps(), notNow);
@@ -985,11 +1009,16 @@ function renderCard(m) {
   const named = (label) => label + ": " + m.title;
   // The admin viewing as someone can open a listing but can't put it away or mark it for them.
   const viewing = Boolean(state.viewingAs);
+  // A place not yet looked at runs as a display ad, photo across the top; once it has a mark it becomes a line ad.
+  const cls = ["card", m.review, m.review ? "line" : null, d.isNew ? "fresh" : null, m.id === arrivedId ? "arrived" : null].filter(Boolean).join(" ");
+  const lead = leadRow(d);
+  // The listing an alert pointed at has its price circled in pen.
+  if (m.id === arrivedId) lead.querySelector(".price")?.append(penRing());
   return h(
     "article",
-    { class: `card${m.review ? ` ${m.review}` : ""}${m.id === arrivedId ? " arrived" : ""}`, "data-id": m.id, tabindex: "-1", "aria-label": d.price + ", " + m.title },
+    { class: cls, "data-id": m.id, tabindex: "-1", "aria-label": d.price + ", " + m.title },
     listingImage(m),
-    h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
+    h("div", { class: "body" }, lead, h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map(transitRow), badgeRow(d.badges)),
     h(
       "div",
       { class: "actions" },
@@ -999,7 +1028,7 @@ function renderCard(m) {
         ? h("button", { class: "act restore", "aria-label": named(dismissed.undo), "data-fk": m.id + ":restore", onclick: () => restore(m) }, dismissed.undo)
         : [
             h("a", { class: "act open", href: m.url, target: "_blank", rel: "noopener noreferrer", "aria-label": named(`Open on ${m.sourceLabel}`), "data-fk": m.id + ":open", onclick: () => openedListing(m) }, `Open on ${m.sourceLabel}`, icon("external")),
-            h("button", { class: "act", "aria-label": named("Not a fit"), "data-fk": m.id + ":rejected", onclick: () => dismiss(m, "rejected") }, "Not a fit"),
+            h("button", { class: "act", "aria-label": named("Not a fit"), "data-fk": m.id + ":rejected", onclick: (e) => strikeOut(e, m, "rejected") }, "Not a fit"),
             h(
               "button",
               {
@@ -1030,7 +1059,7 @@ function renderCard(m) {
                     },
                     seen ? "Mark as unseen" : "Mark as seen",
                   ),
-                  h("button", { class: "act", "aria-label": named("No longer available"), "data-fk": m.id + ":unavailable", onclick: () => dismiss(m, "unavailable") }, "No longer available"),
+                  h("button", { class: "act", "aria-label": named("No longer available"), "data-fk": m.id + ":unavailable", onclick: (e) => strikeOut(e, m, "unavailable") }, "No longer available"),
                 ]
               : null,
           ],
@@ -1482,7 +1511,7 @@ function renderTransitSettings(p, maxKm, f, num, check) {
               h(
                 "details",
                 { class: "route" },
-                h("summary", {}, `${MODE_ICON[r.mode] ?? ""} ${r.label} · ${r.operator} · ${r.stops.length} stops`),
+                h("summary", {}, modeIcon(r.mode), `${r.label} · ${r.operator} · ${r.stops.length} stops`),
                 h("div", { class: "hint" }, r.name),
                 r.stops.map((s) =>
                   h(
@@ -1560,7 +1589,7 @@ function renderAlerts() {
     on: [icon("check"), "On for this device"],
     off: [icon("pause"), "Off on this device"],
     blocked: [icon("alert"), "Blocked on this device"],
-    install: [icon("pause"), "Not available until Rental Watch is on your Home Screen"],
+    install: [icon("pause"), "Not available until ASAP accommodation is on your Home Screen"],
     unsupported: [icon("alert"), "This browser can't receive alerts"],
     viewing: [icon("pause"), `Devices can't be changed while viewing as ${state.viewingAs?.username}`],
   }[mode];
@@ -1971,14 +2000,14 @@ async function enablePush() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     throw new Error("Push isn't available here. On iPhone, add this page to your Home Screen and open it from there (iOS 16.4+).");
   }
-  if (!state.vapidPublicKey) throw new Error("Can't reach Rental Watch. Check your connection and try again.");
+  if (!state.vapidPublicKey) throw new Error("Can't reach ASAP accommodation. Check your connection and try again.");
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   const perm = await Notification.requestPermission();
   if (perm !== "granted") {
     throw new Error(
       isIos
-        ? "Alerts weren't allowed. Open Settings, then Notifications, then Rental Watch, and switch on Allow Notifications."
+        ? "Alerts weren't allowed. Open Settings, then Notifications, then ASAP, and switch on Allow Notifications."
         : "Alerts weren't allowed. Allow notifications for this site in your browser's site settings, then try again.",
     );
   }

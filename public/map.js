@@ -1,10 +1,11 @@
-import { fill, h, describeMatch, badgeRow, isNewMatch, leadRow, listingImage } from "./ui.js";
+import { fill, h, describeMatch, badgeRow, icon, isNewMatch, leadRow, listingImage, transitRow } from "./ui.js";
 import { clusterSpots, pinLabel, placeMatches } from "./map-model.js";
 
 // OpenStreetMap's own tiles. Their usage policy wants a Referer (this site otherwise sends none) and attribution.
 const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
-const COLOURS = { radius: "#0f766e", campus: "#7c3aed", zone: "#d97706", zoneFill: "#f59e0b" };
+// Fallbacks only: each shape carries a class, and the stylesheet colours it from the theme (ink, and pen for the campus).
+const COLOURS = { radius: "#141414", campus: "#2340b8", zone: "#141414", zoneFill: "#141414" };
 const CLUSTER_PX = 44;
 const STOP_MIN_ZOOM = 15;
 const MAX_CARD_ITEMS = 6;
@@ -106,14 +107,14 @@ export function createMapView({ api, onShowList, onOpened }) {
       "a",
       { class: compact ? "mcard compact" : "mcard", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => onOpened?.(m) },
       listingImage(m),
-      h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map((t) => h("div", { class: "transit" }, t)), badgeRow(d.badges)),
+      h("div", { class: "body" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta), d.transit.map(transitRow), badgeRow(d.badges)),
     );
   }
 
   function renderCard(group) {
     const many = group.items.length > 1;
     fill(card, 
-      pinned === group ? h("button", { class: "hc-close", type: "button", "aria-label": "Close", onclick: () => unpin() }, "×") : null,
+      pinned === group ? h("button", { class: "hc-close", type: "button", "aria-label": "Close", onclick: () => unpin() }, icon("close", 20)) : null,
       group.kind === "zone" ? h("div", { class: "hc-head" }, zoneHeading(group)) : many ? h("div", { class: "hc-head" }, `${group.items.length} listings here`) : null,
       group.items.slice(0, MAX_CARD_ITEMS).map((m) => listingLink(m, many)),
       group.items.length > MAX_CARD_ITEMS ? h("div", { class: "hc-more" }, `+${group.items.length - MAX_CARD_ITEMS} more: zoom in, or use the list`) : null,
@@ -173,9 +174,9 @@ export function createMapView({ api, onShowList, onOpened }) {
         h("div", { class: "title" }, m.title),
         m.address && m.address !== m.title ? h("div", { class: "meta" }, m.address) : null,
         h("div", { class: "meta" }, d.meta),
-        d.transit.map((t) => h("div", { class: "transit" }, t)),
+        d.transit.map(transitRow),
         badgeRow(d.badges),
-        h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => onOpened?.(m) }, `Open on ${m.sourceLabel} ↗`),
+        h("a", { class: "btn", href: m.url, target: "_blank", rel: "noopener noreferrer", onclick: () => onOpened?.(m) }, `Open on ${m.sourceLabel}`, icon("external")),
       ),
     );
   }
@@ -184,7 +185,7 @@ export function createMapView({ api, onShowList, onOpened }) {
     hideCard();
     const n = group.items.length;
     fill(sheet, 
-      h("button", { class: "sheet-close", type: "button", "aria-label": "Close", onclick: () => closeSheet() }, "×"),
+      h("button", { class: "sheet-close", type: "button", "aria-label": "Close", onclick: () => closeSheet() }, icon("close", 24)),
       group.kind === "zone" ? h("div", { class: "hc-head" }, zoneHeading(group)) : n > 1 ? h("div", { class: "hc-head" }, `${n} listings here`) : null,
       h("div", { class: "sheet-list" }, group.items.map(sheetItem)),
     );
@@ -265,9 +266,9 @@ export function createMapView({ api, onShowList, onOpened }) {
   }
 
   function addZone(group) {
-    const style = { color: COLOURS.zone, weight: 2, dashArray: "6 5", fillColor: COLOURS.zoneFill, fillOpacity: 0.2, pane: "areas", bubblingMouseEvents: false };
+    const style = { color: COLOURS.zone, weight: 2, dashArray: "6 5", fillColor: COLOURS.zoneFill, fillOpacity: 0.08, className: "zone-shape", pane: "areas", bubblingMouseEvents: false };
     const shape = group.geometry ? L.geoJSON(group.geometry, { ...style, style: () => style }) : L.circle([group.lat, group.lng], { ...style, radius: group.radiusM });
-    const raise = (on) => shape.setStyle({ fillOpacity: on ? 0.38 : 0.2, weight: on ? 3 : 2 });
+    const raise = (on) => shape.setStyle({ fillOpacity: on ? 0.2 : 0.08, weight: on ? 3 : 2 });
     wire(shape, group, (e) => e.containerPoint);
     shape.on("mouseover", () => raise(true));
     shape.on("mouseout", () => raise(false));
@@ -306,15 +307,15 @@ export function createMapView({ api, onShowList, onOpened }) {
   function drawBackdrop(config) {
     layers.backdrop.clearLayers();
     const { lat, lng, label } = config.center;
-    radiusCircle = L.circle([lat, lng], { radius: config.radiusKm * 1000, color: COLOURS.radius, weight: 2, dashArray: "8 8", fill: false, interactive: false, pane: "backdrop" }).addTo(layers.backdrop);
-    const html = h("div", { class: "campus-pin" }, h("span", { class: "star" }, "★"), h("span", { class: "lbl" }, label)).outerHTML;
+    radiusCircle = L.circle([lat, lng], { radius: config.radiusKm * 1000, color: COLOURS.radius, weight: 2, dashArray: "8 8", fill: false, interactive: false, className: "radius-ring", pane: "backdrop" }).addTo(layers.backdrop);
+    const html = h("div", { class: "campus-pin" }, h("span", { class: "star" }, icon("star", 16)), h("span", { class: "lbl" }, label)).outerHTML;
     L.marker([lat, lng], { icon: L.divIcon({ className: "pin-wrap", html, iconSize: [0, 0], iconAnchor: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(layers.backdrop);
   }
 
   function drawCampus(polygons) {
     layers.campus.clearLayers();
     for (const g of polygons ?? []) {
-      L.geoJSON(g, { style: () => ({ color: COLOURS.campus, weight: 2, fillColor: COLOURS.campus, fillOpacity: 0.16 }), interactive: false, pane: "backdrop" }).addTo(layers.campus);
+      L.geoJSON(g, { className: "campus-shape", style: () => ({ color: COLOURS.campus, weight: 2, fillColor: COLOURS.campus, fillOpacity: 0.12 }), interactive: false, pane: "backdrop" }).addTo(layers.campus);
     }
     campusDrawn = polygons !== null;
   }
@@ -452,7 +453,7 @@ export function createMapView({ api, onShowList, onOpened }) {
         { class: "key" },
         keyRow(h("span", { class: "key-pin" }, "€650"), "Exact location"),
         keyRow(h("span", { class: "key-zone" }), "Approximate area: exact address unknown"),
-        keyRow(h("span", { class: "key-campus" }, "★"), config.center.label),
+        keyRow(h("span", { class: "key-campus" }, icon("star", 12)), config.center.label),
         keyRow(h("span", { class: "key-radius" }), `${config.radiusKm} km search radius`),
       ),
       h("div", { class: "panel-title" }, "Public transport"),
@@ -483,7 +484,7 @@ export function createMapView({ api, onShowList, onOpened }) {
     const Fit = L.Control.extend({
       onAdd() {
         const box = h("div", { class: "leaflet-bar leaflet-control" });
-        const a = h("a", { href: "#", role: "button", title: "Show everything", "aria-label": "Show everything", class: "map-fit" }, "⤢");
+        const a = h("a", { href: "#", role: "button", title: "Show everything", "aria-label": "Show everything", class: "map-fit" }, icon("expand", 18));
         L.DomEvent.disableClickPropagation(box);
         L.DomEvent.on(a, "click", (e) => {
           L.DomEvent.preventDefault(e);

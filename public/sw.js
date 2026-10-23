@@ -1,5 +1,5 @@
 const SHELL = "rw-shell-v1";
-const SHELL_FILES = ["/", "/app.js", "/app-model.js", "/ui.js", "/map.js", "/map-model.js", "/setup.js", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png"];
+const SHELL_FILES = ["/", "/app.js", "/app-model.js", "/ui.js", "/map.js", "/map-model.js", "/setup.js", "/styles.css", "/manifest.webmanifest", "/icons/icon-192.png", "/vendor/archivo/archivo-latin-wdth-normal.woff2"];
 const SHELL_PATHS = new Set(SHELL_FILES);
 
 self.addEventListener("install", (event) => {
@@ -54,7 +54,7 @@ self.addEventListener("push", (event) => {
     data = { body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || "Rental alert", {
+    self.registration.showNotification(data.title || "ASAP accommodation", {
       body: data.body || "",
       icon: "/icons/icon-192.png",
       tag: data.tag || undefined,

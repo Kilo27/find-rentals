@@ -1,4 +1,6 @@
-# Rental Watch
+# ASAP accommodation
+
+(Formerly Rental Watch. The laptop agent's tray app is still called Rental Watch Agent.)
 
 Watches several Irish rental sources every 30 minutes for places near **each person's own campus** (University of Limerick, Mary Immaculate College, TUS Limerick, UCC, MTU Cork, University of Galway or ATU Galway so far, 2 km by default) and sends a push notification to their iPhone when a new match appears. Everyone has their own account, campus, settings, matches and alerts, and none of it is shared. One small Node service runs on Railway and also serves the installable phone web app.
 
@@ -12,7 +14,7 @@ Watches several Irish rental sources every 30 minutes for places near **each per
 | **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Alerts tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page the admin adds to a region under Settings → Regions | JSON-LD, embedded JSON or HTML cards |
 
-The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached. They identify themselves honestly as `RentalWatch/1.0`: a user agent that pretends to be Chrome is refused by Cloudflare (Daft, Rent.ie) with a "Security Check" page from any network.
+The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached. They identify themselves honestly as `ASAPAccommodation/1.0` (before October 2026, `RentalWatch/1.0`): a user agent that pretends to be Chrome is refused by Cloudflare (Daft, Rent.ie) with a "Security Check" page from any network.
 
 ## How accuracy is kept
 
@@ -39,7 +41,7 @@ The whole point is that the person you add has nothing to type and nothing to kn
 1. **Users → Add someone**: type their name (e.g. "Sam") and press **Add and get their link**. A username is made from the name (`sam`, or `sam2` if that is taken) and no password is needed. You get a ready-to-send message with **Share** and **Copy message**, and, if they are with you, **Show a QR code** for them to scan with their phone's camera (on an iPhone that opens Safari, which is what the Home Screen needs). The link signs them in on whatever device opens it and works for 2 weeks. **New sign-in link** on their row makes a fresh one (the last one sent stops working, nobody is signed out).
 2. **They open the link.** It signs them in and starts a short guided setup, one question per screen, most answered with one tap: which college, a room or a whole place, the most they'd pay, when they need it (move in, stay until), and for rooms whether a live-in owner or a Monday-to-Friday let is OK. Any of it can be skipped. The answers are saved together and matched at once, so the next screen says how many places fit right now and shows the newest three; everything already listed is marked seen, so alerts are only for new places.
 3. **Home Screen.**
-   - **Android** (Chrome, Edge, Samsung Internet): one **Add to Home Screen** button, which opens the browser's own install prompt. Where the browser hasn't offered it (yet), the steps from its ⋮ menu are shown instead, and a quiet "Put Rentals on your Home Screen · Add" line stays above the list until it is taken or put away.
+   - **Android** (Chrome, Edge, Samsung Internet): one **Add to Home Screen** button, which opens the browser's own install prompt. Where the browser hasn't offered it (yet), the steps from its ⋮ menu are shown instead, and a quiet "Put ASAP on your Home Screen · Add" line stays above the list until it is taken or put away.
    - **iPhone and iPad**: no web page can add itself to an iPhone's Home Screen, so the taps are spelt out for their Safari: Safari 26 on an iPhone keeps Share behind the **⋯** button at the bottom right, older Safari has Share in the bottom toolbar, an iPad has it at the top right. A bubble at the edge of the screen points at the button. The app opens from the Home Screen **already signed in**: the page tells Safari, through the manifest's start address, to open the Home Screen app at a sign-in link of that device's own, because the Home Screen app doesn't share Safari's cookies. That link never appears in the address bar (sharing the page doesn't share it), lasts as long as a session, and stops working when the account's sessions are ended. When the Home Screen app is first opened, the Safari page notices and says "It's on your Home Screen; carry on there".
    - A link opened inside Instagram, Facebook and similar apps' own browsers can't be added to an iPhone's Home Screen; the page says so and offers **Copy my link** to paste into Safari.
 4. **Alerts.** **Turn on alerts**, then **Allow**, and a test alert is sent straight away with "Did it arrive?" and, if not, what to check (Focus, notification settings). On an iPhone this is the first thing the Home Screen app asks ("Welcome back! Nearly done"). If they skip it, the card at the top of Matches keeps offering it.
@@ -170,7 +172,7 @@ To add a region or campus, edit [`src/catalogue.js`](src/catalogue.js): a region
 
 ## Public transport routes to the campus
 
-A house slightly outside the radius can still be a good find if the bus to campus stops at the end of the road. Rental Watch knows, for every university campus listed in [`src/transit/campuses.js`](src/transit/campuses.js), which **bus, tram and train services go on to that campus**, and where to board them:
+A house slightly outside the radius can still be a good find if the bus to campus stops at the end of the road. ASAP accommodation knows, for every university campus listed in [`src/transit/campuses.js`](src/transit/campuses.js), which **bus, tram and train services go on to that campus**, and where to board them:
 
 - **Operators**: Bus Éireann, Dublin Bus, Go-Ahead Ireland, Luas and Irish Rail (DART and commuter trains), from the National Transport Authority's GTFS timetables.
 - **Campuses**: UL, Mary Immaculate College and TUS Limerick; Trinity, UCD, DCU (Glasnevin and St Patrick's), TU Dublin (Grangegorman, Kevin Street, Bolton Street, Tallaght, Blanchardstown), RCSI, NCAD and Maynooth; UCC and MTU Cork; University of Galway and ATU Galway; SETU Waterford and Carlow; and TUS Athlone, ATU Sligo, Letterkenny and Mayo, DkIT and MTU Kerry.

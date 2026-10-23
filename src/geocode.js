@@ -19,7 +19,7 @@ export const DEFAULT_AREA_RADIUS_M = 500;
 export const areaRadiusM = (kind) => AREA_RADIUS_M[kind] ?? DEFAULT_AREA_RADIUS_M;
 
 export const osmUserAgent = (env = process.env) =>
-  env.GEOCODER_USER_AGENT || `RentalWatch/1.0 (personal rental monitor; ${env.VAPID_SUBJECT ?? "self-hosted"})`;
+  env.GEOCODER_USER_AGENT || `ASAPAccommodation/1.0 (personal rental monitor; ${env.VAPID_SUBJECT ?? "self-hosted"})`;
 
 // Nominatim's GeoJSON outline of a place, rounded to ~1 m. Only areas count: a point or a street is no outline.
 function cleanOutline(g) {

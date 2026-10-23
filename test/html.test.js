@@ -104,7 +104,7 @@ test("fetcher: names itself honestly, never as Chrome (Cloudflare refuses a fake
   const fetchImpl = router([[/x\.example\.ie/, "<html></html>"]]);
   await createFetcher({ politenessMs: 0, respectRobots: false, fetchImpl }).get("https://x.example.ie/p");
   const ua = fetchImpl.calls[0].opts.headers["User-Agent"];
-  assert.match(ua, /RentalWatch\/1\.0/);
+  assert.match(ua, /ASAPAccommodation\/1\.0/);
   assert.doesNotMatch(ua, /Chrome\/|Safari\/|AppleWebKit/);
 });
 

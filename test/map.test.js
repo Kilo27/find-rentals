@@ -101,7 +101,7 @@ test("overpass tries the next mirror past an HTML error page and an HTTP error, 
   assert.equal(out.elements.length, 1);
   assert.equal(preferred.url, c);
   assert.match(decodeURIComponent(fetchImpl.calls[0].opts.body), /^data=q$/);
-  assert.match(fetchImpl.calls[0].opts.headers["User-Agent"], /RentalWatch/);
+  assert.match(fetchImpl.calls[0].opts.headers["User-Agent"], /ASAPAccommodation/);
 
   fetchImpl.calls.length = 0;
   await overpass("q", { fetchImpl, mirrors: [a, b, c], preferred });

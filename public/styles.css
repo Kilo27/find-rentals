@@ -1,320 +1,469 @@
-:root {
-  --bg: #f4f7f6;
-  --card: #ffffff;
-  --text: #13201e;
-  --muted: #5b6b68;
-  --line: #dbe4e2;
-  --field: #7c8d8a;
-  --accent: #0f766e;
-  --accent-text: #ffffff;
-  --warn: #b45309;
-  --bad: #b91c1c;
-  --ok: #15803d;
+/* ASAP accommodation: a To Let column of your own, set in ink on newsprint and marked up like the paper.
+   Yellow highlighter means new. Blue ballpoint is your own marks: circled, ticked, struck out. A solid line is something
+   known; a dashed one is approximate or unchecked. Colour lives only in the photos, the map and those two marks. */
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url("/vendor/archivo/archivo-latin-wdth-normal.woff2") format("woff2-variations"), url("/vendor/archivo/archivo-latin-wdth-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url("/vendor/archivo/archivo-latin-ext-wdth-normal.woff2") format("woff2-variations"), url("/vendor/archivo/archivo-latin-ext-wdth-normal.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  color-scheme: light;
+  --font: "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --paper: #f0efea; /* newsprint: the page */
+  --sheet: #fbfbf8; /* a boxed ad, a field: the same stock, a shade brighter */
+  --ink: #141414;
+  --ink-2: #45453f; /* secondary text, 9:1 on paper */
+  --muted: #5f5f58; /* quiet text, 5.5:1 on paper */
+  --rule: #cfcec6; /* hairlines inside a box */
+  --field: #77766e; /* a field's edge, 3:1 so it can be found */
+  --hl: #f7e933; /* highlighter */
+  --hl-ink: #141414;
+  --pen: #2340b8; /* ballpoint */
+  --err: #c0251b; /* red pen: something went wrong */
+  --on-ink: #f0efea; /* type reversed out of ink */
+  --band: #141414; /* behind the phone's status bar */
+  --shadow: 0 2px 10px rgb(20 20 20 / 0.18), 0 1px 2px rgb(20 20 20 / 0.12);
+  --tabs-h: 60px;
+}
+/* The night edition: read in bed with the brightness down. Ink and paper trade places; the marks stay marks. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b1f1d;
-    --card: #12302c;
-    --text: #e8f1ef;
-    --muted: #9bb3af;
-    --line: #1f4540;
-    --field: #5f8780;
-    --accent: #2dd4bf;
-    --accent-text: #06201c;
-    --warn: #fbbf24;
-    --bad: #f87171;
-    --ok: #4ade80;
+    color-scheme: dark;
+    --paper: #121211;
+    --sheet: #1b1b19;
+    --ink: #ecebe5;
+    --ink-2: #c4c3bb;
+    --muted: #a4a39b;
+    --rule: #3b3b37;
+    --field: #8a897f;
+    --hl: #f2e22c;
+    --pen: #9db0ff;
+    --err: #ff8a7f;
+    --on-ink: #121211;
+    --band: #000;
+    --shadow: 0 2px 12px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.5);
   }
 }
+
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); }
 body {
-  font: 16px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  font: 400 16px/1.45 var(--font);
+  font-stretch: 100%;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
   padding-top: env(safe-area-inset-top);
-  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom));
 }
+/* The status bar sits on a strip of ink, like the rule along the top of a page, and the list scrolls under it. */
+body::before { content: ""; position: fixed; z-index: 90; inset: 0 0 auto; height: env(safe-area-inset-top); background: var(--band); pointer-events: none; }
+::selection { background: var(--hl); color: var(--hl-ink); }
+input, textarea { caret-color: var(--pen); }
+a { color: inherit; text-underline-offset: 3px; }
+h1, h2, h3 { text-wrap: balance; }
+p, .hint { text-wrap: pretty; }
 #app { max-width: 720px; margin: 0 auto; }
-header { padding: 14px 16px 6px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-header { flex-wrap: wrap; }
-header h1 { margin: 0; font-size: 22px; white-space: nowrap; }
-header .sub { color: var(--muted); font-size: 13px; }
-main { padding: 8px 16px 24px; }
-nav.tabs {
-  position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--card);
-  border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
-}
-nav.tabs button {
-  flex: 1; padding: 11px 4px 14px; border: 0; border-top: 3px solid transparent; background: none; color: var(--muted);
-  font: inherit; font-size: 14px; font-weight: 600;
-}
-/* The current tab is marked by a bar above it as well as its colour, so it doesn't rely on seeing teal. */
-nav.tabs button.active { color: var(--accent); border-top-color: var(--accent); }
-.card {
-  display: block; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  margin: 10px 0; overflow: hidden; color: inherit; text-decoration: none;
-}
-.card { scroll-margin-top: 12px; }
-.card.arrived { outline: 2px solid var(--accent); outline-offset: 2px; }
-.card .body { padding: 12px 14px; }
-.card img { width: 100%; height: 160px; object-fit: cover; display: block; background: var(--line); }
-.card:is(.seen, .rejected, .unavailable) :is(.price, .title, .near) { color: var(--muted); }
-.card:is(.seen, .rejected, .unavailable) img { opacity: 0.6; }
-/* The way to the listing comes first and fills the row; the two quiet choices share the next one. Hairlines between cells. */
-.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
-.act {
-  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 8px; border: 0;
-  background: var(--card); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer;
-}
-/* The one way on: the accent on a faint tint of itself, so it leads without shouting on every card in a long list. */
-.act.open {
-  grid-column: 1 / -1; min-height: 48px; font-size: 16px; font-weight: 700; color: var(--accent);
-  background: var(--bg); background: color-mix(in srgb, var(--accent) 8%, var(--card));
-}
-.act.restore { grid-column: 1 / -1; color: var(--accent); }
-@media (hover: hover) {
-  .act:hover { background: var(--bg); }
-  .act.open:hover { background: var(--bg); background: color-mix(in srgb, var(--accent) 15%, var(--card)); }
-}
-.card-msg { margin: 0; padding: 8px 14px; border-top: 1px solid var(--line); }
-details.dismissed { margin-top: 16px; }
-details.dismissed > summary { color: var(--muted); margin: 0; padding: 10px 0; }
-/* What it costs and how near it is: the two things a place is judged on first, on one line. */
-.lead { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; }
-.price { font-size: 22px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.near { margin-left: auto; text-align: right; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.near .note { display: block; font-size: 14px; color: var(--muted); }
-.near.via .note { color: var(--accent); }
-.title { margin: 2px 0 4px; }
-.meta { color: var(--muted); font-size: 14px; }
-.badges { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: 8px; }
-.badge { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--line); color: var(--text); }
-.badge.new { background: var(--accent); color: var(--accent-text); }
-.badge.warn { background: transparent; border: 1px solid var(--warn); color: var(--warn); }
-.panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
-.panel h2 { margin: 0 0 8px; font-size: 16px; }
-label { display: block; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }
-label.check { display: flex; gap: 10px; align-items: center; font-weight: 500; margin: 8px 0; }
-.hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
-/* A field's edge has to be seen to be found, so it is darker than the hairlines between things (3:1 against the page). */
-input[type=text], input[type=number], input[type=date], input[type=password], textarea {
-  width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
-  border: 1px solid var(--field); border-radius: 10px;
-}
-input[type=checkbox], input[type=radio] { flex: none; width: 20px; height: 20px; accent-color: var(--accent); }
-/* Groups of fields that share a label or a switch (the campuses, the settings that are only read while viewing as someone). */
-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-fieldset.campuses { margin: 12px 0 0; }
-fieldset.campuses legend { padding: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
-fieldset.campuses label.check { min-height: 44px; margin: 0; }
-.section-title { margin: 24px 0 2px; font-size: 16px; }
-.region-status h3 { margin: 14px 0 2px; }
-textarea { min-height: 64px; }
-.row { display: flex; align-items: flex-end; gap: 10px; }
-.row > * { flex: 1; min-width: 0; }
-button.primary, button.secondary {
-  font: inherit; font-weight: 700; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--accent); margin: 8px 8px 0 0;
-}
-button.primary { background: var(--accent); color: var(--accent-text); }
-button.secondary { background: transparent; color: var(--accent); }
-button.secondary.danger { border-color: var(--bad); color: var(--bad); }
-button:disabled { opacity: 0.5; }
-.viewing {
-  position: sticky; top: env(safe-area-inset-top); z-index: 5; display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 8px 16px; background: var(--warn); color: var(--bg); font-weight: 700;
-}
-.viewing button.secondary { margin: 0; padding: 6px 14px; color: inherit; border-color: currentColor; }
-.panel h3 { margin: 16px 0 0; font-size: 14px; }
-.panel form input + input { margin-top: 8px; }
-.msg { margin-top: 10px; font-size: 14px; }
-.msg.ok { color: var(--ok); }
-.msg.err { color: var(--bad); }
-.empty { color: var(--muted); text-align: center; padding: 40px 12px; }
-.kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-.kv:last-child { border-bottom: 0; }
-.kv span:first-child { color: var(--muted); }
-.login { padding: 48px 16px; }
-.login h1 { margin: 0 0 4px; }
-.login input { display: block; margin-top: 8px; }
-.login .hint { margin: 4px 0 16px; }
-.login button.primary { width: 100%; margin: 12px 0 0; }
-.lede { margin: 0; font-size: 16px; font-weight: 600; }
-.boot { margin: 0; padding: 64px 16px; text-align: center; color: var(--muted); }
-details summary { cursor: pointer; font-weight: 600; margin: 12px 0 0; }
-select {
-  width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
-  border: 1px solid var(--field); border-radius: 10px;
-}
-
-[hidden] { display: none !important; }
-nav.tabs { z-index: 50; }
 #app.wide { max-width: 1280px; }
+main { padding: 4px 16px 28px; }
+[hidden] { display: none !important; }
 
-.seg { display: inline-flex; border: 1px solid var(--accent); border-radius: 12px; overflow: hidden; margin: 4px 0 10px; }
-.seg button { font: inherit; font-weight: 700; padding: 8px 20px; min-height: 44px; border: 0; background: transparent; color: var(--accent); }
-.seg button.active { background: var(--accent); color: var(--accent-text); }
+/* --- Masthead -------------------------------------------------------------------------------------------------------- */
 
-.map-wrap { position: relative; z-index: 0; isolation: isolate; height: calc(100dvh - 165px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 380px; margin: 0 -16px; overflow: hidden; background: var(--line); }
-@media (min-width: 760px) { .map-wrap { margin: 0; border-radius: 14px; border: 1px solid var(--line); } }
-.map-canvas { position: absolute; inset: 0; z-index: 0; }
-.map-status { position: absolute; z-index: 5; left: 50%; top: 40%; transform: translateX(-50%); background: var(--card); padding: 10px 14px; border-radius: 10px; }
-.map-note { position: absolute; z-index: 5; left: 8px; bottom: 28px; max-width: calc(100% - 16px); background: var(--card); color: var(--text); padding: 8px 12px; border-radius: 10px; font-size: 13px; box-shadow: 0 1px 6px rgb(0 0 0 / .3); }
-button.linklike { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+/* The name: ASAP gone over with the highlighter, the rest in the paper's condensed bold. */
+.brand { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 7px; margin: 0; color: var(--ink); font-weight: 900; font-stretch: 62%; font-size: 36px; line-height: 0.95; letter-spacing: -0.005em; }
+.brand-asap { position: relative; z-index: 0; padding: 0 3px; }
+.brand-asap::before {
+  content: ""; position: absolute; z-index: -1; inset: 18% -3px 4% -4px; background: var(--hl);
+  border-radius: 2px 6px 3px 7px / 6px 3px 7px 2px; transform: rotate(-1.6deg) skewX(-8deg);
+}
+.brand-rest { font-weight: 750; font-stretch: 72%; font-size: 0.78em; letter-spacing: 0; }
+@media (prefers-color-scheme: dark) { .brand-asap { color: var(--hl-ink); } }
+.masthead { padding: 14px 16px 0; }
+/* A heavy rule and a thin one under the name, as under a newspaper's. */
+.rules { height: 7px; margin-top: 10px; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.edition { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0 0; color: var(--ink-2); font-stretch: 82%; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.edition .who { color: var(--muted); white-space: nowrap; }
 
-.pin-wrap { background: none; border: 0; }
-.pin { position: absolute; transform: translate(-50%, calc(-100% - 7px)); display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: var(--card); color: var(--text); border: 2px solid var(--accent); font: 700 12px/1.2 system-ui, sans-serif; white-space: nowrap; box-shadow: 0 1px 4px rgb(0 0 0 / .35); }
-.pin::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 8px; height: 8px; background: inherit; border: 2px solid var(--accent); border-top: 0; border-left: 0; transform: translateX(-50%) rotate(45deg); }
-.pin.new { background: var(--accent); color: var(--accent-text); }
-.pin .n, .zone-chip .n { background: var(--text); color: var(--card); border-radius: 999px; padding: 0 5px; font-size: 11px; }
-.leaflet-marker-icon:focus-visible .pin, .leaflet-marker-icon:focus-visible .zone-chip { outline: 3px solid #2563eb; }
-.zone-chip { position: absolute; transform: translate(-50%, -50%); display: flex; gap: 4px; align-items: center; padding: 2px 8px; border-radius: 8px; background: var(--card); color: var(--text); border: 2px dashed #d97706; font: 700 12px/1.2 system-ui, sans-serif; white-space: nowrap; box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
-.campus-pin { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.campus-pin .star { width: 26px; height: 26px; border-radius: 50%; background: #7c3aed; color: #fff; border: 2px solid #fff; display: grid; place-items: center; font-size: 15px; box-shadow: 0 1px 4px rgb(0 0 0 / .4); }
-.campus-pin .lbl { background: #7c3aed; color: #fff; font: 700 12px/1.2 system-ui, sans-serif; padding: 2px 8px; border-radius: 6px; }
+/* --- The column: its head, the notice of when the sites were read, and the ads -------------------------------------- */
 
-.route-tip, .station-label { font: 600 12px/1.3 system-ui, sans-serif; }
-.route-tip .op { font-weight: 400; color: #555; }
+.colhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 18px 0 0; padding-bottom: 8px; border-bottom: 3px solid var(--ink); }
+.colhead h2 { margin: 0; font-stretch: 62%; font-weight: 900; font-size: 34px; line-height: 0.9; text-transform: uppercase; }
+.colhead .tally { display: block; margin-top: 4px; color: var(--ink-2); font-stretch: 85%; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
 
-.map-panel { background: var(--card); color: var(--text); border-radius: 10px; box-shadow: 0 1px 6px rgb(0 0 0 / .3); max-width: 280px; max-height: calc(100dvh - 260px); overflow: auto; font-size: 13px; }
-.map-panel summary { cursor: pointer; font-weight: 700; padding: 8px 12px; margin: 0; }
-.panel-body { padding: 0 12px 10px; }
-.panel-title { font-weight: 700; margin: 10px 0 4px; }
-.key-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
-.key-pin { border: 2px solid var(--accent); border-radius: 999px; padding: 0 6px; font-weight: 700; font-size: 11px; }
-.key-zone { width: 22px; height: 14px; border: 2px dashed #d97706; background: rgb(245 158 11 / .25); border-radius: 3px; }
-.key-campus { width: 18px; height: 18px; border-radius: 50%; background: #7c3aed; color: #fff; display: grid; place-items: center; font-size: 11px; }
-.key-radius { width: 22px; height: 0; border-top: 2px dashed var(--accent); }
-.map-panel label.check { margin: 4px 0; font-size: 13px; }
-.route-row { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; font: inherit; font-size: 13px; color: var(--text); background: none; border: 0; border-radius: 6px; padding: 3px 4px; cursor: pointer; }
-.route-row.on { background: var(--line); }
-.route-row .rl { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.swatch { flex: none; width: 22px; height: 0; border-top: 4px solid var(--c); }
-.swatch.dashed { border-top-style: dashed; }
+/* List / Map: two type-set tabs; the one in use is reversed out of ink. */
+.seg { display: inline-flex; flex: none; border: 1.5px solid var(--ink); border-radius: 2px; overflow: hidden; }
+.seg button {
+  min-height: 44px; padding: 0 16px; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+  font: inherit; font-stretch: 80%; font-size: 14px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.seg button + button { border-left: 1.5px solid var(--ink); }
+.seg button.active { background: var(--ink); color: var(--on-ink); }
 
-.hovercard { position: absolute; z-index: 6; width: 300px; max-height: calc(100% - 16px); overflow: auto; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 4px 16px rgb(0 0 0 / .35); }
-.hc-head { font-weight: 700; font-size: 13px; padding: 8px 12px 4px; }
-.hc-more, .hc-hint { color: var(--muted); font-size: 12px; padding: 4px 12px 8px; }
-.hc-close { position: absolute; right: 6px; top: 4px; border: 0; background: none; color: var(--text); font-size: 22px; line-height: 1; cursor: pointer; }
-.mcard { display: block; color: inherit; text-decoration: none; }
-.mcard img { width: 100%; height: 140px; object-fit: cover; display: block; background: var(--line); }
-.mcard .body { padding: 8px 12px; }
-.mcard.compact { display: flex; gap: 8px; border-top: 1px solid var(--line); }
-.mcard.compact img { width: 72px; height: 72px; flex: none; }
-.mcard.compact .price { font-size: 16px; }
-.mcard.compact .near { font-size: 14px; }
-.mcard.compact .near .note { display: none; }
-.mcard.compact .badges, .mcard.compact .transit { display: none; }
-.mcard:hover { background: var(--bg); }
-
-.sheet-backdrop { position: fixed; inset: 0; z-index: 59; background: rgb(0 0 0 / .45); }
-.sheet { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; max-height: 80dvh; overflow: auto; background: var(--card); color: var(--text); border-radius: 18px 18px 0 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 20px rgb(0 0 0 / .4); }
-.sheet-close { position: absolute; right: 10px; top: 6px; border: 0; background: none; color: var(--text); font-size: 28px; line-height: 1; padding: 4px 10px; }
-.sheet .hc-head { padding-right: 44px; }
-.sheet-item img { width: 100%; height: 170px; object-fit: cover; display: block; background: var(--line); }
-.sheet-item .body { padding: 10px 16px 14px; }
-.sheet-item + .sheet-item { border-top: 1px solid var(--line); }
-.btn { display: block; text-align: center; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--accent); color: var(--accent-text); font-weight: 700; text-decoration: none; }
-body.sheet-open { overflow: hidden; }
-.transit { margin-top: 4px; font-size: 13px; }
-.badge.transit { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
-details.route { border-top: 1px solid var(--line); margin-top: 8px; }
-details.route summary { margin: 8px 0 4px; }
-.stoprow { padding: 5px 0; font-size: 13px; border-top: 1px solid var(--line); }
-.stoprow span:last-child { display: block; color: var(--muted); }
-.stops a, .hint a { color: var(--accent); }
-details .check { margin-left: 4px; }
-
-/* Keyboard focus: one ring, taken from the palette. Inside clipped grid cells it sits inward so it isn't cut off. */
-:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.act:focus-visible, nav.tabs button:focus-visible { outline-offset: -3px; }
-
-/* Whether the sites are being checked: one calm line above the list. The icon and the words carry it, never colour alone. */
-.strip { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 14px; }
+/* Whether the sites are being checked: a one-line notice under the column head. Solid when everything was read; a dashed
+   box when part of it is approximate, late or unread. Icon and words carry it, never colour. */
+.strip { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
 .strip .icon, .site .icon, .status-line .icon, .offline .icon { flex: none; }
 .strip .icon { margin-top: 3px; }
 .strip-text { flex: 1; min-width: 0; }
-.strip-head { font-weight: 600; }
-.strip-issue { color: var(--muted); }
-.strip .linklike { display: flex; align-items: center; min-height: 44px; margin: 0 0 -10px -4px; padding: 0 4px; font-weight: 600; }
-.strip.ok .icon, .status-line.mode-on .icon, .site.ok .icon { color: var(--ok); }
-.strip:is(.partial, .stale, .down, .failed) .icon, .status-line:is(.mode-blocked, .mode-unsupported) .icon, .site:is(.warn, .down) .icon, .offline .icon { color: var(--warn); }
-.strip:is(.none, .paused, .catching-up) .icon, .site.paused .icon, .status-line:is(.mode-off, .mode-install, .mode-viewing) .icon { color: var(--muted); }
+.strip-head { font-weight: 650; }
+.strip-issue { color: var(--ink-2); }
+.strip:is(.partial, .stale, .down, .failed) { margin-top: 12px; padding: 9px 12px; border: 1.5px dashed var(--ink); }
+.strip:is(.none, .paused, .catching-up) { margin-top: 12px; padding: 9px 12px; border: 1.5px dotted var(--ink-2); }
+.strip .linklike { display: flex; align-items: center; min-height: 44px; margin: 0 0 -10px -4px; padding: 0 4px; }
 
-/* Alerts put away with "Not now" leave one line, so silence still can't be read as nothing new. */
-.strip.quiet { align-items: center; padding: 4px 12px; }
-.strip.quiet .icon { margin-top: 0; color: var(--muted); }
-.strip.quiet .strip-text { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Lines that stay above the column until dealt with: alerts put away with "Not now", and the Android install offer. */
+.strip.quiet { align-items: center; margin: 14px 0 0; padding: 4px 12px; border: 1px solid var(--ink); background: var(--sheet); }
+.strip.quiet .icon { margin-top: 0; }
+.strip.quiet .strip-text { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0 12px; }
 .strip.quiet .linklike { margin: 0; }
+.install-offer .linklike + .linklike { margin-left: 16px; color: var(--muted); }
+
+/* A display ad: photo, then what it costs and how near it is, then the rest, then the one way on. */
+.card {
+  position: relative; display: block; margin: 16px 0; background: var(--sheet); color: inherit; text-decoration: none;
+  border: 1px solid var(--ink); scroll-margin-top: calc(env(safe-area-inset-top) + 12px);
+}
+.card > img { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; object-fit: cover; background: var(--rule); border-bottom: 1px solid var(--ink); }
+.card .body { position: relative; padding: 12px 14px 13px; }
+
+/* What it costs and how near it is: the two things a place is judged on first, on one line, figures in a column. */
+.lead { position: relative; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 2px 14px; }
+.price { font-stretch: 68%; font-weight: 850; font-size: 34px; line-height: 0.95; letter-spacing: -0.01em; font-variant-numeric: tabular-nums lining-nums; }
+.near { margin-left: auto; text-align: right; font-stretch: 72%; font-weight: 800; font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; }
+.near .note { display: block; margin-top: 3px; color: var(--ink-2); font-stretch: 90%; font-size: 13px; font-weight: 650; line-height: 1.2; }
+.near.via .note { color: var(--ink); }
+/* An approximate distance is underlined with a dashed line, as approximate things are everywhere else. */
+.near.approx .km { text-decoration: underline dashed 1.5px; text-underline-offset: 5px; }
+/* New: gone over with the highlighter. */
+.card.fresh .price, .preview-item.fresh .price {
+  margin-left: -4px; padding: 0 4px;
+  background: linear-gradient(97deg, transparent 0 1.5%, var(--hl) 3% 97%, transparent 98.5%) 0 72% / 100% 62% no-repeat;
+}
+@media (prefers-color-scheme: dark) { .card.fresh .price, .preview-item.fresh .price { color: var(--hl-ink); background-size: 100% 92%; background-position: 0 60%; } }
+
+.title { margin: 9px 0 2px; font-size: 16px; font-weight: 600; line-height: 1.3; }
+.meta { color: var(--ink-2); font-stretch: 85%; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.transit { display: flex; align-items: flex-start; gap: 7px; margin-top: 7px; font-size: 14px; line-height: 1.35; }
+.transit .icon { flex: none; margin-top: 1px; }
+
+/* Marks set beside an ad, in condensed capitals. Facts in a solid box; anything still to check in a dashed one. */
+.badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 11px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--ink-2); border-radius: 0; background: transparent;
+  color: var(--ink); font-stretch: 80%; font-size: 12.5px; font-weight: 750; letter-spacing: 0.05em; line-height: 1.35; text-transform: uppercase;
+}
+.badge.new { border-color: transparent; background: var(--hl); color: var(--hl-ink); transform: rotate(-1.5deg); font-weight: 900; }
+.badge.warn { border: 1.5px dashed var(--ink); }
+.badge.transit { border-color: var(--ink); }
+.badge.seen { padding-left: 0; border-color: transparent; color: var(--pen); }
+.badge.seen::before {
+  content: ""; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13l5 5L20 6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 13l5 5L20 6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* The way to the listing fills a bar of ink under the ad; the two quiet choices share the row under it. */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); border-top: 1px solid var(--ink); }
+.act {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 10px 8px; border: 0;
+  background: var(--sheet); color: var(--ink); text-decoration: none; cursor: pointer;
+  font: inherit; font-stretch: 80%; font-size: 14px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.act.open { grid-column: 1 / -1; min-height: 52px; background: var(--ink); color: var(--on-ink); font-size: 16px; }
+.act.restore { grid-column: 1 / -1; color: var(--pen); }
+.act:active { transform: translateY(1px); }
+@media (hover: hover) {
+  .act:hover { background: var(--paper); }
+  .act.open:hover { background: color-mix(in srgb, var(--ink) 86%, var(--paper)); }
+}
+.card-msg { margin: 0; padding: 8px 14px; border-top: 1px solid var(--ink); }
+
+/* A line ad: once a place has been looked at, it gives up its display space and keeps a thumbnail. */
+.card.line { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+.card.line > img { grid-row: 1; width: 96px; height: 100%; min-height: 104px; aspect-ratio: auto; border-bottom: 0; border-right: 1px solid var(--ink); }
+.card.line > .body { grid-column: 2; padding: 10px 12px 11px; }
+.card.line:not(:has(> img)) > .body { grid-column: 1 / -1; }
+.card.line > .actions, .card.line > .card-msg { grid-column: 1 / -1; }
+.card.line .price { font-size: 25px; }
+.card.line .near { font-size: 18px; }
+.card.line .near .note { font-size: 12px; }
+.card.line .title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 15px; }
+.card.line .badges { margin-top: 8px; }
+.card.line .act { min-height: 44px; }
+.card.line .act.open { min-height: 44px; background: var(--sheet); color: var(--ink); font-size: 14px; }
+@media (hover: hover) { .card.line .act.open:hover { background: var(--paper); } }
+.card.seen .price { color: var(--ink-2); }
+/* Put away: struck through in pen, as you would in the paper. */
+.card:is(.rejected, .unavailable) :is(.price, .title) { text-decoration: line-through; text-decoration-color: var(--pen); text-decoration-thickness: 2px; }
+.card:is(.rejected, .unavailable) > img { opacity: 0.55; filter: grayscale(1); }
+
+/* An alert's listing arrives circled in pen. The ring draws itself once; without motion it is simply there. */
+.price { position: relative; }
+.ring { position: absolute; z-index: 1; left: -13px; top: -10px; width: calc(100% + 26px); height: calc(100% + 19px); overflow: visible; pointer-events: none; color: var(--pen); }
+.ring path { fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw 0.75s cubic-bezier(0.22, 0.8, 0.24, 1) both; }
+@keyframes draw { from { stroke-dashoffset: 1; } }
+/* "Not a fit" and "No longer available" strike the ad out before it moves. */
+.card.striking .body::after {
+  content: ""; position: absolute; z-index: 1; left: 8px; right: 8px; top: 26px; height: 3px; border-radius: 2px; background: var(--pen);
+  transform-origin: left center; animation: strike 0.26s cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+@keyframes strike { from { transform: rotate(-2.5deg) scaleX(0); } to { transform: rotate(-2.5deg) scaleX(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .ring path { animation: none; }
+  .card.striking .body::after { animation: none; transform: rotate(-2.5deg); }
+}
+
+/* Ads that have been put away, in their own sections under the column. */
+details.dismissed { margin-top: 26px; }
+details.dismissed > summary {
+  display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 0; padding: 4px 0; border-bottom: 1.5px solid var(--ink);
+  color: var(--ink-2); font-stretch: 75%; font-size: 17px; font-weight: 850; letter-spacing: 0.03em; text-transform: uppercase; list-style: none;
+}
+details.dismissed > summary::-webkit-details-marker { display: none; }
+
+/* Wider screens: the display ad sets its photo beside the copy, as a paper does. */
+@media (min-width: 640px) {
+  .card:not(.line) { display: grid; grid-template-columns: minmax(0, 44%) minmax(0, 1fr); grid-template-rows: 1fr auto; }
+  .card:not(.line) > img { grid-row: 1 / span 2; height: 100%; min-height: 220px; aspect-ratio: auto; border-bottom: 0; border-right: 1px solid var(--ink); }
+  .card:not(.line) > :is(.body, .actions) { grid-column: 2; }
+  .card:not(.line):not(:has(> img)) > :is(.body, .actions) { grid-column: 1 / -1; }
+  .card:not(.line) > .card-msg { grid-column: 1 / -1; }
+  .card.line { grid-template-columns: 132px minmax(0, 1fr); }
+  .card.line > img { width: 132px; }
+}
+
+.empty { padding: 44px 12px; color: var(--ink-2); text-align: center; text-wrap: balance; }
+.boot { margin: 0; padding: 72px 16px; color: var(--muted); text-align: center; font-stretch: 80%; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; }
+
+/* --- Tabs, at the foot of the page ------------------------------------------------------------------------------------ */
+
+nav.tabs {
+  position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; display: flex; background: var(--paper);
+  border-top: 2px solid var(--ink); padding-bottom: env(safe-area-inset-bottom);
+}
+nav.tabs button {
+  position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 56px; padding: 7px 2px 8px; border: 0; background: none; color: var(--muted); cursor: pointer;
+  font: inherit; font-stretch: 80%; font-size: 12.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+}
+nav.tabs .tab-label { display: inline-flex; align-items: center; gap: 4px; }
+/* On a wide screen the tabs stay under the column rather than spreading to the window's edges. */
+@media (min-width: 760px) { nav.tabs { justify-content: center; } nav.tabs button { max-width: 180px; } }
+nav.tabs .count { min-width: 18px; padding: 0 3px; border: 1px solid currentColor; font-size: 11px; line-height: 15px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+/* The current tab: in ink, under a thick bar, so it doesn't rely on seeing a colour. */
+nav.tabs button.active { color: var(--ink); }
+nav.tabs button.active::before { content: ""; position: absolute; top: -2px; left: 22%; right: 22%; height: 5px; background: var(--ink); }
+nav.tabs button.active .count { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+
+/* --- Sections, forms and buttons -------------------------------------------------------------------------------------- */
+
+/* A section opens under a heavy rule with its head in condensed capitals, like a category of the classifieds. */
+.panel { margin: 24px 0; padding: 12px 0 4px; border-top: 3px solid var(--ink); }
+.panel h2, .section-title, details.panel > summary {
+  margin: 0 0 8px; font-stretch: 66%; font-weight: 900; font-size: 24px; line-height: 1; letter-spacing: 0.005em; text-transform: uppercase;
+}
+.section-title { margin: 32px 0 4px; padding-top: 12px; border-top: 3px solid var(--ink); }
+.panel h3, .region-status h3 { margin: 18px 0 4px; font-stretch: 80%; font-size: 14px; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
+details.panel > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; list-style: none; cursor: pointer; }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel[open] > summary { margin-bottom: 8px; }
+/* A drawn plus that loses its upright when the section is open. */
+details.panel > summary::after, details.all-settings > summary::after, details.dismissed > summary::after {
+  content: ""; flex: none; width: 14px; height: 14px;
+  background: linear-gradient(currentColor, currentColor) center / 14px 2.5px no-repeat, linear-gradient(currentColor, currentColor) center / 2.5px 14px no-repeat;
+}
+details[open].panel > summary::after, details[open].all-settings > summary::after, details[open].dismissed > summary::after { background: linear-gradient(currentColor, currentColor) center / 14px 2.5px no-repeat; }
+
+/* Boxes that ask for something: turning on alerts, a link to send. */
+.panel.setup, .panel.invite { padding: 14px 16px 16px; border: 2px solid var(--ink); background: var(--sheet); }
+.panel.setup h2 { font-size: 27px; }
+.panel.setup p { margin: 0 0 8px; }
+.setup .linklike { margin: 0 0 -8px -8px; padding: 12px 8px; }
+
+label { display: block; margin: 14px 0 5px; font-size: 14px; font-weight: 700; }
+label.check { display: flex; gap: 10px; align-items: center; min-height: 44px; margin: 4px 0; font-weight: 500; }
+.hint { margin-top: 4px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.hint a, .stops a { color: var(--ink); font-weight: 650; }
+/* A field's edge has to be seen to be found, so it is darker than the hairlines between things (3:1 against the page). */
+input[type=text], input[type=number], input[type=date], input[type=password], textarea, select {
+  width: 100%; min-height: 46px; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--sheet);
+  border: 1.5px solid var(--field); border-radius: 2px;
+}
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+textarea { min-height: 72px; line-height: 1.4; }
+input[type=checkbox], input[type=radio] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--ink); }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.campuses { margin: 12px 0 0; }
+fieldset.campuses legend { padding: 0; color: var(--ink-2); font-stretch: 80%; font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+fieldset.campuses label.check { margin: 0; }
+.row { display: flex; align-items: flex-end; gap: 10px; }
+.row > * { flex: 1; min-width: 0; }
+.panel form input + input { margin-top: 8px; }
+
+button.primary, button.secondary {
+  min-height: 46px; margin: 10px 8px 0 0; padding: 11px 18px; border: 1.5px solid var(--ink); border-radius: 2px; cursor: pointer;
+  font: inherit; font-stretch: 80%; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; line-height: 1.2; text-transform: uppercase;
+}
+button.primary { background: var(--ink); color: var(--on-ink); }
+button.secondary { background: transparent; color: var(--ink); }
+button.secondary.danger { border-color: var(--err); color: var(--err); }
+button.primary:active, button.secondary:active { transform: translateY(1px); }
+@media (hover: hover) {
+  button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 86%, var(--paper)); }
+  button.secondary:hover:not(:disabled) { background: var(--sheet); }
+}
+button:disabled { opacity: 0.45; cursor: default; }
+button.linklike {
+  padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer;
+  font: inherit; font-weight: 700; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px;
+}
+
+.msg { margin-top: 10px; font-size: 14px; font-weight: 600; }
+.msg.ok { color: var(--ink); }
+.msg.err { color: var(--err); }
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 14px; }
+.kv:last-child { border-bottom: 0; }
+.kv span:first-child { color: var(--ink-2); }
+.kv span:last-child { text-align: right; font-weight: 600; }
+details summary { cursor: pointer; font-weight: 700; margin: 12px 0 0; }
+.lede { margin: 0; font-size: 17px; font-weight: 600; }
+
+/* While the admin looks at someone else's list: impossible to miss, gone over with the highlighter. */
+.viewing {
+  position: sticky; top: env(safe-area-inset-top); z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 16px; background: var(--hl); color: var(--hl-ink); border-bottom: 2px solid var(--hl-ink);
+  font-stretch: 80%; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase;
+}
+.viewing button.secondary { margin: 0; min-height: 40px; padding: 6px 14px; color: inherit; border-color: currentColor; }
+
+.offline { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--sheet); border-bottom: 1.5px dashed var(--ink); font-size: 14px; }
+.offline span { flex: 1; min-width: 0; }
+.offline .linklike { padding: 12px 8px; }
 
 /* Save stays in reach however far down the form is, and says when there is something to save. */
 .savebar {
-  position: sticky; bottom: calc(52px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 12px;
-  margin: 12px -16px 0; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line);
+  position: sticky; bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 12px;
+  margin: 12px -16px 0; padding: 10px 16px; background: var(--paper); border-top: 2px solid var(--ink);
 }
 .savebar button.primary { flex: none; margin: 0; }
 .savebar .msg { flex: 1; margin: 0; font-size: 13px; }
 
-/* The first-run card that asks a device to turn on alerts. */
-.panel.setup { border-color: var(--accent); }
-.panel.setup h2 { font-size: 18px; }
-.panel.setup p { margin: 0 0 8px; }
-.setup .linklike { margin: 0 0 -8px -8px; padding: 12px 8px; }
-.offline .linklike { padding: 12px 8px; }
-ol.steps { margin: 8px 0; padding-left: 22px; }
-ol.steps li { margin: 6px 0; }
-
-.status-line { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-weight: 600; }
-.site { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+ol.steps { margin: 8px 0; padding-left: 24px; }
+ol.steps li { margin: 7px 0; padding-left: 2px; }
+ol.steps li::marker { font-stretch: 70%; font-weight: 900; }
+.status-line { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-weight: 650; }
+.site { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
 .site:last-child { border-bottom: 0; }
 .site .icon { margin-top: 3px; }
-.site-name { font-weight: 600; }
+.site-name { font-weight: 650; }
 .site .hint { margin-top: 0; }
-details.panel > summary { margin: 0; font-size: 16px; font-weight: 700; }
-details.panel[open] > summary { margin-bottom: 8px; }
-
-.offline { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--line); font-size: 14px; }
-.offline span { flex: 1; min-width: 0; }
-
+.region-status h3 { margin-top: 18px; }
 .invite textarea { margin-top: 8px; font-size: 14px; line-height: 1.4; }
+
+/* Settings: the answers to the setup's questions, each changeable on its own. */
+.answer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.answer:last-child { border-bottom: 0; }
+.answer-label { color: var(--ink-2); font-stretch: 82%; font-size: 12.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.answer-text { font-weight: 600; }
+.answer .linklike { flex: none; min-height: 44px; padding: 0 4px; }
+details.all-settings { margin-top: 24px; }
+details.all-settings > summary {
+  display: flex; align-items: center; justify-content: space-between; min-height: 48px; margin: 0; padding: 4px 0; border-top: 3px solid var(--ink); border-bottom: 1px solid var(--ink);
+  font-stretch: 66%; font-size: 24px; font-weight: 900; text-transform: uppercase; list-style: none;
+}
+details.all-settings > summary::-webkit-details-marker { display: none; }
+details.route { border-top: 1px solid var(--rule); margin-top: 8px; }
+details.route summary { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; }
+.stoprow { padding: 6px 0; font-size: 13px; border-top: 1px solid var(--rule); }
+.stoprow span:last-child { display: block; color: var(--ink-2); }
+details .check { margin-left: 4px; }
+
+/* A sign-in link to scan: dark on white whatever the theme, or phones can't read it. */
+.qr-box { margin-top: 12px; }
+.qr { width: 220px; max-width: 100%; margin: 12px auto 4px; overflow: hidden; background: #fff; border: 1px solid var(--ink); }
+.qr svg { display: block; width: 100%; height: auto; }
+
+/* Keyboard focus: one ring, in ballpoint. Inside clipped grid cells it sits inward so it isn't cut off. */
+:focus-visible { outline: 3px solid var(--pen); outline-offset: 2px; }
+.act:focus-visible, nav.tabs button:focus-visible, .seg button:focus-visible { outline-offset: -4px; }
 
 /* Messages that come and go sit in the page permanently, so a screen reader announces each one. */
 .toast {
-  position: fixed; z-index: 70; left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom) + 12px); max-width: 480px; margin: 0 auto;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 8px 4px 16px; border-radius: 12px;
-  background: var(--text); color: var(--bg); font-size: 14px; font-weight: 600; box-shadow: 0 4px 16px rgb(0 0 0 / .3);
+  position: fixed; z-index: 70; left: 12px; right: 12px; bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom) + 12px); max-width: 480px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 6px 4px 16px; border-radius: 2px;
+  background: var(--ink); color: var(--on-ink); font-size: 14px; font-weight: 650; box-shadow: var(--shadow);
 }
 .toast:empty { display: block; height: 0; padding: 0; overflow: hidden; box-shadow: none; }
-.toast span { padding: 8px 0; }
-.toast button { min-height: 44px; padding: 0 12px; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.toast span { padding: 9px 0; }
+.toast button {
+  min-height: 44px; padding: 0 12px; border: 0; background: none; color: inherit; cursor: pointer;
+  font: inherit; font-stretch: 80%; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px;
+}
 .refresh-note { position: fixed; z-index: 55; top: calc(env(safe-area-inset-top) + 8px); left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
 .refresh-note button {
-  pointer-events: auto; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-text);
-  font: inherit; font-size: 14px; font-weight: 700; box-shadow: 0 2px 10px rgb(0 0 0 / .3); cursor: pointer;
+  pointer-events: auto; min-height: 44px; padding: 0 18px; border: 0; border-radius: 2px; background: var(--ink); color: var(--on-ink); cursor: pointer;
+  font: inherit; font-stretch: 80%; font-size: 14px; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; box-shadow: var(--shadow);
 }
 
-/* The guided setup: one question per screen, big targets, nothing else on screen (no tab bar). */
+/* --- Signing in ---------------------------------------------------------------------------------------------------- */
+
+.login { padding: 40px 16px 32px; }
+.login .brand { font-size: 64px; }
+.login .rules { margin: 14px 0 18px; }
+.login .lede { font-size: 19px; line-height: 1.3; }
+.login input { display: block; margin-top: 10px; }
+.login .hint { margin: 10px 0 18px; }
+.login button.primary { width: 100%; margin: 14px 0 0; }
+.login .link-problem { margin: 18px 0; }
+.login .link-problem p { margin: 0 0 6px; }
+.panel .hint + form { margin-top: 12px; }
+
+/* --- The guided setup: one question per screen, big targets, nothing else on screen (no tab bar). --------------------- */
+
 body.in-setup { padding-bottom: env(safe-area-inset-bottom); }
-.onboard { max-width: 560px; margin: 0 auto; padding: 12px 16px 40px; }
+.onboard { max-width: 560px; margin: 0 auto; padding: 10px 16px 44px; }
 .setup-top { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
-.onboard .back { display: flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
-.setup-count { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
-.progress { height: 4px; margin: 4px 0 20px; border-radius: 999px; background: var(--line); overflow: hidden; }
-.progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
-.onboard h1 { margin: 8px 0; font-size: 26px; line-height: 1.2; }
+.setup-top .brand { font-size: 28px; }
+.onboard .back { display: flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 8px 0 0; border: 0; background: none; color: var(--ink); cursor: pointer; font: inherit; font-weight: 700; }
+.setup-count { color: var(--ink-2); font-stretch: 80%; font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.progress { height: 5px; margin: 6px 0 22px; background: var(--rule); overflow: hidden; }
+.progress span { display: block; width: 100%; height: 100%; background: var(--ink); transform-origin: left center; transition: transform 0.3s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.onboard h1 { margin: 6px 0 10px; font-stretch: 64%; font-weight: 900; font-size: 40px; line-height: 0.98; letter-spacing: -0.005em; text-transform: uppercase; }
 .onboard h1:focus { outline: none; }
-.hello { margin: 12px 0 0; color: var(--accent); font-size: 18px; font-weight: 700; }
-.lede-q { margin: 0 0 20px; color: var(--muted); }
+/* A greeting, written in by hand. */
+.hello { margin: 14px 0 2px; color: var(--pen); font-size: 19px; font-weight: 700; }
+.lede-q { margin: 0 0 20px; color: var(--ink-2); font-size: 16px; }
 .onboard > p { margin: 0 0 12px; }
 .choice {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 56px; margin: 0 0 10px; padding: 14px 16px;
-  border: 1px solid var(--field); border-radius: 14px; background: var(--card); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 60px; margin: 0 0 10px; padding: 13px 16px;
+  border: 1.5px solid var(--ink); border-radius: 2px; background: var(--sheet); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
 }
-.choice.chosen { padding: 13px 15px; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
-@media (hover: hover) { .choice:hover { border-color: var(--accent); } }
-.choice-title { font-size: 17px; font-weight: 700; }
-.choice-sub { color: var(--muted); font-size: 14px; }
+.choice.chosen { background: var(--ink); color: var(--on-ink); }
+.choice:active { transform: translateY(1px); }
+@media (hover: hover) { .choice:hover:not(.chosen) { background: var(--paper); } }
+.choice-title { font-stretch: 76%; font-size: 20px; font-weight: 800; line-height: 1.15; }
+.choice-sub { color: var(--ink-2); font-size: 14px; }
+.choice.chosen .choice-sub { color: inherit; opacity: 0.8; }
 .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .choice-grid .choice { margin: 0; }
-.group-label { margin: 16px 0 8px; color: var(--muted); font-size: 14px; font-weight: 700; }
+.group-label { margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--ink); color: var(--ink-2); font-stretch: 80%; font-size: 13px; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
 .typed { margin-top: 18px; }
 .typed-row { display: flex; align-items: center; gap: 8px; }
 .typed-row input { flex: 1; }
@@ -322,43 +471,30 @@ body.in-setup { padding-bottom: env(safe-area-inset-bottom); }
 .pills { margin: 18px 0 4px; }
 .pills legend { margin-bottom: 8px; padding: 0; font-weight: 700; }
 .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.pill { min-height: 44px; padding: 10px 16px; border: 1px solid var(--field); border-radius: 999px; background: var(--card); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
-.pill.chosen { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+.pill { min-height: 46px; padding: 10px 16px; border: 1.5px solid var(--ink); border-radius: 2px; background: var(--sheet); color: var(--ink); cursor: pointer; font: inherit; font-weight: 650; }
+.pill.chosen { background: var(--ink); color: var(--on-ink); }
 .onboard input[type=date] { margin-top: 10px; }
-button.primary.wide { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 52px; margin: 24px 0 0; font-size: 17px; }
-.onboard .linklike.skip { display: block; margin: 16px auto 0; padding: 12px 8px; color: var(--muted); }
-.preview-item { margin: 8px 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
-.preview-item .price { font-size: 18px; }
-ol.steps.big { padding-left: 24px; }
+button.primary.wide { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 54px; margin: 24px 0 0; font-size: 17px; }
+.onboard .linklike.skip { display: block; margin: 16px auto 0; padding: 12px 8px; color: var(--ink-2); }
+.preview { margin-top: 4px; }
+.preview-item { margin: 10px 0; padding: 11px 14px; border: 1px solid var(--ink); background: var(--sheet); }
+.preview-item .price { font-size: 26px; }
+.preview-item .near { font-size: 18px; }
+ol.steps.big { padding-left: 26px; }
 ol.steps.big li { margin: 14px 0; }
-.key { display: inline-flex; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); vertical-align: middle; }
+/* Safari's own buttons, drawn as they look so they can be found. */
+span.key { display: inline-flex; padding: 2px 4px; border: 1px solid var(--ink-2); border-radius: 6px; color: var(--ink); vertical-align: middle; }
 ul.how { margin: 8px 0 0; padding: 0; list-style: none; }
-ul.how li { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+ul.how li { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--rule); }
 ul.how li:last-child { border-bottom: 0; }
-ul.how .icon { flex: none; margin-top: 2px; color: var(--accent); }
+ul.how .icon { flex: none; margin-top: 2px; }
 .msg input { margin-top: 8px; }
-
-/* Settings: the answers to the setup's questions, each changeable on its own. */
-.answer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.answer:last-child { border-bottom: 0; }
-.answer-label { color: var(--muted); font-size: 13px; }
-.answer-text { font-weight: 600; }
-.answer .linklike { flex: none; min-height: 44px; padding: 0 4px; }
-details.all-settings > summary { margin: 16px 0 0; padding: 10px 0; font-size: 16px; font-weight: 700; }
-
-/* A sign-in link to scan: dark on white whatever the theme, or phones can't read it. */
-.qr-box { margin-top: 12px; }
-.qr { width: 220px; max-width: 100%; margin: 12px auto 4px; overflow: hidden; border-radius: 12px; background: #fff; }
-.qr svg { display: block; width: 100%; height: auto; }
-.login .link-problem { margin: 16px 0; }
-.login .link-problem p { margin: 0 0 6px; }
-.panel .hint + form { margin-top: 12px; }
 
 /* Adding to the Home Screen. The bubble sits against Safari's toolbar and points at the button the first step means. */
 .pointer {
   position: fixed; z-index: 80; display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 70vw; padding: 8px 12px;
-  border-radius: 12px; background: var(--accent); color: var(--accent-text); font-size: 14px; font-weight: 700; text-align: center;
-  box-shadow: 0 4px 16px rgb(0 0 0 / .35); pointer-events: none; animation: nudge 1.4s ease-in-out infinite;
+  border-radius: 2px; background: var(--ink); color: var(--on-ink); text-align: center; pointer-events: none; box-shadow: var(--shadow);
+  font-stretch: 80%; font-size: 14px; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; animation: nudge 1.4s ease-in-out infinite;
 }
 .pointer.classic { left: 50%; bottom: calc(8px + env(safe-area-inset-bottom)); transform: translateX(-50%); }
 .pointer.compact { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); align-items: flex-end; }
@@ -366,9 +502,108 @@ details.all-settings > summary { margin: 16px 0 0; padding: 10px 0; font-size: 1
 @keyframes nudge { 50% { translate: 0 var(--nudge, 6px); } }
 @media (prefers-reduced-motion: reduce) { .pointer { animation: none; } }
 .onboard:has(.pointer.classic, .pointer.compact) { padding-bottom: 120px; }
-.waiting { display: flex; align-items: center; gap: 10px; margin: 20px 0 0; color: var(--muted); font-size: 14px; }
-.waiting .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .25; } }
+.waiting { display: flex; align-items: center; gap: 10px; margin: 20px 0 0; color: var(--ink-2); font-size: 14px; }
+.waiting .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--pen); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .waiting .dot { animation: none; } }
-.install-offer .icon { color: var(--accent); }
-.install-offer .linklike + .linklike { margin-left: 16px; color: var(--muted); }
+
+/* --- The map ---------------------------------------------------------------------------------------------------------- */
+
+/* Below the masthead, the column head and the tabs, the map takes the rest of the screen. */
+.map-wrap {
+  position: relative; z-index: 0; isolation: isolate; height: calc(100dvh - 236px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: 380px; margin: 0 -16px; overflow: hidden; background: var(--rule); border-bottom: 1px solid var(--ink);
+}
+@media (min-width: 760px) { .map-wrap { margin: 14px 0 0; border: 1px solid var(--ink); } }
+.map-canvas { position: absolute; inset: 0; z-index: 0; }
+/* The streets in newsprint grey, so the prices, the routes and the marks are what carry colour. */
+.map-canvas .leaflet-tile-pane { filter: grayscale(1) contrast(0.92) brightness(1.04); }
+@media (prefers-color-scheme: dark) { .map-canvas .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(0.82) contrast(1.15); } }
+.map-canvas.leaflet-container { background: var(--rule); font-family: var(--font); }
+.map-status { position: absolute; z-index: 5; left: 50%; top: 40%; transform: translateX(-50%); padding: 10px 14px; background: var(--sheet); border: 1px solid var(--ink); }
+.map-note { position: absolute; z-index: 5; left: 8px; bottom: 28px; max-width: calc(100% - 16px); padding: 8px 12px; background: var(--sheet); color: var(--ink); border: 1.5px dashed var(--ink); font-size: 13px; box-shadow: var(--shadow); }
+.leaflet-bar { border: 1.5px solid var(--ink) !important; border-radius: 2px !important; box-shadow: none !important; }
+.leaflet-bar a, .leaflet-bar a:hover { display: grid !important; place-items: center; width: 40px !important; height: 40px !important; line-height: 40px !important; background: var(--sheet); color: var(--ink); border-bottom-color: var(--ink) !important; border-radius: 0 !important; }
+.leaflet-container .leaflet-control-attribution { background: color-mix(in srgb, var(--sheet) 85%, transparent); color: var(--ink-2); font-size: 11px; }
+.leaflet-container .leaflet-control-attribution a { color: var(--ink); }
+.radius-ring { stroke: var(--ink); }
+.campus-shape { stroke: var(--pen); fill: var(--pen); }
+.zone-shape { stroke: var(--ink); fill: var(--ink); }
+
+.pin-wrap { background: none; border: 0; }
+/* A price tag set like a tiny classified: ink-ruled, and highlighted while new. */
+.pin {
+  position: absolute; transform: translate(-50%, calc(-100% - 7px)); display: flex; align-items: center; gap: 4px; padding: 3px 7px;
+  background: var(--sheet); color: var(--ink); border: 1.5px solid var(--ink); white-space: nowrap; box-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
+  font: 800 13px/1.15 var(--font); font-stretch: 75%; font-variant-numeric: tabular-nums;
+}
+.pin::after {
+  content: ""; position: absolute; left: 50%; bottom: -6px; width: 9px; height: 9px; background: inherit;
+  border: 1.5px solid var(--ink); border-top: 0; border-left: 0; transform: translateX(-50%) rotate(45deg);
+}
+.pin.new { background: var(--hl); color: var(--hl-ink); }
+.pin .n, .zone-chip .n { padding: 0 4px; background: var(--ink); color: var(--on-ink); font-size: 11px; }
+.leaflet-marker-icon:focus-visible .pin, .leaflet-marker-icon:focus-visible .zone-chip { outline: 3px solid var(--pen); outline-offset: 2px; }
+.zone-chip {
+  position: absolute; transform: translate(-50%, -50%); display: flex; gap: 4px; align-items: center; padding: 2px 7px;
+  background: var(--sheet); color: var(--ink); border: 1.5px dashed var(--ink); white-space: nowrap; box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+  font: 750 12.5px/1.2 var(--font); font-stretch: 78%;
+}
+.campus-pin { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.campus-pin .star { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--pen); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
+.campus-pin .lbl { padding: 2px 7px; background: var(--ink); color: var(--on-ink); font: 850 12.5px/1.2 var(--font); font-stretch: 78%; letter-spacing: 0.05em; text-transform: uppercase; }
+.route-tip, .station-label { font: 650 12px/1.3 var(--font); }
+.route-tip .op { font-weight: 400; color: #555; }
+
+.map-panel { max-width: 280px; max-height: calc(100dvh - 300px); overflow: auto; background: var(--sheet); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 2px; box-shadow: var(--shadow); font-size: 13px; }
+.map-panel summary { min-height: 40px; margin: 0; padding: 10px 12px; font-stretch: 80%; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
+.panel-body { padding: 0 12px 10px; }
+.panel-title { margin: 12px 0 4px; padding-bottom: 2px; border-bottom: 1px solid var(--ink); font-stretch: 80%; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
+.key-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.key-pin { padding: 0 6px; border: 1.5px solid var(--ink); font-weight: 800; font-size: 11px; font-stretch: 78%; }
+.key-zone { width: 22px; height: 14px; border: 1.5px dashed var(--ink); background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.key-campus { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--pen); color: #fff; }
+.key-radius { width: 22px; height: 0; border-top: 2px dashed var(--ink); }
+.map-panel label.check { min-height: 36px; margin: 2px 0; font-size: 13px; }
+.route-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; padding: 3px 4px; border: 0; border-radius: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; font-size: 13px; }
+.route-row.on { background: var(--hl); color: var(--hl-ink); }
+.route-row .rl { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.route-row.on .rl { color: inherit; }
+.swatch { flex: none; width: 22px; height: 0; border-top: 4px solid var(--c); }
+.swatch.dashed { border-top-style: dashed; }
+
+/* Hovering a pin with a mouse. */
+.hovercard { position: absolute; z-index: 6; width: 300px; max-height: calc(100% - 16px); overflow: auto; background: var(--sheet); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 2px; box-shadow: var(--shadow); }
+.hc-head { padding: 9px 12px 5px; font-stretch: 80%; font-size: 13px; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
+.hc-more, .hc-hint { padding: 4px 12px 8px; color: var(--ink-2); font-size: 12px; }
+.hc-close, .sheet-close { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; }
+.hc-close { right: 0; top: 0; }
+.mcard { display: block; color: inherit; text-decoration: none; }
+.mcard img { display: block; width: 100%; height: 140px; object-fit: cover; background: var(--rule); }
+.mcard .body { padding: 9px 12px; }
+.mcard .price { font-size: 26px; }
+.mcard .near { font-size: 18px; }
+.mcard.compact { display: flex; gap: 8px; border-top: 1px solid var(--rule); }
+.mcard.compact img { width: 72px; height: 72px; flex: none; }
+.mcard.compact .price { font-size: 19px; }
+.mcard.compact .near { font-size: 15px; }
+.mcard.compact .near .note, .mcard.compact .badges, .mcard.compact .transit { display: none; }
+@media (hover: hover) { .mcard:hover { background: var(--paper); } }
+
+/* Tapping a pin on a phone: the ads there rise from the foot of the screen. */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 59; background: rgb(0 0 0 / 0.5); }
+.sheet {
+  position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; max-height: 82dvh; overflow: auto; background: var(--sheet); color: var(--ink);
+  border-top: 3px solid var(--ink); padding: 8px 0 calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgb(0 0 0 / 0.35);
+}
+.sheet-close { right: 4px; top: 2px; }
+.sheet .hc-head { padding: 12px 52px 6px 16px; }
+.sheet-item img { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; object-fit: cover; background: var(--rule); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.sheet-item .body { padding: 12px 16px 14px; }
+.sheet-item + .sheet-item { border-top: 2px solid var(--ink); }
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; margin-top: 14px; padding: 12px 16px; border-radius: 2px;
+  background: var(--ink); color: var(--on-ink); text-decoration: none;
+  font-stretch: 80%; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase;
+}
+body.sheet-open { overflow: hidden; }
