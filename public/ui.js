@@ -47,8 +47,9 @@ export function fmtDate(iso) {
 // New in the last day and not yet looked at.
 export const isNewMatch = (m) => !m.review && Boolean(m.firstSeenAt) && Date.now() - Date.parse(m.firstSeenAt) < 24 * 3600 * 1000;
 
-export const MODE_ICON = { bus: "🚌", tram: "🚋", rail: "🚆" };
 const MODE_WORD = { bus: "bus", tram: "tram", rail: "train" };
+// The icon for a kind of transport (see ICON_PATHS); anything unknown is drawn as a bus.
+export const modeIcon = (mode, size = 16) => icon(MODE_WORD[mode] ? mode : "bus", size);
 
 // Small inline icons on one 24px grid with 2px round strokes. They inherit the text colour.
 const ICON_PATHS = {
@@ -67,6 +68,15 @@ const ICON_PATHS = {
   "arrow-down": '<path d="M12 4v15M6 13l6 6 6-6"/>',
   "arrow-up": '<path d="M12 20V5M6 11l6-6 6 6"/>',
   sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  // A column of ads, for the Matches tab.
+  column: '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
+  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  bus: '<rect x="5" y="3" width="14" height="15" rx="3"/><path d="M5 11h14M8 21v-3M16 21v-3"/><path d="M8.5 14.5h.01M15.5 14.5h.01" stroke-width="2.6"/>',
+  tram: '<rect x="6" y="5" width="12" height="13" rx="3"/><path d="M6 11h12M9 21l1.5-3M15 21l-1.5-3M9 2h6M12 2v3"/>',
+  rail: '<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 10h14M12 3v7M7 21l2.5-4M17 21l-2.5-4"/><path d="M8.5 13.5h.01M15.5 13.5h.01" stroke-width="2.6"/>',
 };
 
 export function icon(name, size = 16) {
@@ -92,8 +102,11 @@ function transitLines(m, flags) {
   const via = flags.includes("transit-access");
   if (!m.transit?.campuses?.length || !(via || (m.distanceKm ?? 0) >= 1)) return [];
   const rows = m.transit.campuses.flatMap((c) => c.options.slice(0, via ? 3 : 2).map((o) => ({ c, o }))).slice(0, 4);
-  return rows.map(({ c, o }) => `${MODE_ICON[o.mode] ?? "🚌"} ${o.label} · ${o.stop}, ${o.distM} m${o.mins ? ` · ${o.mins} min to ${c.short}` : ` · to ${c.short}`} · ${o.perDay} a day`);
+  return rows.map(({ c, o }) => ({ mode: o.mode, text: `${o.label} · ${o.stop}, ${o.distM} m${o.mins ? ` · ${o.mins} min to ${c.short}` : ` · to ${c.short}`} · ${o.perDay} a day` }));
 }
+
+// One of those routes as a line of the card, with its kind of transport drawn in front.
+export const transitRow = (t) => h("div", { class: "transit" }, modeIcon(t.mode), h("span", {}, t.text));
 
 export const priceText = (m) => (m.priceMonthly !== null && m.priceMonthly !== undefined ? `€${m.priceMonthly.toLocaleString("en-IE")}/mo` : m.priceText || "Price n/a");
 
@@ -112,13 +125,16 @@ export function describeMatch(m, config) {
     // Beyond the radius the direct route is the whole reason it is listed, so lead with how long it takes.
     const campus = m.transit?.campuses?.[0];
     const best = campus?.options?.[0];
-    if (flags.includes("transit-access") && best?.mins) near = { ...near, note: `${best.mins} min to ${campus.short} by ${MODE_WORD[best.mode] ?? "bus"}`, tone: "via" };
+    const ride = best?.mins ? `${best.mins} min to ${campus.short} by ${MODE_WORD[best.mode] ?? "bus"}` : null;
+    if (flags.includes("transit-access") && ride) near = { ...near, note: ride, tone: "via" };
+    // Inside the radius, the ride still sits under the distance once it's far enough to take one (as the route lines do).
+    else if (ride && m.distanceKm >= 1) near = { ...near, ride };
   }
 
   const badges = [];
   if (isNew) badges.push({ cls: "new", text: "NEW" });
   if (m.publishedAt) badges.push({ text: `listed ${timeAgo(m.publishedAt)}` });
-  if (m.review === "seen") badges.push({ text: "seen" });
+  if (m.review === "seen") badges.push({ cls: "seen", text: "seen" });
   if (flags.includes("available-now")) badges.push({ text: "available now" });
   else if (m.availableFrom) badges.push({ text: `from ${fmtDate(m.availableFrom)}` });
   if (flags.includes("ends-early")) badges.push({ cls: "warn", text: `ends ${fmtDate(m.availableTo)}` });
@@ -145,10 +161,33 @@ export const leadRow = (d) =>
     "div",
     { class: "lead" },
     h("div", { class: "price" }, d.price),
-    d.near ? h("div", { class: `near${d.near.tone ? ` ${d.near.tone}` : ""}` }, d.near.text, d.near.note ? h("span", { class: "note" }, d.near.note) : null) : null,
+    d.near
+      ? h(
+          "div",
+          { class: `near${d.near.tone ? ` ${d.near.tone}` : ""}` },
+          h("span", { class: "km" }, d.near.text),
+          d.near.note ? h("span", { class: "note" }, d.near.note) : null,
+          d.near.ride ? h("span", { class: "note ride" }, d.near.ride) : null,
+        )
+      : null,
   );
 
 export const badgeRow = (badges) =>
   h("div", { class: "badges" }, badges.map((b) => h("span", { class: b.cls ? `badge ${b.cls}` : "badge" }, b.text)));
+
+// The name, as it heads every screen: ASAP gone over with the highlighter. `tag` is the heading level it sits at.
+export const brand = (tag = "div") => h(tag, { class: "brand" }, h("span", { class: "brand-asap" }, "ASAP"), h("span", { class: "brand-rest" }, "accommodation"));
+
+// A ring drawn round something in ballpoint, the way you'd circle an ad in the paper. It stretches to what it sits in.
+export function penRing() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ring");
+  svg.setAttribute("viewBox", "0 0 100 40");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.innerHTML = '<path pathLength="1" d="M11 7C30 1 74 0 92 6c9 4 9 24-3 29-18 6-63 6-79 0-10-4-11-23 4-30 6-3 16-4 24-4"/>';
+  return svg;
+}
 
 export const listingImage = (m) => (m.image ? h("img", { src: m.image, loading: "lazy", alt: "", referrerpolicy: "no-referrer" }) : null);

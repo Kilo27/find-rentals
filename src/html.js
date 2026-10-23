@@ -13,7 +13,7 @@ export class SourceError extends Error {
 
 // An honest bot name. A user agent claiming to be Chrome from a client that isn't gets Cloudflare's
 // "Security Check" 403 on Daft and Rent.ie from any network, home connections included.
-const DEFAULT_UA = "Mozilla/5.0 (compatible; RentalWatch/1.0; personal rental monitor)";
+const DEFAULT_UA = "Mozilla/5.0 (compatible; ASAPAccommodation/1.0; personal rental monitor)";
 const UA_TOKEN = "rentalwatch";
 const MAX_HTML = 3_000_000;
 

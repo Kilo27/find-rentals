@@ -16,9 +16,11 @@ import { defaultTransit } from "./transit.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 const requireHere = createRequire(import.meta.url);
-// The map library and the QR code maker are served from the installed packages, so the page needs no third-party script host.
+// The map library, the QR code maker and the typeface are served from the installed packages, so the page needs no
+// third-party host.
 const leafletDir = path.join(path.dirname(requireHere.resolve("leaflet/package.json")), "dist");
 const qrcodeDir = path.dirname(requireHere.resolve("qrcode-generator"));
+const archivoDir = path.join(path.dirname(requireHere.resolve("@fontsource-variable/archivo/package.json")), "files");
 
 const publicDevice = (s) => ({ endpoint: s.endpoint.slice(-12), userAgent: s.userAgent, addedAt: s.addedAt, lastError: s.lastError });
 
@@ -63,6 +65,7 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
   });
   app.use("/vendor/leaflet", express.static(leafletDir, { maxAge: "7d", index: false }));
   app.use("/vendor/qrcode", express.static(qrcodeDir, { maxAge: "7d", index: false }));
+  app.use("/vendor/archivo", express.static(archivoDir, { maxAge: "30d", index: false }));
 
   // A sign-in link is the app's address with ?join=<token>. An iPhone's Home Screen app keeps its own cookies apart from
   // Safari's, so the page opened from such a link names a manifest whose start address carries the same token: the app

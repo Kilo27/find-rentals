@@ -1,7 +1,7 @@
 // The guided setup: what a new account sees instead of the app until it is watching somewhere. One question per screen,
 // most answered with one tap, then how many places fit right now, then alerts on this device, then a short "how it
 // works". The same question screens edit one answer at a time from Settings.
-import { h, icon, describeMatch, leadRow } from "./ui.js";
+import { h, icon, describeMatch, leadRow, brand } from "./ui.js";
 import { BUDGETS, KINDS, answersFromPrefs, collegeYearEnd, distanceChoices, euro, prefsFromAnswers, safariLayout, setupQuestions } from "./app-model.js";
 
 const ALERTS_ASKED_KEY = "rw.alertsAsked";
@@ -45,7 +45,7 @@ export function iosSteps(layout, { big = false } = {}) {
     shareStep,
     h("li", {}, "Scroll down and tap ", h("strong", {}, "Add to Home Screen"), " ", key("add-home"), "."),
     h("li", {}, "Tap ", h("strong", {}, "Add"), layout === "compact" ? " (leave Open as Web App on)" : "", "."),
-    h("li", {}, "Open ", h("strong", {}, "Rentals"), " from your Home Screen. It opens already signed in."),
+    h("li", {}, "Open ", h("strong", {}, "ASAP"), " from your Home Screen. It opens already signed in."),
   );
 }
 
@@ -184,10 +184,12 @@ export function createSetup(ctx) {
           ? h("button", { type: "button", class: "back", "data-fk": "setup:back", onclick: back }, icon("chevron-left", 20), "Back")
           : flow.edit
             ? h("button", { type: "button", class: "back", "data-fk": "setup:cancel", onclick: () => stop("settings") }, icon("chevron-left", 20), "Cancel")
-            : h("span"),
+            : asking && at === 0
+              ? brand()
+              : h("span"),
         asking ? h("span", { class: "setup-count" }, `${at + 1} of ${qs.length}`) : null,
       ),
-      asking ? h("div", { class: "progress", "aria-hidden": "true" }, h("span", { style: `width:${Math.round(((at + 1) / qs.length) * 100)}%` })) : null,
+      asking ? h("div", { class: "progress", "aria-hidden": "true" }, h("span", { style: `transform:scaleX(${((at + 1) / qs.length).toFixed(3)})` })) : null,
       pre ?? (flow.welcome && flow.step === "alerts" && !flow.alertsStage ? h("p", { class: "hello" }, "Welcome back!") : null),
       h("h1", { tabindex: "-1" }, title),
       lede ? h("p", { class: "lede-q" }, lede) : null,
@@ -252,7 +254,7 @@ export function createSetup(ctx) {
     return [
       head(
         "Which college are you near?",
-        "Rental Watch checks Daft.ie, Rent.ie, MyHome.ie and the college accommodation sites for you, and tells you when a new place comes up. It takes about a minute to set up.",
+        "ASAP accommodation checks Daft.ie, Rent.ie, MyHome.ie and the college accommodation sites for you, and tells you when a new place comes up. It takes about a minute to set up.",
         h("p", { class: "hello" }, first ? `Hi ${first}!` : "Welcome!"),
       ),
       [...groups].map(([region, campuses]) =>
@@ -392,7 +394,7 @@ export function createSetup(ctx) {
             { class: "preview" },
             top.map((m) => {
               const d = describeMatch(m, s.config);
-              return h("div", { class: "preview-item" }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta));
+              return h("div", { class: `preview-item${d.isNew ? " fresh" : ""}` }, leadRow(d), h("div", { class: "title" }, m.title), h("div", { class: "meta" }, d.meta));
             }),
             n > top.length ? h("div", { class: "hint" }, `and ${n - top.length} more`) : null,
           )
@@ -404,7 +406,7 @@ export function createSetup(ctx) {
   const afterHome = () => (ctx.alertsMode() === "on" ? "done" : "alerts");
 
   // --- The Home Screen ---------------------------------------------------------------------------------------------------
-  // On an iPhone this is what makes alerts possible at all; on Android it makes Rental Watch open like any other app.
+  // On an iPhone this is what makes alerts possible at all; on Android it makes ASAP accommodation open like any other app.
 
   // While Safari shows the iPhone steps, look every few seconds for the Home Screen app having been opened, so the page can
   // say it worked instead of leaving the person to wonder. The look stops when the step does.
@@ -460,7 +462,7 @@ export function createSetup(ctx) {
       const link = ctx.signInLink();
       link.catch(() => {});
       return [
-        head("Open this in Safari", "To get alerts on an iPhone, Rental Watch goes on your Home Screen, and only Safari can put it there."),
+        head("Open this in Safari", "To get alerts on an iPhone, ASAP accommodation goes on your Home Screen, and only Safari can put it there."),
         h("button", { type: "button", class: "primary wide", "data-fk": "home:copy", onclick: () => copyLink(note, link) }, "Copy my link"),
         note,
         h("p", { class: "hint" }, "Your link keeps you signed in, so don't share it. Or look for Open in Safari in this app's menu."),
@@ -471,7 +473,7 @@ export function createSetup(ctx) {
     if (mode === "ios-safari") {
       if (flow.homeDone) {
         return [
-          head("It's on your Home Screen", "Carry on in the Rentals app: it's signed in and will ask to turn on alerts. You can close Safari now."),
+          head("It's on your Home Screen", "Carry on in the ASAP app: it's signed in and will ask to turn on alerts. You can close Safari now."),
           h("button", { type: "button", class: "primary wide", "data-fk": "home:ok", onclick: () => stop("matches") }, "OK"),
         ];
       }
@@ -490,12 +492,12 @@ export function createSetup(ctx) {
     // Android (and the rare other browser that offers to install).
     if (flow.homeDone) {
       return [
-        head("It's on your Home Screen", "Open Rentals from there any time. It's signed in already."),
+        head("It's on your Home Screen", "Open ASAP from there any time. It's signed in already."),
         h("button", { type: "button", class: "primary wide", "data-fk": "setup:continue", onclick: () => go({ step: afterHome() }) }, "Continue"),
       ];
     }
     return [
-      head("Add it to your Home Screen", "So Rental Watch opens like any other app, straight to your list."),
+      head("Add it to your Home Screen", "So ASAP accommodation opens like any other app, straight to your list."),
       mode === "prompt"
         ? h("button", { type: "button", class: "primary wide", "data-fk": "home:add", disabled: flow.busy, onclick: install }, icon("add-home", 20), " Add to Home Screen")
         : [
@@ -587,7 +589,7 @@ export function createSetup(ctx) {
           { class: "steps big" },
           h("li", {}, "Check your phone isn't on Do Not Disturb or a Focus mode."),
           p.ios
-            ? h("li", {}, "Open Settings, then Notifications, then Rentals, and check Allow Notifications is on.")
+            ? h("li", {}, "Open Settings, then Notifications, then ASAP, and check Allow Notifications is on.")
             : h("li", {}, "Check notifications are allowed for this site in your browser's settings."),
           h("li", {}, "Alerts can take up to a minute when your phone is saving battery."),
         ),
@@ -606,7 +608,7 @@ export function createSetup(ctx) {
     if (mode === "blocked") {
       return [
         head("Alerts are blocked on this device", null),
-        h("p", {}, p.ios ? "Open Settings, then Notifications, then Rentals, and switch on Allow Notifications. Then come back here." : "Allow notifications for this site in your browser's site settings (the icon next to the address), then come back."),
+        h("p", {}, p.ios ? "Open Settings, then Notifications, then ASAP, and switch on Allow Notifications. Then come back here." : "Allow notifications for this site in your browser's site settings (the icon next to the address), then come back."),
         h(
           "button",
           {
@@ -635,7 +637,7 @@ export function createSetup(ctx) {
     return [
       head(flow.welcome ? "Nearly done: turn on alerts" : "Turn on alerts", "Get a notification on this device as soon as a new place is listed. Good places go fast."),
       h("button", { type: "button", class: "primary wide", "data-fk": "alerts:on", disabled: flow.busy, onclick: turnOn }, icon("bell", 18), flow.busy ? " Turning on..." : " Turn on alerts"),
-      h("p", { class: "hint" }, "Your phone will ask if Rental Watch can send notifications: choose Allow."),
+      h("p", { class: "hint" }, "Your phone will ask if ASAP can send notifications: choose Allow."),
       errorBox(),
       skipAlerts(),
     ];

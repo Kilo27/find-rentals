@@ -14,7 +14,7 @@ Other users are people the admin chooses to invite, such as housemates, friends 
 
 ## Product Purpose
 
-Rental Watch checks several Irish rental sources every 30 minutes for places near each person's campus and pushes a notification to each user's phone when a new match appears. The sites are read once per region however many people watch there, and each person is matched against what was found on their own. The in-app Matches list (and its map) is where the user then decides whether a place is worth contacting.
+ASAP accommodation checks several Irish rental sources every 30 minutes for places near each person's campus and pushes a notification to each user's phone when a new match appears. The sites are read once per region however many people watch there, and each person is matched against what was found on their own. The in-app Matches list (and its map) is where the user then decides whether a place is worth contacting.
 
 Its most important quality is ease of use (the user's words: "otherwise what is the point"). The product exists to take effort out of the rental hunt, so anything that adds effort, for the admin or for an invited user, works against its purpose.
 
@@ -42,13 +42,13 @@ It answers "is there a place I can actually live near this campus" rather than "
 - Filters: distance (exact, with geocoding and cross-checks), owner-occupied, weekday-only lets, availability dates, price, beds, lease months, keywords.
 - Accounts are independent: nothing one person does (campus, preferences, marks on listings, alerts) changes what another sees. The scanner works per region (collect once, then match each account), and only campuses whose regions have been set up and checked against the live sites can be chosen (Limerick, Cork and Galway so far; the rest are tracked in the GitHub issues). Accounts can't add page addresses for the server to read or start scans: those are the admin's, because they load other people's sites on everyone's behalf.
 - The admin account is defined by environment variables (`ADMIN_USERNAME`, `ACCESS_PASSWORD`), not stored in the app.
-- The scrapers are honest about themselves (`RentalWatch/1.0`), honour `robots.txt`, rate-limit per host, and depend on third-party sites staying scrapeable. Map tiles are loaded from OpenStreetMap, so use must stay light.
+- The scrapers are honest about themselves (`ASAPAccommodation/1.0`), honour `robots.txt`, rate-limit per host, and depend on third-party sites staying scrapeable. Map tiles are loaded from OpenStreetMap, so use must stay light.
 - Terminology to keep: Matches, Mark as seen, Not a fit, No longer available, campus, centre (Irish/British spelling), direct route. Notification text states facts in short phrases (price, title, distance, source, route).
 - Undecided: more than one campus per account, and self-serve sign-up. Neither is built.
 
 ## Brand Commitments
 
-Existing name: **Rental Watch**, with the Home Screen label **Rentals**. App icons are in `public/icons/`. The user has not declared any visual identity binding.
+Name: **ASAP accommodation** (renamed from Rental Watch on 2026-10-23), with the Home Screen label **ASAP**. The laptop agent's tray app is still called Rental Watch Agent. App icons are in `public/icons/`, drawn by `scripts/make-icons.mjs`. The visual identity is "The Classifieds" (chosen by the user on 2026-10-23), recorded in DESIGN.md.
 
 ## Evidence on Hand
 

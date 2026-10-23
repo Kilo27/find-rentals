@@ -80,7 +80,17 @@ test("card: a home beyond the radius leads with the ride to campus", () => {
   const transit = { campuses: [{ short: "UL", options: [{ mode: "bus", label: "304A", stop: "Annacotty Cross", distM: 250, mins: 14, perDay: 38 }] }] };
   const d = describeMatch(listing({ distanceKm: 4.1, flags: ["transit-access"], transit }), config);
   assert.deepEqual(d.near, { text: "4.1 km", note: "14 min to UL by bus", tone: "via" });
-  assert.match(d.transit[0], /304A · Annacotty Cross, 250 m · 14 min to UL · 38 a day/);
+  assert.equal(d.near.ride, undefined, "the ride is already the note");
+  assert.equal(d.transit[0].mode, "bus", "drawn with the bus icon, not an emoji");
+  assert.equal(d.transit[0].text, "304A · Annacotty Cross, 250 m · 14 min to UL · 38 a day");
+});
+
+test("card: inside the radius, the ride to campus sits under the distance once it's far enough to ride", () => {
+  const transit = { campuses: [{ short: "UL", options: [{ mode: "bus", label: "310", stop: "Brookfield Hl", distM: 330, mins: 5, perDay: 35 }] }] };
+  const d = describeMatch(listing({ distanceKm: 2.0, transit }), config);
+  assert.deepEqual(d.near, { text: "2.0 km", note: null, tone: null, ride: "5 min to UL by bus" });
+  const close = describeMatch(listing({ distanceKm: 0.6, transit }), config);
+  assert.equal(close.near.ride, undefined, "close enough to walk, so no ride is offered");
 });
 
 test("card: leadRow puts the price and the distance in one row", () => {

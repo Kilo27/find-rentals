@@ -196,13 +196,13 @@ test("sign-in links: read once from the address, then taken out of it", () => {
 test("invite: a link and nothing to remember, greeting them by first name", () => {
   const link = "https://rw.example.com/?join=abc";
   const text = linkInviteText({ name: "Seán O'Brien", link });
-  assert.match(text, /^Hi Seán, I've set you up on Rental Watch/);
+  assert.match(text, /^Hi Seán, I've set you up on ASAP accommodation/);
   assert.ok(text.includes(link));
   assert.match(text, /no password/);
   assert.match(text, /open it in Safari/);
   assert.match(text, /2 weeks/);
   assert.doesNotMatch(text, /Username|Password:/);
-  assert.match(linkInviteText({ name: null, link, fresh: true }), /^Here's a new link for Rental Watch\./);
+  assert.match(linkInviteText({ name: null, link, fresh: true }), /^Here's a new link for ASAP accommodation\./);
   assert.match(linkInviteText({ name: "Sam", link, fresh: true }), /^Hi Sam, here's a new link/);
 });
 
