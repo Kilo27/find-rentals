@@ -1,0 +1,758 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-23T21:29:15.307Z",
+  "title": "Design System: ASAP accommodation",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Newsprint",
+        "canonical": "#f0efea",
+        "cssVar": "--paper",
+        "theme": "light",
+        "oklch": "oklch(95.2% 0.007 97.4)",
+        "tonalRamp": [
+          "oklch(15.0% 0.007 97.4)",
+          "oklch(26.4% 0.007 97.4)",
+          "oklch(37.9% 0.007 97.4)",
+          "oklch(49.3% 0.007 97.4)",
+          "oklch(60.7% 0.007 97.4)",
+          "oklch(72.1% 0.007 97.4)",
+          "oklch(83.6% 0.007 97.4)",
+          "oklch(95.0% 0.007 97.4)"
+        ]
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Boxed-Ad Stock",
+        "canonical": "#fbfbf8",
+        "cssVar": "--sheet",
+        "theme": "light",
+        "oklch": "oklch(98.7% 0.004 106.5)",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106.5)",
+          "oklch(26.4% 0.004 106.5)",
+          "oklch(37.9% 0.004 106.5)",
+          "oklch(49.3% 0.004 106.5)",
+          "oklch(60.7% 0.004 106.5)",
+          "oklch(72.1% 0.004 106.5)",
+          "oklch(83.6% 0.004 106.5)",
+          "oklch(95.0% 0.004 106.5)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Press Black",
+        "canonical": "#141414",
+        "cssVar": "--ink",
+        "theme": "light",
+        "oklch": "oklch(19.1% 0.000 89.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 89.9)",
+          "oklch(26.4% 0.000 89.9)",
+          "oklch(37.9% 0.000 89.9)",
+          "oklch(49.3% 0.000 89.9)",
+          "oklch(60.7% 0.000 89.9)",
+          "oklch(72.1% 0.000 89.9)",
+          "oklch(83.6% 0.000 89.9)",
+          "oklch(95.0% 0.000 89.9)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Worn Ink",
+        "canonical": "#45453f",
+        "cssVar": "--ink-2",
+        "theme": "light",
+        "oklch": "oklch(38.8% 0.010 106.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.010 106.9)",
+          "oklch(26.4% 0.010 106.9)",
+          "oklch(37.9% 0.010 106.9)",
+          "oklch(49.3% 0.010 106.9)",
+          "oklch(60.7% 0.010 106.9)",
+          "oklch(72.1% 0.010 106.9)",
+          "oklch(83.6% 0.010 106.9)",
+          "oklch(95.0% 0.010 106.9)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Faded Ink",
+        "canonical": "#5f5f58",
+        "cssVar": "--muted",
+        "theme": "light",
+        "oklch": "oklch(48.3% 0.011 106.8)",
+        "tonalRamp": [
+          "oklch(15.0% 0.011 106.8)",
+          "oklch(26.4% 0.011 106.8)",
+          "oklch(37.9% 0.011 106.8)",
+          "oklch(49.3% 0.011 106.8)",
+          "oklch(60.7% 0.011 106.8)",
+          "oklch(72.1% 0.011 106.8)",
+          "oklch(83.6% 0.011 106.8)",
+          "oklch(95.0% 0.011 106.8)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Hairline Grey",
+        "canonical": "#cfcec6",
+        "cssVar": "--rule",
+        "theme": "light",
+        "oklch": "oklch(85.0% 0.011 100.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.011 100.9)",
+          "oklch(26.4% 0.011 100.9)",
+          "oklch(37.9% 0.011 100.9)",
+          "oklch(49.3% 0.011 100.9)",
+          "oklch(60.7% 0.011 100.9)",
+          "oklch(72.1% 0.011 100.9)",
+          "oklch(83.6% 0.011 100.9)",
+          "oklch(95.0% 0.011 100.9)"
+        ]
+      },
+      "field": {
+        "role": "neutral",
+        "displayName": "Field Edge",
+        "canonical": "#77766e",
+        "cssVar": "--field",
+        "theme": "light",
+        "oklch": "oklch(56.4% 0.012 101.0)",
+        "tonalRamp": [
+          "oklch(15.0% 0.012 101.0)",
+          "oklch(26.4% 0.012 101.0)",
+          "oklch(37.9% 0.012 101.0)",
+          "oklch(49.3% 0.012 101.0)",
+          "oklch(60.7% 0.012 101.0)",
+          "oklch(72.1% 0.012 101.0)",
+          "oklch(83.6% 0.012 101.0)",
+          "oklch(95.0% 0.012 101.0)"
+        ]
+      },
+      "hl": {
+        "role": "primary",
+        "displayName": "Highlighter Yellow",
+        "canonical": "#f7e933",
+        "cssVar": "--hl",
+        "theme": "light",
+        "oklch": "oklch(91.7% 0.183 104.7)",
+        "tonalRamp": [
+          "oklch(15.0% 0.183 104.7)",
+          "oklch(26.4% 0.183 104.7)",
+          "oklch(37.9% 0.183 104.7)",
+          "oklch(49.3% 0.183 104.7)",
+          "oklch(60.7% 0.183 104.7)",
+          "oklch(72.1% 0.183 104.7)",
+          "oklch(83.6% 0.183 104.7)",
+          "oklch(95.0% 0.183 104.7)"
+        ]
+      },
+      "hl-ink": {
+        "role": "neutral",
+        "displayName": "Ink on Highlighter",
+        "canonical": "#141414",
+        "cssVar": "--hl-ink",
+        "theme": "light",
+        "oklch": "oklch(19.1% 0.000 89.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 89.9)",
+          "oklch(26.4% 0.000 89.9)",
+          "oklch(37.9% 0.000 89.9)",
+          "oklch(49.3% 0.000 89.9)",
+          "oklch(60.7% 0.000 89.9)",
+          "oklch(72.1% 0.000 89.9)",
+          "oklch(83.6% 0.000 89.9)",
+          "oklch(95.0% 0.000 89.9)"
+        ]
+      },
+      "pen": {
+        "role": "secondary",
+        "displayName": "Ballpoint Blue",
+        "canonical": "#2340b8",
+        "cssVar": "--pen",
+        "theme": "light",
+        "oklch": "oklch(43.5% 0.191 267.0)",
+        "tonalRamp": [
+          "oklch(15.0% 0.191 267.0)",
+          "oklch(26.4% 0.191 267.0)",
+          "oklch(37.9% 0.191 267.0)",
+          "oklch(49.3% 0.191 267.0)",
+          "oklch(60.7% 0.191 267.0)",
+          "oklch(72.1% 0.191 267.0)",
+          "oklch(83.6% 0.191 267.0)",
+          "oklch(95.0% 0.191 267.0)"
+        ]
+      },
+      "err": {
+        "role": "tertiary",
+        "displayName": "Red Correction Pen",
+        "canonical": "#c0251b",
+        "cssVar": "--err",
+        "theme": "light",
+        "oklch": "oklch(52.4% 0.192 29.2)",
+        "tonalRamp": [
+          "oklch(15.0% 0.192 29.2)",
+          "oklch(26.4% 0.192 29.2)",
+          "oklch(37.9% 0.192 29.2)",
+          "oklch(49.3% 0.192 29.2)",
+          "oklch(60.7% 0.192 29.2)",
+          "oklch(72.1% 0.192 29.2)",
+          "oklch(83.6% 0.192 29.2)",
+          "oklch(95.0% 0.192 29.2)"
+        ]
+      },
+      "on-ink": {
+        "role": "neutral",
+        "displayName": "Reversed-Out Paper",
+        "canonical": "#f0efea",
+        "cssVar": "--on-ink",
+        "theme": "light",
+        "oklch": "oklch(95.2% 0.007 97.4)",
+        "tonalRamp": [
+          "oklch(15.0% 0.007 97.4)",
+          "oklch(26.4% 0.007 97.4)",
+          "oklch(37.9% 0.007 97.4)",
+          "oklch(49.3% 0.007 97.4)",
+          "oklch(60.7% 0.007 97.4)",
+          "oklch(72.1% 0.007 97.4)",
+          "oklch(83.6% 0.007 97.4)",
+          "oklch(95.0% 0.007 97.4)"
+        ]
+      },
+      "band": {
+        "role": "neutral",
+        "displayName": "Status-Bar Band",
+        "canonical": "#141414",
+        "cssVar": "--band",
+        "theme": "light",
+        "oklch": "oklch(19.1% 0.000 89.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 89.9)",
+          "oklch(26.4% 0.000 89.9)",
+          "oklch(37.9% 0.000 89.9)",
+          "oklch(49.3% 0.000 89.9)",
+          "oklch(60.7% 0.000 89.9)",
+          "oklch(72.1% 0.000 89.9)",
+          "oklch(83.6% 0.000 89.9)",
+          "oklch(95.0% 0.000 89.9)"
+        ]
+      },
+      "paper-night": {
+        "role": "neutral",
+        "displayName": "Newsprint (night edition)",
+        "canonical": "#121211",
+        "cssVar": "--paper",
+        "theme": "dark",
+        "oklch": "oklch(18.2% 0.002 106.6)",
+        "tonalRamp": [
+          "oklch(15.0% 0.002 106.6)",
+          "oklch(26.4% 0.002 106.6)",
+          "oklch(37.9% 0.002 106.6)",
+          "oklch(49.3% 0.002 106.6)",
+          "oklch(60.7% 0.002 106.6)",
+          "oklch(72.1% 0.002 106.6)",
+          "oklch(83.6% 0.002 106.6)",
+          "oklch(95.0% 0.002 106.6)"
+        ]
+      },
+      "sheet-night": {
+        "role": "neutral",
+        "displayName": "Boxed-Ad Stock (night edition)",
+        "canonical": "#1b1b19",
+        "cssVar": "--sheet",
+        "theme": "dark",
+        "oklch": "oklch(22.1% 0.004 106.7)",
+        "tonalRamp": [
+          "oklch(15.0% 0.004 106.7)",
+          "oklch(26.4% 0.004 106.7)",
+          "oklch(37.9% 0.004 106.7)",
+          "oklch(49.3% 0.004 106.7)",
+          "oklch(60.7% 0.004 106.7)",
+          "oklch(72.1% 0.004 106.7)",
+          "oklch(83.6% 0.004 106.7)",
+          "oklch(95.0% 0.004 106.7)"
+        ]
+      },
+      "ink-night": {
+        "role": "neutral",
+        "displayName": "Press Black (night edition)",
+        "canonical": "#ecebe5",
+        "cssVar": "--ink",
+        "theme": "dark",
+        "oklch": "oklch(93.9% 0.008 98.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.008 98.9)",
+          "oklch(26.4% 0.008 98.9)",
+          "oklch(37.9% 0.008 98.9)",
+          "oklch(49.3% 0.008 98.9)",
+          "oklch(60.7% 0.008 98.9)",
+          "oklch(72.1% 0.008 98.9)",
+          "oklch(83.6% 0.008 98.9)",
+          "oklch(95.0% 0.008 98.9)"
+        ]
+      },
+      "ink-2-night": {
+        "role": "neutral",
+        "displayName": "Worn Ink (night edition)",
+        "canonical": "#c4c3bb",
+        "cssVar": "--ink-2",
+        "theme": "dark",
+        "oklch": "oklch(81.6% 0.011 100.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.011 100.9)",
+          "oklch(26.4% 0.011 100.9)",
+          "oklch(37.9% 0.011 100.9)",
+          "oklch(49.3% 0.011 100.9)",
+          "oklch(60.7% 0.011 100.9)",
+          "oklch(72.1% 0.011 100.9)",
+          "oklch(83.6% 0.011 100.9)",
+          "oklch(95.0% 0.011 100.9)"
+        ]
+      },
+      "muted-night": {
+        "role": "neutral",
+        "displayName": "Faded Ink (night edition)",
+        "canonical": "#a4a39b",
+        "cssVar": "--muted",
+        "theme": "dark",
+        "oklch": "oklch(71.4% 0.011 100.9)",
+        "tonalRamp": [
+          "oklch(15.0% 0.011 100.9)",
+          "oklch(26.4% 0.011 100.9)",
+          "oklch(37.9% 0.011 100.9)",
+          "oklch(49.3% 0.011 100.9)",
+          "oklch(60.7% 0.011 100.9)",
+          "oklch(72.1% 0.011 100.9)",
+          "oklch(83.6% 0.011 100.9)",
+          "oklch(95.0% 0.011 100.9)"
+        ]
+      },
+      "rule-night": {
+        "role": "neutral",
+        "displayName": "Hairline Grey (night edition)",
+        "canonical": "#3b3b37",
+        "cssVar": "--rule",
+        "theme": "dark",
+        "oklch": "oklch(35.1% 0.007 106.7)",
+        "tonalRamp": [
+          "oklch(15.0% 0.007 106.7)",
+          "oklch(26.4% 0.007 106.7)",
+          "oklch(37.9% 0.007 106.7)",
+          "oklch(49.3% 0.007 106.7)",
+          "oklch(60.7% 0.007 106.7)",
+          "oklch(72.1% 0.007 106.7)",
+          "oklch(83.6% 0.007 106.7)",
+          "oklch(95.0% 0.007 106.7)"
+        ]
+      },
+      "field-night": {
+        "role": "neutral",
+        "displayName": "Field Edge (night edition)",
+        "canonical": "#8a897f",
+        "cssVar": "--field",
+        "theme": "dark",
+        "oklch": "oklch(62.8% 0.015 102.2)",
+        "tonalRamp": [
+          "oklch(15.0% 0.015 102.2)",
+          "oklch(26.4% 0.015 102.2)",
+          "oklch(37.9% 0.015 102.2)",
+          "oklch(49.3% 0.015 102.2)",
+          "oklch(60.7% 0.015 102.2)",
+          "oklch(72.1% 0.015 102.2)",
+          "oklch(83.6% 0.015 102.2)",
+          "oklch(95.0% 0.015 102.2)"
+        ]
+      },
+      "hl-night": {
+        "role": "primary",
+        "displayName": "Highlighter Yellow (night edition)",
+        "canonical": "#f2e22c",
+        "cssVar": "--hl",
+        "theme": "dark",
+        "oklch": "oklch(89.8% 0.181 104.0)",
+        "tonalRamp": [
+          "oklch(15.0% 0.181 104.0)",
+          "oklch(26.4% 0.181 104.0)",
+          "oklch(37.9% 0.181 104.0)",
+          "oklch(49.3% 0.181 104.0)",
+          "oklch(60.7% 0.181 104.0)",
+          "oklch(72.1% 0.181 104.0)",
+          "oklch(83.6% 0.181 104.0)",
+          "oklch(95.0% 0.181 104.0)"
+        ]
+      },
+      "pen-night": {
+        "role": "secondary",
+        "displayName": "Ballpoint Blue (night edition)",
+        "canonical": "#9db0ff",
+        "cssVar": "--pen",
+        "theme": "dark",
+        "oklch": "oklch(77.3% 0.115 273.1)",
+        "tonalRamp": [
+          "oklch(15.0% 0.115 273.1)",
+          "oklch(26.4% 0.115 273.1)",
+          "oklch(37.9% 0.115 273.1)",
+          "oklch(49.3% 0.115 273.1)",
+          "oklch(60.7% 0.115 273.1)",
+          "oklch(72.1% 0.115 273.1)",
+          "oklch(83.6% 0.115 273.1)",
+          "oklch(95.0% 0.115 273.1)"
+        ]
+      },
+      "err-night": {
+        "role": "tertiary",
+        "displayName": "Red Correction Pen (night edition)",
+        "canonical": "#ff8a7f",
+        "cssVar": "--err",
+        "theme": "dark",
+        "oklch": "oklch(75.9% 0.144 26.6)",
+        "tonalRamp": [
+          "oklch(15.0% 0.144 26.6)",
+          "oklch(26.4% 0.144 26.6)",
+          "oklch(37.9% 0.144 26.6)",
+          "oklch(49.3% 0.144 26.6)",
+          "oklch(60.7% 0.144 26.6)",
+          "oklch(72.1% 0.144 26.6)",
+          "oklch(83.6% 0.144 26.6)",
+          "oklch(95.0% 0.144 26.6)"
+        ]
+      },
+      "on-ink-night": {
+        "role": "neutral",
+        "displayName": "Reversed-Out Paper (night edition)",
+        "canonical": "#121211",
+        "cssVar": "--on-ink",
+        "theme": "dark",
+        "oklch": "oklch(18.2% 0.002 106.6)",
+        "tonalRamp": [
+          "oklch(15.0% 0.002 106.6)",
+          "oklch(26.4% 0.002 106.6)",
+          "oklch(37.9% 0.002 106.6)",
+          "oklch(49.3% 0.002 106.6)",
+          "oklch(60.7% 0.002 106.6)",
+          "oklch(72.1% 0.002 106.6)",
+          "oklch(83.6% 0.002 106.6)",
+          "oklch(95.0% 0.002 106.6)"
+        ]
+      },
+      "band-night": {
+        "role": "neutral",
+        "displayName": "Status-Bar Band (night edition)",
+        "canonical": "#000000",
+        "cssVar": "--band",
+        "theme": "dark",
+        "oklch": "oklch(0.0% 0.000 0.0)",
+        "tonalRamp": [
+          "oklch(15.0% 0.000 0.0)",
+          "oklch(26.4% 0.000 0.0)",
+          "oklch(37.9% 0.000 0.0)",
+          "oklch(49.3% 0.000 0.0)",
+          "oklch(60.7% 0.000 0.0)",
+          "oklch(72.1% 0.000 0.0)",
+          "oklch(83.6% 0.000 0.0)",
+          "oklch(95.0% 0.000 0.0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The masthead name only (64px on sign-in, 28px in the setup top bar). Paired with 'accommodation' at 750, 0.78em, wdth 72."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The column head, TO LET. Uppercase."
+      },
+      "headline-question": {
+        "displayName": "Headline, question",
+        "purpose": "One question per screen in the guided setup. Uppercase."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section heads and collapsible-section summaries. Uppercase. 27px in a box that asks for something."
+      },
+      "price": {
+        "displayName": "Price",
+        "purpose": "The first thing an ad says. 25-26px in a line ad, setup preview or map card; 19px in a compact map card."
+      },
+      "distance": {
+        "displayName": "Distance",
+        "purpose": "The km figure, right-aligned opposite the price; 18px in a line ad."
+      },
+      "choice": {
+        "displayName": "Choice",
+        "purpose": "A guided-setup answer's title."
+      },
+      "ad-title": {
+        "displayName": "Ad title",
+        "purpose": "The listing's own title; two-line clamp at 15px in a line ad."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Reading text. Paragraphs wrap pretty, headings balance."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "Hints, notices, route lines, key-value rows; usually Worn Ink."
+      },
+      "subhead": {
+        "displayName": "Subhead",
+        "purpose": "A sub-section inside a panel. Uppercase."
+      },
+      "action": {
+        "displayName": "Action",
+        "purpose": "Every button, tab and segmented control. Uppercase. 15px standalone, 16px Open bar, 17px wide setup button, 12.5px tab bar."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Meta line, tally, edition line, answer labels. Uppercase."
+      },
+      "badge": {
+        "displayName": "Badge",
+        "purpose": "Marks set beside an ad. Uppercase; NEW at 900."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 2px 10px rgb(20 20 20 / 0.18), 0 1px 2px rgb(20 20 20 / 0.12)",
+        "valueDark": "0 2px 12px rgb(0 0 0 / 0.6), 0 1px 2px rgb(0 0 0 / 0.5)",
+        "cssVar": "--shadow",
+        "purpose": "Things floating over the page: toast, refresh pill, Home Screen pointer, map key panel, hover card, map note."
+      },
+      {
+        "name": "pin",
+        "value": "0 2px 6px rgb(0 0 0 / 0.3)",
+        "purpose": "Price pins on the map."
+      },
+      {
+        "name": "pin-soft",
+        "value": "0 1px 4px rgb(0 0 0 / 0.3)",
+        "purpose": "Approximate-area chips on the map (the campus star takes 0.4)."
+      },
+      {
+        "name": "sheet-rise",
+        "value": "0 -6px 24px rgb(0 0 0 / 0.35)",
+        "purpose": "The bottom sheet raised by tapping a pin on a phone, over a 50% black backdrop."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ink-draw",
+        "value": "cubic-bezier(0.22, 0.8, 0.24, 1)",
+        "purpose": "The pen ring drawing itself round an alert's price (0.75s), and the setup progress bar (0.3s)."
+      },
+      {
+        "name": "strike",
+        "value": "0.26s cubic-bezier(0.3, 0.7, 0.2, 1)",
+        "purpose": "The pen strike-out across an ad put away as Not a fit or No longer available, before it moves."
+      },
+      {
+        "name": "press",
+        "value": "translateY(1px)",
+        "purpose": "Buttons, ad actions and setup choices nudge down on press."
+      },
+      {
+        "name": "nudge",
+        "value": "1.4s ease-in-out infinite, 6px",
+        "purpose": "The Home Screen pointer bobbing toward Safari's toolbar."
+      },
+      {
+        "name": "pulse",
+        "value": "1.6s ease-in-out infinite, to 0.25 opacity",
+        "purpose": "The ballpoint waiting dot in setup."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "Ring, strike, pointer and dot stand still; the ring and strike are simply there."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "ad-side-by-side",
+        "value": "640px",
+        "purpose": "Display ad sets its photo beside the copy (44%); line-ad thumbnail 96px to 132px."
+      },
+      {
+        "name": "column-centred",
+        "value": "760px",
+        "purpose": "Tab bar centres (tabs max 180px); map boxed in ink instead of bleeding."
+      },
+      {
+        "name": "column-max",
+        "value": "720px",
+        "purpose": "The column's maximum width; 1280px in map view; 560px in the guided setup."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The way on: ink filled, reversed out, condensed capitals. Every primary action.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Turn on alerts</button>",
+      "css": ".ds-btn-primary { min-height: 46px; padding: 11px 18px; border: 1.5px solid var(--ink, #141414); border-radius: 2px; cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; line-height: 1.2; text-transform: uppercase; background: var(--ink, #141414); color: var(--on-ink, #f0efea); } .ds-btn-primary:hover { background: color-mix(in srgb, var(--ink, #141414) 86%, var(--paper, #f0efea)); } .ds-btn-primary:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:disabled { opacity: 0.45; cursor: default; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A quieter choice beside a primary: transparent, ink edge, ink type.",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\">Send a test</button>",
+      "css": ".ds-btn-secondary { min-height: 46px; padding: 11px 18px; border: 1.5px solid var(--ink, #141414); border-radius: 2px; cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; line-height: 1.2; text-transform: uppercase; background: transparent; color: var(--ink, #141414); } .ds-btn-secondary:hover { background: var(--sheet, #fbfbf8); } .ds-btn-secondary:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; } .ds-btn-secondary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Remove Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "The only red control: a secondary button in the red correction pen, for removing an account.",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\">Remove</button>",
+      "css": ".ds-btn-danger { min-height: 46px; padding: 11px 18px; border: 1.5px solid var(--ink, #141414); border-radius: 2px; cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; line-height: 1.2; text-transform: uppercase; background: transparent; color: var(--err, #c0251b); border-color: var(--err, #c0251b); } .ds-btn-danger:hover { background: var(--sheet, #fbfbf8); } .ds-btn-danger:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; } .ds-btn-danger:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A field on the brighter stock with an edge dark enough to find (3:1), a ballpoint caret and focus ring.",
+      "html": "<label class=\"ds-label\" for=\"ds-name\">Their name</label><input class=\"ds-input\" id=\"ds-name\" type=\"text\" placeholder=\"e.g. Aoife\"><div class=\"ds-hint\">They sign in with the link it gives you.</div>",
+      "css": ".ds-label { display: block; margin: 0 0 5px; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-size: 14px; font-weight: 700; color: var(--ink, #141414); } .ds-input { width: 100%; max-width: 360px; min-height: 46px; padding: 10px 12px; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-size: 16px; color: var(--ink, #141414); background: var(--sheet, #fbfbf8); border: 1.5px solid var(--field, #77766e); border-radius: 2px; caret-color: var(--pen, #2340b8); } .ds-input::placeholder { color: var(--muted, #5f5f58); opacity: 1; } .ds-input:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; } .ds-hint { margin-top: 4px; color: var(--ink-2, #45453f); font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-size: 14px; line-height: 1.45; }"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "nav-tabs",
+      "description": "Ruled at the foot of the page; the current tab in ink under a 5px bar, never by colour alone.",
+      "html": "<nav class=\"ds-tabs\" aria-label=\"Sections\"><button class=\"ds-tab ds-tab-active\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"1.5\"/><path d=\"M8 8h8M8 12h8M8 16h5\"/></svg><span>Matches <span class=\"ds-count\">7</span></span></button><button class=\"ds-tab\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 7h9M17 7h3M4 17h3M11 17h9\"/><circle cx=\"15\" cy=\"7\" r=\"2\"/><circle cx=\"9\" cy=\"17\" r=\"2\"/></svg><span>Settings</span></button><button class=\"ds-tab\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z\"/><path d=\"M10 21h4\"/></svg><span>Alerts</span></button><button class=\"ds-tab\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5\"/></svg><span>Users</span></button></nav>",
+      "css": ".ds-tabs { display: flex; max-width: 480px; background: var(--paper, #f0efea); border-top: 2px solid var(--ink, #141414); } .ds-tab { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 56px; padding: 7px 2px 8px; border: 0; background: none; color: var(--muted, #5f5f58); cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 12.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; } .ds-tab > span { display: inline-flex; align-items: center; gap: 4px; } .ds-tab:hover { color: var(--ink, #141414); } .ds-tab:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; outline-offset: -4px; } .ds-tab-active { color: var(--ink, #141414); } .ds-tab-active::before { content: \"\"; position: absolute; top: -2px; left: 22%; right: 22%; height: 5px; background: var(--ink, #141414); } .ds-count { min-width: 18px; padding: 0 3px; border: 1px solid currentColor; font-size: 11px; line-height: 15px; letter-spacing: 0; font-variant-numeric: tabular-nums; } .ds-tab-active .ds-count { background: var(--ink, #141414); color: var(--on-ink, #f0efea); border-color: var(--ink, #141414); }"
+    },
+    {
+      "name": "List / Map Control",
+      "kind": "nav",
+      "refersTo": "segmented",
+      "description": "Two type-set tabs in a ruled box beside the column head; the one in use is reversed out of ink.",
+      "html": "<div class=\"ds-seg\" role=\"group\" aria-label=\"Matches view\"><button class=\"ds-seg-active\" aria-pressed=\"true\">List</button><button aria-pressed=\"false\">Map</button></div>",
+      "css": ".ds-seg { display: inline-flex; border: 1.5px solid var(--ink, #141414); border-radius: 2px; overflow: hidden; } .ds-seg button { min-height: 44px; padding: 0 16px; border: 0; background: transparent; color: var(--ink, #141414); cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 14px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; } .ds-seg button + button { border-left: 1.5px solid var(--ink, #141414); } .ds-seg button:hover:not(.ds-seg-active) { background: var(--sheet, #fbfbf8); } .ds-seg button:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; outline-offset: -4px; } .ds-seg .ds-seg-active { background: var(--ink, #141414); color: var(--on-ink, #f0efea); }"
+    },
+    {
+      "name": "Badges",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Marks set beside an ad: facts in a solid box, anything to check in a dashed one, NEW in highlighter, seen as a ballpoint tick.",
+      "html": "<div class=\"ds-badges\"><span class=\"ds-badge ds-badge-new\">New</span><span class=\"ds-badge\">Listed 27 min ago</span><span class=\"ds-badge ds-badge-warn\">Check distance</span><span class=\"ds-badge ds-badge-seen\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg>Seen</span></div>",
+      "css": ".ds-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; } .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--ink-2, #45453f); background: transparent; color: var(--ink, #141414); font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 12.5px; font-weight: 750; letter-spacing: 0.05em; line-height: 1.35; text-transform: uppercase; } .ds-badge-new { border-color: transparent; background: var(--hl, #f7e933); color: var(--hl-ink, #141414); transform: rotate(-1.5deg); font-weight: 900; } .ds-badge-warn { border: 1.5px dashed var(--ink, #141414); } .ds-badge-seen { padding-left: 0; border-color: transparent; color: var(--pen, #2340b8); } .ds-badge-seen svg { stroke-width: 3; }"
+    },
+    {
+      "name": "Display Ad",
+      "kind": "card",
+      "refersTo": "ad-display",
+      "description": "An ad not yet marked: photo, price highlighted if new against the distance, title, meta, route, marks, then the Open bar in ink over the two quiet choices.",
+      "html": "<article class=\"ds-ad\"><div class=\"ds-ad-photo\"></div><div class=\"ds-ad-body\"><div class=\"ds-lead\"><div class=\"ds-price ds-fresh\">€725/mo</div><div class=\"ds-near\">2.0 km<span class=\"ds-near-note\">5 min to UL by bus</span></div></div><div class=\"ds-ad-title\">Ensuite room, Groody Hill, Co. Limerick</div><div class=\"ds-meta\">1 bed · Apartment · UL Accommodation</div><div class=\"ds-transit\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"5\" y=\"3\" width=\"14\" height=\"15\" rx=\"3\"/><path d=\"M5 11h14M8 21v-3M16 21v-3\"/><path d=\"M8.5 14.5h.01M15.5 14.5h.01\" stroke-width=\"2.6\"/></svg><span>310 · Brookfield Hl, 330 m · 5 min to UL · 35 a day</span></div><div class=\"ds-badges\"><span class=\"ds-badge ds-badge-new\">New</span><span class=\"ds-badge\">Listed 7 h ago</span></div></div><div class=\"ds-actions\"><a class=\"ds-act ds-act-open\" href=\"#\">Open on UL Accommodation <svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/></svg></a><button class=\"ds-act\" type=\"button\">Not a fit</button><button class=\"ds-act\" type=\"button\">More</button></div></article>",
+      "css": ".ds-ad { display: block; max-width: 420px; background: var(--sheet, #fbfbf8); color: var(--ink, #141414); border: 1px solid var(--ink, #141414); font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-size: 16px; line-height: 1.45; } .ds-ad-photo { aspect-ratio: 2 / 1; background: var(--rule, #cfcec6); border-bottom: 1px solid var(--ink, #141414); } .ds-ad-body { padding: 12px 14px 13px; } .ds-lead { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 2px 14px; } .ds-price { font-stretch: 68%; font-weight: 850; font-size: 34px; line-height: 0.95; letter-spacing: -0.01em; font-variant-numeric: tabular-nums lining-nums; } .ds-price.ds-fresh { margin-left: -4px; padding: 0 4px; color: var(--hl-ink, #141414); background: linear-gradient(97deg, transparent 0 1.5%, var(--hl, #f7e933) 3% 97%, transparent 98.5%) 0 72% / 100% 62% no-repeat; } .ds-near { margin-left: auto; text-align: right; font-stretch: 72%; font-weight: 800; font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; } .ds-near-note { display: block; margin-top: 3px; color: var(--ink, #141414); font-stretch: 90%; font-size: 13px; font-weight: 650; line-height: 1.2; } .ds-ad-title { margin: 9px 0 2px; font-size: 16px; font-weight: 600; line-height: 1.3; } .ds-meta { color: var(--ink-2, #45453f); font-stretch: 85%; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; } .ds-transit { display: flex; align-items: flex-start; gap: 7px; margin-top: 7px; font-size: 14px; line-height: 1.35; } .ds-transit svg { flex: none; margin-top: 1px; } .ds-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 11px; } .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--ink-2, #45453f); color: var(--ink, #141414); font-stretch: 80%; font-size: 12.5px; font-weight: 750; letter-spacing: 0.05em; line-height: 1.35; text-transform: uppercase; } .ds-badge-new { border-color: transparent; background: var(--hl, #f7e933); color: var(--hl-ink, #141414); transform: rotate(-1.5deg); font-weight: 900; } .ds-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule, #cfcec6); border-top: 1px solid var(--ink, #141414); } .ds-act { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 10px 8px; border: 0; background: var(--sheet, #fbfbf8); color: var(--ink, #141414); text-decoration: none; cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 14px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; } .ds-act-open { grid-column: 1 / -1; min-height: 52px; background: var(--ink, #141414); color: var(--on-ink, #f0efea); font-size: 16px; } .ds-act:hover { background: var(--paper, #f0efea); } .ds-act-open:hover { background: color-mix(in srgb, var(--ink, #141414) 86%, var(--paper, #f0efea)); } .ds-act:active { transform: translateY(1px); } .ds-act:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; outline-offset: -4px; }"
+    },
+    {
+      "name": "Line Ad",
+      "kind": "card",
+      "refersTo": "ad-line",
+      "description": "Any ad with a mark gives up its display space: a 96px thumbnail, smaller figures, and its three actions on one ruled row (Open takes its own row when the site name is over 10 characters).",
+      "html": "<article class=\"ds-ad ds-line\"><div class=\"ds-ad-photo\"></div><div class=\"ds-ad-body\"><div class=\"ds-lead\"><div class=\"ds-price\">€600/mo</div><div class=\"ds-near\">0.9 km</div></div><div class=\"ds-ad-title\">Single room, Kilmurry Village, Castletroy, Co. Limerick</div><div class=\"ds-meta\">1 bed · House · Daft.ie</div><div class=\"ds-badges\"><span class=\"ds-badge\">Listed 4 h ago</span><span class=\"ds-badge ds-badge-seen\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg>Seen</span></div></div><div class=\"ds-actions\"><a class=\"ds-act ds-act-open\" href=\"#\">Open on Daft.ie <svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/></svg></a><button class=\"ds-act\" type=\"button\">Not a fit</button><button class=\"ds-act\" type=\"button\">More</button></div></article>",
+      "css": ".ds-ad { display: block; max-width: 420px; background: var(--sheet, #fbfbf8); color: var(--ink, #141414); border: 1px solid var(--ink, #141414); font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-size: 16px; line-height: 1.45; } .ds-ad-photo { aspect-ratio: 2 / 1; background: var(--rule, #cfcec6); border-bottom: 1px solid var(--ink, #141414); } .ds-ad-body { padding: 12px 14px 13px; } .ds-lead { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 2px 14px; } .ds-price { font-stretch: 68%; font-weight: 850; font-size: 34px; line-height: 0.95; letter-spacing: -0.01em; font-variant-numeric: tabular-nums lining-nums; } .ds-price.ds-fresh { margin-left: -4px; padding: 0 4px; color: var(--hl-ink, #141414); background: linear-gradient(97deg, transparent 0 1.5%, var(--hl, #f7e933) 3% 97%, transparent 98.5%) 0 72% / 100% 62% no-repeat; } .ds-near { margin-left: auto; text-align: right; font-stretch: 72%; font-weight: 800; font-size: 23px; line-height: 1; font-variant-numeric: tabular-nums; } .ds-near-note { display: block; margin-top: 3px; color: var(--ink, #141414); font-stretch: 90%; font-size: 13px; font-weight: 650; line-height: 1.2; } .ds-ad-title { margin: 9px 0 2px; font-size: 16px; font-weight: 600; line-height: 1.3; } .ds-meta { color: var(--ink-2, #45453f); font-stretch: 85%; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; } .ds-transit { display: flex; align-items: flex-start; gap: 7px; margin-top: 7px; font-size: 14px; line-height: 1.35; } .ds-transit svg { flex: none; margin-top: 1px; } .ds-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 11px; } .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--ink-2, #45453f); color: var(--ink, #141414); font-stretch: 80%; font-size: 12.5px; font-weight: 750; letter-spacing: 0.05em; line-height: 1.35; text-transform: uppercase; } .ds-badge-new { border-color: transparent; background: var(--hl, #f7e933); color: var(--hl-ink, #141414); transform: rotate(-1.5deg); font-weight: 900; } .ds-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule, #cfcec6); border-top: 1px solid var(--ink, #141414); } .ds-act { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 10px 8px; border: 0; background: var(--sheet, #fbfbf8); color: var(--ink, #141414); text-decoration: none; cursor: pointer; font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-stretch: 80%; font-size: 14px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; } .ds-act-open { grid-column: 1 / -1; min-height: 52px; background: var(--ink, #141414); color: var(--on-ink, #f0efea); font-size: 16px; } .ds-act:hover { background: var(--paper, #f0efea); } .ds-act-open:hover { background: color-mix(in srgb, var(--ink, #141414) 86%, var(--paper, #f0efea)); } .ds-act:active { transform: translateY(1px); } .ds-act:focus-visible { outline: 3px solid var(--pen, #2340b8); outline-offset: 2px; outline-offset: -4px; } .ds-line { display: grid; grid-template-columns: 96px minmax(0, 1fr); } .ds-line > .ds-ad-photo { grid-row: 1; aspect-ratio: auto; min-height: 104px; border-bottom: 0; border-right: 1px solid var(--ink, #141414); } .ds-line > .ds-ad-body { grid-column: 2; padding: 10px 12px 11px; } .ds-line > .ds-actions { grid-column: 1 / -1; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); } .ds-line .ds-price { font-size: 25px; color: var(--ink-2, #45453f); } .ds-line .ds-near { font-size: 18px; } .ds-line .ds-ad-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 15px; } .ds-line .ds-badges { margin-top: 8px; } .ds-line .ds-act { min-height: 44px; padding: 8px 6px; font-size: 13px; letter-spacing: 0.04em; } .ds-line .ds-act-open { grid-column: auto; min-height: 44px; background: var(--sheet, #fbfbf8); color: var(--ink, #141414); font-size: 13px; } .ds-line .ds-act-open:hover { background: var(--paper, #f0efea); } .ds-badge-seen { padding-left: 0; border-color: transparent; color: var(--pen, #2340b8); } .ds-badge-seen svg { stroke-width: 3; }"
+    },
+    {
+      "name": "Sources Notice",
+      "kind": "custom",
+      "refersTo": "notice",
+      "description": "When the sites were last read, in one line with an icon: solid hairline when all read, dashed box when partial or late, dotted box when not being checked.",
+      "html": "<div class=\"ds-strip\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg><div><div class=\"ds-strip-head\">Watching 4 sites · last check 15 min ago</div></div></div><div class=\"ds-strip ds-strip-partial\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 4l9.5 16h-19z\"/><path d=\"M12 10v4M12 17v.01\"/></svg><div><div class=\"ds-strip-head\">Watching 3 of 4 sites · last check 12 min ago</div><div class=\"ds-strip-issue\">Some sites aren&#39;t responding, so you may miss a few places.</div></div></div><div class=\"ds-strip ds-strip-paused\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M10 9v6M14 9v6\"/></svg><div><div class=\"ds-strip-head\">Waiting for the first check</div></div></div>",
+      "css": ".ds-strip { display: flex; align-items: flex-start; gap: 8px; max-width: 420px; margin: 0; padding: 9px 0; border-bottom: 1px solid var(--rule, #cfcec6); color: var(--ink, #141414); font-family: var(--font, \"Archivo\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif); font-size: 14px; line-height: 1.45; } .ds-strip svg { flex: none; margin-top: 3px; } .ds-strip-head { font-weight: 650; } .ds-strip-issue { color: var(--ink-2, #45453f); } .ds-strip-partial { margin-top: 12px; padding: 9px 12px; border: 1.5px dashed var(--ink, #141414); } .ds-strip-paused { margin-top: 12px; padding: 9px 12px; border: 1.5px dotted var(--ink-2, #45453f); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Classifieds",
+    "overview": "ASAP accommodation is your own To Let column, reprinted every 30 minutes, that you mark up the way you would mark up the paper. The page is newsprint, the type is black ink, and the column is held together by rules rather than by cards: a heavy rule opens every section, a box of ink holds every ad, and hairlines divide the rows inside a box. Archivo, set heavy and condensed, does the work of headlines, prices and marks; at full width it is the reading text.\n\nColour is not decoration here. It lives only in the listing photos, the map, and two marks a reader makes with their own hand: the yellow highlighter, which means new, and the blue ballpoint, which means yours (circled, ticked, struck out, focused). One red pen is kept for correction. Everything else is ink on paper, so the eye goes straight to the price, the distance, and whatever has been marked. Line style carries certainty: a solid line is something known, a dashed one is approximate or unchecked. Dark mode is a night edition: ink and paper trade places and the marks stay marks.\n\nThe system is dense in the way a classifieds page is dense: a phone-width column of ads, each judged on one line (price left, distance right), with the way on in a bar of ink underneath. It refuses the property-portal card stack: rounded white cards, brand-colour buttons and a system font.",
+    "keyCharacteristics": [
+      "Newsprint ground (paper), a shade-brighter stock for boxes (sheet), black ink for type, rules and actions.",
+      "Two marks only: highlighter yellow for new, ballpoint blue for your own marks and keyboard focus; a red pen for errors and Remove.",
+      "One variable family, Archivo, whose width axis (62% to 100%) is the hierarchy.",
+      "Square-cut boxes; controls just off the knife (2px); round only for the campus mark and the waiting dot.",
+      "Solid means known, dashed means approximate or unchecked, dotted means not being checked right now.",
+      "Flat paper: depth is ruled, not shadowed; only things that float over the page cast a shadow."
+    ],
+    "rules": [
+      {
+        "name": "The Two Marks Rule",
+        "body": "Colour lives only in the photos, the map and the two marks. Yellow means new; blue means yours. No other hue enters the paper, except the red pen.",
+        "section": "colors"
+      },
+      {
+        "name": "The Red Pen Rule",
+        "body": "Red is for correction only: an error message or the destructive Remove button. Never a warning, never a badge, never emphasis.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Acts Rule",
+        "body": "The way on is always ink. Primary buttons and an ad's Open bar are filled with Press Black and reversed out; a mark colour never fills a call to action.",
+        "section": "colors"
+      },
+      {
+        "name": "The Width Is Rank Rule",
+        "body": "Width sets rank before size does: the narrower the cut, the louder the role. Heads and prices 62–68%, figures 72%, labels and actions 75–85%, reading text 100%. Never wider than 100%.",
+        "section": "typography"
+      },
+      {
+        "name": "The Condensed Capitals Rule",
+        "body": "Anything that labels, acts or marks is condensed uppercase with positive tracking (0.03–0.06em). Anything that is read (titles, sentences, notices, hints) is sentence case at full width.",
+        "section": "typography"
+      },
+      {
+        "name": "The Figures In A Column Rule",
+        "body": "Prices, distances, counts and tallies use tabular figures, so a column of ads lines up like a printed one. Synthesised bold and italic are off (`font-synthesis: none`).",
+        "section": "typography"
+      },
+      {
+        "name": "The Rule, Not Shadow Rule",
+        "body": "Anything that sits on the page (an ad, a panel, a notice, a field, a tab bar) is ruled, never shadowed. A shadow means the thing is floating over the page and will go away.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Solid Is Known Rule",
+        "body": "A solid line is something known; a dashed line is approximate or unchecked; a dotted one is not being checked. The search radius is drawn solid because it is exact. Never dash something exact, never draw a guess solid.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Knife Rule",
+        "body": "Nothing on the paper is rounder than 2px. A rounded box is a portal card, not an ad.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do set the page on Newsprint (#f0efea) and box every ad, notice and field on Boxed-Ad Stock (#fbfbf8) inside an ink edge: 1px for an ad, 3px to open a section.",
+      "Do keep Highlighter Yellow (#f7e933) for what is new and the few things you would go over with a highlighter, always with black ink on it, in both editions.",
+      "Do keep Ballpoint Blue (#2340b8) for the reader's own marks and the one focus ring (3px, 2px offset; inset -4px inside clipped cells and tabs).",
+      "Do keep the red pen (#c0251b) to error messages and the Remove button, so a failure can be told apart at a glance.",
+      "Do dash what is approximate or unchecked (1.5px) and draw what is exact solid, the search radius included.",
+      "Do carry every state in an icon and words as well as line style; colour alone never says anything.",
+      "Do set heads and prices narrow and heavy (wdth 62–68, 850–900) and labels and actions in condensed capitals (wdth 75–85, 0.05–0.06em); keep reading text at 100%.",
+      "Do set prices, distances and counts in tabular figures.",
+      "Do run an unmarked ad as a display ad and any ad with a mark as a line ad, its three actions on one ruled row unless the site's name is longer than 10 characters.",
+      "Do keep the alerts notice above the column a plain notice: sentence case, full width, 16px, 1px box.",
+      "Do use the drawn plus on every disclosure.",
+      "Do give every control a 44px target, and let the pen ring, the strike and the pointer sit still under reduced motion."
+    ],
+    "donts": [
+      "Don't build the property-portal card stack: rounded white cards, brand-colour buttons, a system font.",
+      "Don't add a colour beyond the highlighter, the ballpoint and the red pen; colour lives only in photos, the map and those marks.",
+      "Don't fill a call to action with yellow or blue; the way on is ink, reversed out.",
+      "Don't use red for warnings, badges or emphasis; a \"check …\" is a dashed box, not a red one.",
+      "Don't round anything on the paper past 2px, and don't round ads, badges or notices at all.",
+      "Don't put a shadow on anything that sits on the page; only the toast, the pointer, the refresh pill and the map's floating pieces cast one.",
+      "Don't dash anything exact, or draw a guess with a solid line.",
+      "Don't set Archivo wider than 100%, or let the browser synthesise bold or italic.",
+      "Don't turn the alerts notice above the column into a headline.",
+      "Don't use the browser's disclosure triangle, or a character as an icon; draw icons on the 24px grid with 2px round strokes.",
+      "Don't colour the map's streets; tiles stay greyscale so the prices, routes and marks carry the colour."
+    ]
+  }
+}
