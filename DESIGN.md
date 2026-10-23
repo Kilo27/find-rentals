@@ -412,7 +412,7 @@ Type-set and blunt: condensed capitals in a ruled box.
 ### Ads (signature component)
 The column is made of two kinds of ad, as a paper's classifieds are.
 - **Display ad** (anything not yet marked): a 1px ink box on sheet. Photo across the top at 2:1 with an ink rule under it; then the lead line (price left, distance right with its note under it, figures tabular); the title; the meta line in condensed capitals; up to four route lines, each with its mode icon; the badges. Under the copy, the way on fills a 52px bar of ink ("Open on <site>" with the external icon), and "Not a fit" and "More" share a ruled row beneath it (1px hairline gaps). At 640px and up the photo moves beside the copy.
-- **Line ad** (any ad with a mark: seen, not a fit, no longer available): gives up its display space and keeps a 96px thumbnail (132px from 640px). Price drops to 25px, distance to 18px, the title clamps to two lines. Its three actions share one ruled row (Open 1.6fr, Not a fit 1fr, More 1fr) and Open is no longer filled with ink. If the site's name is longer than 10 characters, or More is open, Open takes a row of its own and the rest share the row below.
+- **Line ad** (any ad with a mark: seen, not a fit, no longer available): gives up its display space and keeps a 96px thumbnail (132px from 640px). Price drops to 25px, distance to 18px, the title clamps to two lines. Its three actions share one ruled row (Open 1.6fr, Not a fit 1fr, More 1fr) and Open is no longer filled with ink. If the site's name is longer than 7 characters (anything beyond Daft.ie and Rent.ie), on a screen narrower than 375px, or while More is open, Open takes a row of its own and the rest share the row below.
 - **New:** the price is gone over with the highlighter (black ink on yellow in both editions) and the NEW badge leads the marks.
 - **Arrived from an alert:** the price is circled in ballpoint; the ring draws itself once in 0.75s (`cubic-bezier(0.22, 0.8, 0.24, 1)`) and is simply there under reduced motion.
 - **Put away** (Not a fit, No longer available): struck through in pen before it moves (0.26s, `cubic-bezier(0.3, 0.7, 0.2, 1)`), then settles as a line ad with the strike across the price, the title in Worn Ink and the photo greyscale at 55%. A put-away ad's only action is the one that undoes it ("Restore", "Still available"), across the full row in ballpoint.
@@ -479,7 +479,7 @@ An ink slip at the foot, above the tabs (2px corners, the Float shadow, max 480p
 - **Do** carry every state in an icon and words as well as line style; colour alone never says anything.
 - **Do** set heads and prices narrow and heavy (wdth 62–68, 850–900) and labels and actions in condensed capitals (wdth 75–85, 0.05–0.06em); keep reading text at 100%.
 - **Do** set prices, distances and counts in tabular figures.
-- **Do** run an unmarked ad as a display ad and any ad with a mark as a line ad, its three actions on one ruled row unless the site's name is longer than 10 characters.
+- **Do** run an unmarked ad as a display ad and any ad with a mark as a line ad, its three actions on one ruled row unless the site's name is longer than 7 characters or the screen is narrower than 375px.
 - **Do** keep the alerts notice above the column a plain notice: sentence case, full width, 16px, 1px box.
 - **Do** use the drawn plus on every disclosure.
 - **Do** give every control a 44px target, and let the pen ring, the strike and the pointer sit still under reduced motion.
