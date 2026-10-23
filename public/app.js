@@ -1010,7 +1010,9 @@ function renderCard(m) {
   // The admin viewing as someone can open a listing but can't put it away or mark it for them.
   const viewing = Boolean(state.viewingAs);
   // A place not yet looked at runs as a display ad, photo across the top; once it has a mark it becomes a line ad.
-  const cls = ["card", m.review, m.review ? "line" : null, d.isNew ? "fresh" : null, m.id === arrivedId ? "arrived" : null].filter(Boolean).join(" ");
+  // A line ad's actions share one row, unless the site's name is too long for "Open on …" to fit a third of it.
+  const longSource = (m.sourceLabel ?? "").length > 10;
+  const cls = ["card", m.review, m.review ? "line" : null, longSource ? "long-src" : null, d.isNew ? "fresh" : null, m.id === arrivedId ? "arrived" : null].filter(Boolean).join(" ");
   const lead = leadRow(d);
   // The listing an alert pointed at has its price circled in pen.
   if (m.id === arrivedId) lead.querySelector(".price")?.append(penRing());

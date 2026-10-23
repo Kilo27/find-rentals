@@ -208,7 +208,8 @@ main { padding: 4px 16px 28px; }
 .card.line .badges { margin-top: 8px; }
 /* A line ad's three actions share one ruled row; opening More gives them back a row each. */
 .card.line .actions { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); }
-.card.line .actions:has(.extra) { grid-template-columns: 1fr 1fr; }
+.card.line .actions:has(.extra), .card.line.long-src .actions { grid-template-columns: 1fr 1fr; }
+.card.line.long-src .act.open { grid-column: 1 / -1; }
 .card.line .act { min-height: 44px; padding: 8px 6px; font-size: 13px; letter-spacing: 0.04em; }
 .card.line .act.open { grid-column: auto; min-height: 44px; background: var(--sheet); color: var(--ink); font-size: 13px; }
 .card.line .actions:has(.extra) .act.open, .card.line .act.restore { grid-column: 1 / -1; }
