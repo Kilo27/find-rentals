@@ -307,9 +307,9 @@ export function createMapView({ api, onShowList, onOpened }) {
   function drawBackdrop(config) {
     layers.backdrop.clearLayers();
     const { lat, lng, label } = config.center;
-    radiusCircle = L.circle([lat, lng], { radius: config.radiusKm * 1000, color: COLOURS.radius, weight: 2, dashArray: "8 8", fill: false, interactive: false, className: "radius-ring", pane: "backdrop" }).addTo(layers.backdrop);
+    radiusCircle = L.circle([lat, lng], { radius: config.radiusKm * 1000, color: COLOURS.radius, weight: 2, fill: false, interactive: false, className: "radius-ring", pane: "backdrop" }).addTo(layers.backdrop);
     const html = h("div", { class: "campus-pin" }, h("span", { class: "star" }, icon("star", 16)), h("span", { class: "lbl" }, label)).outerHTML;
-    L.marker([lat, lng], { icon: L.divIcon({ className: "pin-wrap", html, iconSize: [0, 0], iconAnchor: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(layers.backdrop);
+    L.marker([lat, lng], { icon: L.divIcon({ className: "pin-wrap", html, iconSize: [0, 0], iconAnchor: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(layers.backdrop);
   }
 
   function drawCampus(polygons) {

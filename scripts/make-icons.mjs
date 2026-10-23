@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import zlib from "node:zlib";
 
-// The Home Screen icon: a column of ads in newsprint on ink, one line gone over with the highlighter, as the app marks
+// The Home Screen icon: a column of ads in newsprint on ink, one of them gone over with the highlighter, as the app marks
 // what's new. Everything sits inside the middle 80%, so Android can crop it to any shape (the icon is also "maskable").
 const INK = [20, 20, 20];
 const PAPER = [240, 239, 234];
@@ -16,18 +16,14 @@ const LINES = [
   { y: 0.69, to: 0.55 },
 ];
 
-// A line of type: a bar with round ends.
-function onLine(x, y, line) {
-  const dx = x < LEFT ? LEFT - x : x > line.to ? x - line.to : 0;
-  const dy = y - line.y;
-  return dx * dx + dy * dy <= LINE * LINE;
-}
+// A line of type: a square-cut bar, like the rules of the column.
+const onLine = (x, y, line) => x >= LEFT && x <= line.to && Math.abs(y - line.y) <= LINE;
 
 // The highlighter's stroke: a band leaning forward and climbing a little to the right, as a hand draws it.
 function inSwipe(x, y) {
   const rise = (x - 0.2) * 0.04;
-  const top = 0.388 - rise;
-  const bottom = 0.514 - rise;
+  const top = 0.408 - rise;
+  const bottom = 0.494 - rise;
   if (y < top || y > bottom) return false;
   // The chisel tip leaves slightly slanted ends.
   const lean = (bottom - y) * 0.1;
@@ -35,8 +31,6 @@ function inSwipe(x, y) {
 }
 
 function colourAt(x, y) {
-  const marked = LINES.find((l) => l.marked);
-  if (onLine(x, y, marked)) return INK;
   if (inSwipe(x, y)) return HIGHLIGHT;
   if (LINES.some((l) => !l.marked && onLine(x, y, l))) return PAPER;
   return INK;

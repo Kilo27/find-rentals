@@ -952,15 +952,15 @@ function renderAlertsCard() {
     "Not now",
   );
   if (mode === "install") {
-    return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Get alerts on your iPhone"), h("p", {}, "ASAP accommodation can only send alerts once it is on your Home Screen."), installSteps(), h("div", { class: "hint" }, "Needs iOS 16.4 or later."), notNow);
+    return h("section", { class: "panel setup notice", "aria-label": "Get alerts" }, h("h2", {}, icon("bell"), "Get alerts on your iPhone"), h("p", {}, "ASAP accommodation can only send alerts once it is on your Home Screen."), installSteps(), h("div", { class: "hint" }, "Needs iOS 16.4 or later."), notNow);
   }
   if (mode === "blocked") {
-    return h("section", { class: "panel setup", "aria-label": "Get alerts" }, h("h2", {}, "Alerts are blocked on this device"), blockedSteps(), notNow);
+    return h("section", { class: "panel setup notice", "aria-label": "Get alerts" }, h("h2", {}, icon("alert"), "Alerts are blocked on this device"), blockedSteps(), notNow);
   }
   return h(
     "section",
-    { class: "panel setup", "aria-label": "Get alerts" },
-    h("h2", {}, "Turn on alerts"),
+    { class: "panel setup notice", "aria-label": "Get alerts" },
+    h("h2", {}, icon("bell"), "Turn on alerts"),
     h("p", {}, "Get a notification on this device when a new place matches."),
     h(
       "button",
@@ -1048,7 +1048,7 @@ function renderCard(m) {
                   h(
                     "button",
                     {
-                      class: "act",
+                      class: "act extra",
                       "aria-label": named(seen ? "Mark as unseen" : "Mark as seen"),
                       "data-fk": m.id + ":seen",
                       onclick: () => {
@@ -1059,7 +1059,7 @@ function renderCard(m) {
                     },
                     seen ? "Mark as unseen" : "Mark as seen",
                   ),
-                  h("button", { class: "act", "aria-label": named("No longer available"), "data-fk": m.id + ":unavailable", onclick: (e) => strikeOut(e, m, "unavailable") }, "No longer available"),
+                  h("button", { class: "act extra", "aria-label": named("No longer available"), "data-fk": m.id + ":unavailable", onclick: (e) => strikeOut(e, m, "unavailable") }, "No longer available"),
                 ]
               : null,
           ],

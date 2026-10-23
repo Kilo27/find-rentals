@@ -125,7 +125,10 @@ export function describeMatch(m, config) {
     // Beyond the radius the direct route is the whole reason it is listed, so lead with how long it takes.
     const campus = m.transit?.campuses?.[0];
     const best = campus?.options?.[0];
-    if (flags.includes("transit-access") && best?.mins) near = { ...near, note: `${best.mins} min to ${campus.short} by ${MODE_WORD[best.mode] ?? "bus"}`, tone: "via" };
+    const ride = best?.mins ? `${best.mins} min to ${campus.short} by ${MODE_WORD[best.mode] ?? "bus"}` : null;
+    if (flags.includes("transit-access") && ride) near = { ...near, note: ride, tone: "via" };
+    // Inside the radius, the ride still sits under the distance once it's far enough to take one (as the route lines do).
+    else if (ride && m.distanceKm >= 1) near = { ...near, ride };
   }
 
   const badges = [];
@@ -158,7 +161,15 @@ export const leadRow = (d) =>
     "div",
     { class: "lead" },
     h("div", { class: "price" }, d.price),
-    d.near ? h("div", { class: `near${d.near.tone ? ` ${d.near.tone}` : ""}` }, h("span", { class: "km" }, d.near.text), d.near.note ? h("span", { class: "note" }, d.near.note) : null) : null,
+    d.near
+      ? h(
+          "div",
+          { class: `near${d.near.tone ? ` ${d.near.tone}` : ""}` },
+          h("span", { class: "km" }, d.near.text),
+          d.near.note ? h("span", { class: "note" }, d.near.note) : null,
+          d.near.ride ? h("span", { class: "note ride" }, d.near.ride) : null,
+        )
+      : null,
   );
 
 export const badgeRow = (badges) =>
