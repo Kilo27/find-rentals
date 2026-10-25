@@ -1,6 +1,7 @@
 // The regions and campuses live in src/catalogue.js; this reads them for `npm run probe -- --region=cork` and
 // `--campus=mic`, which check a region's or a campus's sources the way the scanner would. Limerick is today's search;
-// Cork and Galway are the January 2027 pilot (#26).
+// Cork and Galway are the January 2027 pilot (#26). Dublin's region pages are Daft only, so probe a Dublin campus
+// (`--campus=tcd`) to check Rent.ie and MyHome there.
 import { DEFAULT_PREFS, effectiveConfig } from "../../src/config.js";
 import { REGION_SEEDS, campusesInRegion, searchCampus } from "../../src/catalogue.js";
 

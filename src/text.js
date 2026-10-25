@@ -139,6 +139,12 @@ export function parseAvailability(text, now = new Date()) {
   };
 }
 
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Whether a lower-case address names a place, as whole words: "dublin 2" is not in "Tallaght, Dublin 24", and "dublin 6"
+// is not in "Dublin 6W".
+export const namesPlace = (place, name) => new RegExp(`(?:^|[^a-z0-9])${escapeRe(name)}(?![a-z0-9])`).test(place);
+
 export function analyzeText(text, now = new Date()) {
   return {
     ownerOccupied: ownerOccupiedFromText(text),

@@ -77,7 +77,8 @@ test("every campus that can be chosen is in the transport catalogue, in a region
   assert.deepEqual(campusesInRegion("limerick").map((c) => c.id), ["ul", "mic", "tus-limerick"]);
   assert.deepEqual(campusesInRegion("cork").map((c) => c.id), ["ucc", "mtu-cork"]);
   assert.deepEqual(campusesInRegion("galway").map((c) => c.id), ["uog", "atu-galway"]);
-  assert.equal(searchCampus("tcd"), null, "Dublin has no region yet (#28)");
+  assert.deepEqual(campusesInRegion("dublin").map((c) => c.id), ["tcd", "ucd", "dcu-glasnevin", "dcu-stpats", "tud-grangegorman", "tud-city", "tud-bolton", "tud-tallaght", "tud-blanchardstown", "rcsi", "ncad"]);
+  assert.equal(searchCampus("maynooth"), null, "Maynooth has no region yet (#28)");
   assert.deepEqual(regionCentre("cork"), { label: "University College Cork", lat: 51.8935, lng: -8.4917 }, "a region is centred on its first campus");
 });
 
@@ -100,6 +101,36 @@ test("a campus's own pages are read only while somebody has chosen it", () => {
   assert.equal(new Set(both.rentUrls).size, both.rentUrls.length, "listed once");
   assert.deepEqual(both.ulUrls, only.ulUrls);
   for (const u of both.rentUrls) assert.match(u, /^https:\/\/www\.rent\.ie\/(houses-to-let|rooms-to-rent)\/limerick\/[a-z-]+\/$/);
+});
+
+test("in Dublin a campus's Rent.ie and MyHome pages are read only for the campuses somebody has chosen", () => {
+  const { store } = tempStore();
+  const tcd = collectionPlan(store, "dublin", ["tcd"]);
+  assert.ok(tcd.rentUrls.includes("https://www.rent.ie/rooms-to-rent/dublin/temple-bar/"));
+  assert.ok(tcd.myhomeUrls.includes("https://www.myhome.ie/rentals/dublin-2/property-to-rent"));
+  assert.ok(!tcd.rentUrls.some((u) => u.includes("/belfield/")), "UCD's areas aren't read for a search near Trinity");
+
+  const both = collectionPlan(store, "dublin", ["tcd", "ucd", "tud-city", "rcsi"]);
+  assert.ok(both.rentUrls.includes("https://www.rent.ie/rooms-to-rent/dublin/belfield/"));
+  assert.equal(new Set(both.rentUrls).size, both.rentUrls.length, "an area two campuses share is read once");
+  assert.equal(new Set(both.myhomeUrls).size, both.myhomeUrls.length);
+});
+
+test("Trinity, UCD, DCU and TU Dublin campuses carry their college's own accommodation, which isn't searched", () => {
+  for (const id of ["tcd", "ucd", "dcu-glasnevin", "dcu-stpats", "tud-grangegorman", "tud-city", "tud-bolton", "tud-tallaght", "tud-blanchardstown"]) {
+    const housing = searchCampus(id).collegeHousing;
+    assert.ok(housing.length >= 2, id);
+    for (const h of housing) {
+      assert.ok(h.name && h.note.endsWith("."), `${id}: ${h.name}`);
+      assert.match(h.url, /^https:\/\//, `${id}: ${h.url}`);
+    }
+  }
+  assert.deepEqual(searchCampus("dcu-stpats").collegeHousing, searchCampus("dcu-glasnevin").collegeHousing, "one college, one set of services");
+  assert.equal(searchCampus("ul").collegeHousing, undefined, "UL's board is read, so it isn't listed as something to check by hand");
+  const pages = (c) => [...c.rentUrls, ...c.myhomeUrls, ...(c.ulUrls ?? [])];
+  for (const c of searchCampuses()) {
+    for (const h of c.collegeHousing ?? []) assert.ok(!pages(c).includes(h.url), `${c.id}: ${h.url} is shown, never fetched`);
+  }
 });
 
 test("an account's search: its own campus and preferences make its complete search, and none of them is shared", () => {
@@ -135,7 +166,7 @@ test("choosing a campus moves the account there, starts watching afresh only if 
   assert.equal(search.prefs.radiusKm, 4.5, "except that the new campus's limit applies");
   assert.deepEqual(Object.keys(search.reviews), ["a"], "verdicts are about listings, which are the same wherever you look");
 
-  for (const bad of [undefined, null, "", "hogwarts", "tcd", 3, {}]) assert.throws(() => chooseCampus(search, bad), UserError, String(bad));
+  for (const bad of [undefined, null, "", "hogwarts", "maynooth", 3, {}]) assert.throws(() => chooseCampus(search, bad), UserError, String(bad));
   assert.equal(search.campus, "tus-limerick");
   resetWatching(search);
   assert.equal(search.rev, rev + 2);

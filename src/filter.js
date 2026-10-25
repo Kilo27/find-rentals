@@ -1,5 +1,5 @@
 import { haversineKm } from "./geo.js";
-import { analyzeText, isoDate } from "./text.js";
+import { analyzeText, isoDate, namesPlace } from "./text.js";
 
 const SHORT_TERM_RE =
   /short[- ]?term|until june|till june|academic year|semester|flexible (lease|term|stay)|month[- ]to[- ]month|\b(6|7|8|9|10)[- ]?months?\b/i;
@@ -99,7 +99,7 @@ export function evaluateLocation(listing, config) {
   if (config.unverifiedDistance === "locality") {
     // Only the address/title counts: marketing text says "close to UL" about places miles away.
     const place = `${listing.address ?? ""} ${listing.title}`.toLowerCase();
-    if (!config.localityHints.some((h) => place.includes(h))) return { ok: false, reason: "no location", distanceKm: null, flags };
+    if (!config.localityHints.some((h) => namesPlace(place, h))) return { ok: false, reason: "no location", distanceKm: null, flags };
   }
   return { ok: true, reason: null, distanceKm: null, flags };
 }

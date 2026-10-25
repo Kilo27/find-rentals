@@ -112,7 +112,7 @@ test("an account chooses its own campus, from the campuses that are set up", asy
   const bob = (await login("bob", "bobs-password")).j;
   const admin = (await login("kyle", "admin-pass-1")).j;
 
-  for (const campus of [undefined, "", "hogwarts", "tcd", 7]) {
+  for (const campus of [undefined, "", "hogwarts", "maynooth", 7]) {
     assert.equal((await call(bob, "PUT", "/api/campus", { campus })).status, 400, `${campus}`);
   }
   assert.equal(searchOf(store, "bob").campus, null, "a refused choice changes nothing");
@@ -147,6 +147,23 @@ test("switching campus starts watching afresh; choosing the same one again does 
   assert.deepEqual([search.seen, search.matches], [{}, []]);
   assert.ok(search.reviews["daft:1"], "verdicts are about listings and stay");
   await call(bob, "PUT", "/api/campus", { campus: "ucc" });
+});
+
+test("a Dublin campus can be chosen, and comes with the college's own accommodation to check by hand", async () => {
+  const bob = (await login("bob", "bobs-password")).j;
+  const chose = await call(bob, "PUT", "/api/campus", { campus: "tcd" });
+  assert.equal(chose.status, 200);
+  assert.deepEqual([chose.data.campus.regionId, chose.data.campus.regionName], ["dublin", "Dublin"]);
+  assert.deepEqual(chose.data.campus.housing.map((x) => x.name), ["Trinity residences", "Students' Union accommodation listings"]);
+  const state = (await call(bob, "GET", "/api/state")).data;
+  assert.equal(state.config.center.label, "Trinity College Dublin");
+  assert.equal(state.config.daftLocation, "dublin-city");
+  assert.ok(state.config.localityHints.includes("temple bar"), "Trinity's own neighbourhoods");
+  assert.equal(state.campus.housing[1].url, "https://www.tcdsuaccommodation.org/");
+  assert.ok(state.searchCampuses.find((c) => c.id === "tud-tallaght").housing.some((x) => x.name === "TU Dublin Studentpad"));
+
+  const back = await call(bob, "PUT", "/api/campus", { campus: "ucc" });
+  assert.deepEqual(back.data.campus.housing, [], "UCC has nothing listed to check by hand");
 });
 
 test("each account edits its own preferences, and nobody else's", async () => {
@@ -196,7 +213,7 @@ test("where the sites are read is the admin's to change, per region", async () =
   assert.equal(store.data.regions.limerick.maxPages, 4, "another region was not touched");
 
   const seen = (await call(admin, "GET", "/api/state")).data.regions;
-  assert.deepEqual(seen.map((r) => r.id), ["limerick", "cork", "galway"]);
+  assert.deepEqual(seen.map((r) => r.id), ["limerick", "cork", "galway", "dublin"]);
   assert.equal(seen.find((r) => r.id === "cork").watching, 1, "bob is watching in Cork");
   await call(admin, "PUT", "/api/regions/cork", { maxPages: 4, webUrls: [] });
 });

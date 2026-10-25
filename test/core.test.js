@@ -210,6 +210,17 @@ test("filter: locality hints match the address or title only, never marketing te
   assert.ok(!config().localityHints.includes("university of limerick"));
 });
 
+test("filter: a locality hint is a whole place name, so a Dublin postal district doesn't take in its longer neighbours", () => {
+  const mk = (title) => ({ ...normalizeListing({ id: 10, title, price: "€900 per month" }, "sharing") });
+  const trinity = config({ center: { label: "Trinity College Dublin", lat: 53.344, lng: -6.2555 }, localityHints: ["dublin 2", "dublin 6", "temple bar"] });
+  assert.equal(evaluateListing(mk("Room, Pearse Street, Dublin 2"), trinity).ok, true);
+  assert.equal(evaluateListing(mk("Room in Temple Bar, Dublin"), trinity).ok, true);
+  assert.equal(evaluateListing(mk("Double room, Dublin 2."), trinity).ok, true, "punctuation ends a name");
+  for (const far of ["Room, Old Bawn, Tallaght, Dublin 24", "Room, Ballyfermot, Dublin 20", "Room, Clondalkin, Dublin 22", "Room, Terenure, Dublin 6W", "Room near Temple Bart"]) {
+    assert.equal(evaluateListing(mk(far), trinity).reason, "no location", far);
+  }
+});
+
 test("filter: owner-occupied by field, keyword, and when toggled off", () => {
   assert.equal(ev({ extra: { ownerOccupied: true } }).reason, "owner occupied");
   assert.match(ev({ title: "Double room, owner-occupied house" }).reason, /owner occupied/);
