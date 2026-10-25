@@ -2,7 +2,7 @@
 
 (Formerly Rental Watch. The laptop agent's tray app is still called Rental Watch Agent.)
 
-Watches several Irish rental sources every 30 minutes for places near **each person's own campus** (University of Limerick, Mary Immaculate College, TUS Limerick, UCC, MTU Cork, University of Galway or ATU Galway so far, 2 km by default) and sends a push notification to their iPhone when a new match appears. Everyone has their own account, campus, settings, matches and alerts, and none of it is shared. One small Node service runs on Railway and also serves the installable phone web app.
+Watches several Irish rental sources every 30 minutes for places near **each person's own campus** (so far: University of Limerick, Mary Immaculate College and TUS Limerick; Trinity, UCD, DCU's two campuses, TU Dublin's five, RCSI and NCAD in Dublin; UCC and MTU Cork; University of Galway and ATU Galway; 2 km by default) and sends a push notification to their iPhone when a new match appears. Everyone has their own account, campus, settings, matches and alerts, and none of it is shared. One small Node service runs on Railway and also serves the installable phone web app.
 
 ## Sources
 
@@ -13,6 +13,7 @@ Watches several Irish rental sources every 30 minutes for places near **each per
 | **Rent.ie** | Scrapes the search pages for the areas Rent.ie's own University of Limerick page lists as near-by: `houses-to-let` (houses and apartments) for Castletroy, Monaleen, Rhebogue, Newtown, Singland and Annacotty, and `rooms-to-rent` (shares) for Castletroy, Kilmurry, Kilbane, Monaleen, Rhebogue and Newtown | Checked live 2026-10-01. Rent.ie's student-accommodation pages carry no adverts, only links to these. Only each area's first page (its 20 newest adverts) is read, because its pagination links are disallowed by `robots.txt`. Saved settings still holding the old default URLs are updated on start; a 404 is reported as "skipped" |
 | **MyHome.ie** | Scrapes the Limerick rentals page for `/brochure/` links (embedded JSON first, then HTML) | The page is largely JavaScript-rendered, so it may find nothing; the Alerts tab says so. County-wide when it works; the distance check trims it |
 | **Custom pages** | Any listings page the admin adds to a region under Settings → Regions | JSON-LD, embedded JSON or HTML cards |
+| *Not read:* the Dublin colleges' own boards | Trinity Students' Union (tcdsuaccommodation.org), UCD Accommodation Pad, DCU Studentpad, TU Dublin Studentpad | All four show adverts only to a signed-in student (checked 2026-10-25), and a board behind a student login is off-limits (#25). They are listed with the campus in Settings, next to the college's own residences, for the student to check themselves (see [Campuses and regions](#campuses-and-regions)) |
 
 The HTML scrapers are generic (JSON-LD → embedded page JSON → link "cards", with no dependence on CSS class names) and **fail closed**: a layout change produces zero results and a visible warning, never wrong alerts. They honour `robots.txt`, identify themselves, wait between requests to the same host, and only fetch detail pages for listings not already cached. They identify themselves honestly as `ASAPAccommodation/1.0` (before October 2026, `RentalWatch/1.0`): a user agent that pretends to be Chrome is refused by Cloudflare (Daft, Rent.ie) with a "Security Check" page from any network.
 
@@ -64,7 +65,7 @@ The admin gets a **Users** tab:
 - **Send test**, **Reset password** (**Give a password** for someone who has only used links) and **Remove**. Setting a password or removing a user signs them out everywhere at once and stops their links working; removing a user also deletes their devices and their search, so they stop getting alerts and a new account with the same name starts clean.
 - Each user's campus, number of matches, last check, last sign-in, last activity, subscribed devices (including push errors) and when they last opened the Home Screen app are listed, for working out why someone isn't getting alerts.
 
-**Every account is independent.** Each has its own campus, preferences, list of what it has been alerted to, matches, "seen / not a fit / no longer available" marks and alerts. What one person chooses, puts away or has been told never changes what another sees, and nobody else's campus changes where you are searched. A new account starts with no campus and nothing is watched for it until the person picks one in the guided setup on first sign-in (UL, Mary Immaculate College, TUS Limerick, UCC, MTU Cork, University of Galway or ATU Galway; a campus appears once its region is set up, see [Campuses and regions](#campuses-and-regions)). Changing campus later clears that account's list and starts watching afresh, so it is shown what is listed there without being alerted to all of it. Accounts can't add page addresses for the server to read or change how often or how hard sites are asked (see below): those belong to the admin.
+**Every account is independent.** Each has its own campus, preferences, list of what it has been alerted to, matches, "seen / not a fit / no longer available" marks and alerts. What one person chooses, puts away or has been told never changes what another sees, and nobody else's campus changes where you are searched. A new account starts with no campus and nothing is watched for it until the person picks one in the guided setup on first sign-in (a campus in Limerick, Dublin, Cork or Galway; a campus appears once its region is set up, see [Campuses and regions](#campuses-and-regions)). Changing campus later clears that account's list and starts watching afresh, so it is shown what is listed there without being alerted to all of it. Accounts can't add page addresses for the server to read or change how often or how hard sites are asked (see below): those belong to the admin.
 
 What is the admin's: creating accounts, **Settings → Regions** (where each region looks and how often), **Scan now** and Scanner details in the Alerts tab, and `GET /api/debug`. The scan endpoint and the debug endpoint answer 403 to everyone else, because a scan asks other people's sites for pages and being able to start one on demand is not something to hand to every account. An account that changes its campus or preferences is matched again at once from what its region last collected, without scanning anything; if the region hasn't been collected yet (the server has just started), a scan of that region is brought forward. "Send test notification" only reaches your own devices. Sign-ins use a sign-in link or a per-user password (both stored hashed) and are limited to 10 failed attempts (wrong passwords and dead links together) per IP per 15 minutes.
 
@@ -77,12 +78,13 @@ I built the HTML scrapers without network access to the live sites, so check the
 ```bash
 npm run probe                 # all sources
 npm run probe -- ul rent      # specific sources
-npm run probe -- --region=cork     # a region's own pages and sources: limerick (the default), cork or galway
+npm run probe -- --region=cork     # a region's own pages and sources: limerick (the default), cork, galway or dublin
 npm run probe -- --campus=mic      # a campus's search: its region's pages plus the campus's own extra ones
+npm run probe -- --campus=tcd rent myhome   # a Dublin campus's own Rent.ie and MyHome pages (Dublin's region pages are Daft only)
 npm run probe -- --url=https://example-agent.ie/lettings/limerick   # try any page
 ```
 
-`--region` and `--campus` read the Daft area, Rent.ie and MyHome pages and locality hints from [`src/catalogue.js`](src/catalogue.js). Cork and Galway have no accommodation board, so they probe Daft, Rent.ie and MyHome. The presets are the starting point for each region's settings, so they don't change what a running app that already has its own saved copy searches (that is edited in the app, under Settings → Regions).
+`--region` and `--campus` read the Daft area, Rent.ie and MyHome pages and locality hints from [`src/catalogue.js`](src/catalogue.js). Cork, Galway and Dublin have no accommodation board that can be read, so they probe Daft, Rent.ie and MyHome. The presets are the starting point for each region's settings, so they don't change what a running app that already has its own saved copy searches (that is edited in the app, under Settings → Regions).
 
 It prints, per page, how many listings it recognised and for each: title, price, coordinates, availability, owner-occupied signal and whether the filters would pass it. If a source shows 0 listings it prints the start of the HTML it received, and **Alerts → Scanner details** plus `GET /api/debug` (while logged in) keep the same diagnostics for later scans.
 
@@ -123,7 +125,7 @@ The transport lines come from OpenStreetMap's Overpass API. The server fetches t
 
 Settings has three parts, with different owners.
 
-**Your campus** (everyone): the campus you watch near, from the list of campuses that are set up. Changing it clears your list and starts watching afresh.
+**Your campus** (everyone): the campus you watch near, from the list of campuses that are set up. Changing it clears your list and starts watching afresh. For a Dublin campus it also lists the college's own accommodation (residences and the student-login boards), which ASAP can't read.
 
 **Your preferences** (everyone, each account's own):
 
@@ -151,7 +153,7 @@ Settings has three parts, with different owners.
 | Look up coordinates from addresses (OpenStreetMap), respect robots.txt | on / on |
 | Detail pages fetched per scan, result pages per search | 40 / 4 |
 
-A region with nobody watching in it isn't scanned at all, so adding Cork and Galway costs nothing until someone chooses a campus there.
+A region with nobody watching in it isn't scanned at all, so adding Cork, Galway and Dublin costs nothing until someone chooses a campus there.
 
 ## How the scanner works
 
@@ -166,7 +168,14 @@ Per region, the scanner keeps its own failure count and source health, and the a
 
 ## Campuses and regions
 
-A **campus** is what an account chooses; a **region** is where the sites are read for the campuses in it. Limerick has UL, Mary Immaculate College and TUS Limerick, Cork has UCC and MTU Cork, and Galway has the University of Galway and ATU Galway. All of them are in the [transport data](#public-transport-routes-to-the-campus), but only these can be chosen, because a campus can only be searched once its region has been set up and checked against the live sites. Dublin and the other regions are tracked in the GitHub issues (#27, #28).
+A **campus** is what an account chooses; a **region** is where the sites are read for the campuses in it. Limerick has UL, Mary Immaculate College and TUS Limerick, Cork has UCC and MTU Cork, Galway has the University of Galway and ATU Galway, and Dublin has Trinity, UCD (Belfield), DCU Glasnevin and St Patrick's, TU Dublin Grangegorman, Aungier Street, Bolton Street, Tallaght and Blanchardstown, RCSI and NCAD. Every campus in the [transport data](#public-transport-routes-to-the-campus) has its routes, but only these can be chosen, because a campus can only be searched once its region has been set up and checked against the live sites. Maynooth and the other regions are tracked in the GitHub issues (#27, #28).
+
+**Dublin** is one region (checked live on 2026-10-25):
+
+- **Daft** is searched once for the whole city (`dublin-city`, which takes in every postal district, Tallaght and Blanchardstown included, plus 5 km for Blackrock, Stillorgan and the like). Its 80 newest listings there went back 68 hours, for houses and for rooms, so one search finds what is new for every campus, even after the laptop has slept overnight. Splitting the city into areas would only ask Daft more often.
+- **Rent.ie and MyHome** are read only near the campuses somebody has chosen: each campus has 5 or 6 Rent.ie areas around it (houses and rooms) and the MyHome postal districts it sits in. Rent.ie's own postal-district pages are under `/renting_*/`, which its `robots.txt` disallows, so its named areas are used instead (Temple Bar, Belfield, Glasnevin, ...). MyHome doesn't list the newest first, and its Dublin-wide page has over 400 adverts, but each district page has about 30 at most, so the three pages read cover all of them.
+- **Locality hints** include postal districts such as "dublin 2". Hints are matched as whole words, so "dublin 2" never takes in Dublin 20, 22 or 24 (Tallaght), and "dublin 6" never takes in Dublin 6W.
+- **The colleges' own accommodation** can't be read: Trinity Students' Union's listings, UCD Accommodation Pad, DCU Studentpad and TU Dublin Studentpad all need a student login, and residences are applied for through the college. Rather than leave the student to assume ASAP covers them, Settings → Your campus lists them (with the college's residences) under "Your college's own accommodation", and the last setup screen says they are there. Getting access to the boards is an accommodation-office conversation (#9). They are `collegeHousing` in [`src/catalogue.js`](src/catalogue.js), shown and never fetched.
 
 To add a region or campus, edit [`src/catalogue.js`](src/catalogue.js): a region (its Daft area, how far around it to ask, the Rent.ie, MyHome and board pages, which sites), and for each campus its region, the neighbourhood names around it, how far out an account may look and any extra pages of its own. Check it against the live sites with `npm run probe -- --campus=<id>` first (the comment at the top of the file lists two traps: Daft turns an area name it doesn't know into a search of all Ireland, and Rent.ie turns one into its whole county). A region present in the catalogue but not in the saved state is added on start; one already saved keeps the admin's edits.
 
@@ -175,7 +184,7 @@ To add a region or campus, edit [`src/catalogue.js`](src/catalogue.js): a region
 A house slightly outside the radius can still be a good find if the bus to campus stops at the end of the road. ASAP accommodation knows, for every university campus listed in [`src/transit/campuses.js`](src/transit/campuses.js), which **bus, tram and train services go on to that campus**, and where to board them:
 
 - **Operators**: Bus Éireann, Dublin Bus, Go-Ahead Ireland, Luas and Irish Rail (DART and commuter trains), from the National Transport Authority's GTFS timetables.
-- **Campuses**: UL, Mary Immaculate College and TUS Limerick; Trinity, UCD, DCU (Glasnevin and St Patrick's), TU Dublin (Grangegorman, Kevin Street, Bolton Street, Tallaght, Blanchardstown), RCSI, NCAD and Maynooth; UCC and MTU Cork; University of Galway and ATU Galway; SETU Waterford and Carlow; and TUS Athlone, ATU Sligo, Letterkenny and Mayo, DkIT and MTU Kerry.
+- **Campuses**: UL, Mary Immaculate College and TUS Limerick; Trinity, UCD, DCU (Glasnevin and St Patrick's), TU Dublin (Grangegorman, Aungier Street, Bolton Street, Tallaght, Blanchardstown), RCSI, NCAD and Maynooth; UCC and MTU Cork; University of Galway and ATU Galway; SETU Waterford and Carlow; and TUS Athlone, ATU Sligo, Letterkenny and Mayo, DkIT and MTU Kerry.
 - **Heading towards the campus**: the data comes from the trips themselves. A stop counts only if the same trip calls at the campus *later*, so the stop on the other side of the road (for the bus going away) is never offered. Boarding must be allowed at the stop and getting off must be allowed at the campus.
 - **Easy access** means a stop within **500 m** that has at least **10 trips on a typical weekday** and gets to the campus within **30 minutes**. All three are preferences, as is how far from your campus such a home may be (**5 km**, at most the campus's own limit).
 
@@ -244,7 +253,8 @@ It takes precedence over the laptop agent, so switching is just setting this var
 - Scraping depends on third-party sites staying scrape-able. Check each site's terms; Daft's search pages are not an API and can change (the Daft source then reports "no listing data" rather than guessing). If Railway's IPs are blocked you will get a "looks broken" notification.
 - Daft search results rarely include availability dates or descriptions, so Daft listings are not date-filtered and their owner-occupied check relies on Daft's own filter.
 - Airbnb/Booking-style furnished monthly stays and Facebook groups are not covered (terms and login walls).
-- Only the campuses of Limerick, Cork and Galway can be chosen so far; Dublin and the other regions need setting up and checking against the live sites first (#27, #28).
+- Only the campuses of Limerick, Dublin, Cork and Galway can be chosen so far; Maynooth and the other regions need setting up and checking against the live sites first (#27, #28).
+- The Dublin colleges' own accommodation boards need a student login, so ASAP doesn't read them; the app points the student to them instead.
 - Accounts are created by the admin; there is no public sign-up.
 
 ## Local development

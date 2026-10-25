@@ -254,7 +254,7 @@ export function createSetup(ctx) {
     return [
       head(
         "Which college are you near?",
-        "ASAP accommodation checks Daft.ie, Rent.ie, MyHome.ie and the college accommodation sites for you, and tells you when a new place comes up. It takes about a minute to set up.",
+        "ASAP accommodation checks Daft.ie, Rent.ie, MyHome.ie and, where it can, your college's own listings for you, and tells you when a new place comes up. It takes about a minute to set up.",
         h("p", { class: "hello" }, first ? `Hi ${first}!` : "Welcome!"),
       ),
       [...groups].map(([region, campuses]) =>
@@ -656,6 +656,10 @@ export function createSetup(ctx) {
         h("li", {}, icon("external", 20), h("span", {}, "Each place shows its price and how far it is. Tap ", h("strong", {}, "Open on Daft.ie"), " (or wherever it's listed) to see the advert and contact the landlord.")),
         h("li", {}, icon("check", 20), h("span", {}, "Not for you? Tap ", h("strong", {}, "Not a fit"), " and it's moved out of the way.")),
         h("li", {}, icon("sliders", 20), h("span", {}, "Change what you're looking for any time under ", h("strong", {}, "Settings"), ".")),
+        // A college whose own listings need a student login: say so now, so the student checks them too.
+        s.campus?.housing?.length
+          ? h("li", {}, icon("pause", 20), h("span", {}, "Your college has its own accommodation listings that need your college login, so ASAP can't check them. They're under ", h("strong", {}, "Settings"), ", with your campus."))
+          : null,
       ),
       h("button", { type: "button", class: "primary wide", "data-fk": "setup:finish", onclick: () => stop("matches") }, s.matches.length ? "See my matches" : "Go to my list"),
     ];

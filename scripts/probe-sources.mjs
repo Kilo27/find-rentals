@@ -1,4 +1,4 @@
-// Live check of every scraper: node scripts/probe-sources.mjs [daft|ul|rent|myhome|web ...] [--region=limerick|cork|galway] [--campus=mic] [--url=https://...]
+// Live check of every scraper: node scripts/probe-sources.mjs [daft|ul|rent|myhome|web ...] [--region=limerick|cork|galway|dublin] [--campus=mic] [--url=https://...]
 // Prints what each source recognised so selector/markup problems are obvious. Nothing is saved or notified.
 // With --region or --campus it checks that region's or campus's pages (src/catalogue.js) and, unless sources are named, only the sources it uses.
 import { DEFAULT_CONFIG, normalizeConfig } from "../src/config.js";

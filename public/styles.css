@@ -358,6 +358,13 @@ button.linklike {
 .kv:last-child { border-bottom: 0; }
 .kv span:first-child { color: var(--ink-2); }
 .kv span:last-child { text-align: right; font-weight: 600; }
+/* The college's own accommodation, which ASAP doesn't read: ruled off with the dashed line of anything unchecked. */
+.college-housing h3 { margin-top: 22px; }
+ul.elsewhere { margin: 10px 0 8px; padding: 0; list-style: none; border-top: 1.5px dashed var(--ink); }
+ul.elsewhere li { padding: 8px 0 10px; border-bottom: 1.5px dashed var(--ink); }
+ul.elsewhere a { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--ink); font-weight: 750; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+ul.elsewhere a .icon { flex: none; }
+ul.elsewhere .hint { display: block; margin-top: 0; }
 details summary { cursor: pointer; font-weight: 700; margin: 12px 0 0; }
 /* Every section that opens says so with the same drawn plus, never the browser's triangle. */
 details > summary { display: flex; align-items: center; gap: 10px; min-height: 44px; list-style: none; }

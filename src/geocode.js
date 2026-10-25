@@ -1,4 +1,5 @@
 import { haversineKm } from "./geo.js";
+import { namesPlace } from "./text.js";
 
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const HIT_TTL_MS = 90 * 24 * 3600_000;
@@ -210,7 +211,7 @@ export async function resolveArea(listing, config, geocoder, budget) {
   if (!config.geocode || !geocoder) return;
   if (listing.lat !== null && listing.distanceSource !== "geocoded-area") return;
   const place = `${listing.address ?? ""} ${listing.title}`.toLowerCase();
-  const query = listing.areaQuery ?? config.localityHints.find((h) => place.includes(h));
+  const query = listing.areaQuery ?? config.localityHints.find((h) => namesPlace(place, h));
   if (!query) return;
   const found = await geocoder.area(query, config.center, budget);
   if (found) listing.areaKey = found.key;

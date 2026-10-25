@@ -115,8 +115,9 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
   // Everything here is the signed-in account's own: its campus and preferences, its matches and verdicts, and the status of
   // its region. Nothing in it comes from another account.
   const mine = (req) => searchOf(store, req.auth.effective.owner);
+  // `housing` is the college's own accommodation, which isn't searched (see collegeHousing in catalogue.js).
   const describeCampus = (c) =>
-    c && { id: c.id, name: c.name, short: c.short, regionId: c.regionId, regionName: regionName(store, c.regionId), maxRadiusKm: c.maxRadiusKm, defaultRadiusKm: c.defaultRadiusKm };
+    c && { id: c.id, name: c.name, short: c.short, regionId: c.regionId, regionName: regionName(store, c.regionId), maxRadiusKm: c.maxRadiusKm, defaultRadiusKm: c.defaultRadiusKm, housing: c.collegeHousing ?? [] };
 
   // The admin's view of the regions: their settings, how the last look went and who is watching.
   const describeRegions = () =>

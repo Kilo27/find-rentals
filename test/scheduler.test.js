@@ -32,12 +32,12 @@ test("each region is scanned on its own interval", async (t) => {
   const { runs, scheduler, advance } = setup(t);
   scheduler.start();
   await advance(10_000);
-  assert.deepEqual(runs, [["limerick", "cork", "galway"]], "everything is due at the start");
+  assert.deepEqual(runs, [["limerick", "cork", "galway", "dublin"]], "everything is due at the start");
 
   await advance(30 * MINUTE);
-  assert.deepEqual(runs.at(-1), ["limerick", "galway"], "Limerick and Galway are on 30 minutes, Cork is not due yet");
+  assert.deepEqual(runs.at(-1), ["limerick", "galway", "dublin"], "Limerick, Galway and Dublin are on 30 minutes, Cork is not due yet");
   await advance(30 * MINUTE);
-  assert.deepEqual(runs.at(-1), ["limerick", "cork", "galway"], "Cork's hour has come round");
+  assert.deepEqual(runs.at(-1), ["limerick", "cork", "galway", "dublin"], "Cork's hour has come round");
   scheduler.stop();
 });
 

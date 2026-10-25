@@ -1157,10 +1157,30 @@ function renderCampusPanel() {
           kv("Watching near", c.name),
           state.config ? kv("Within", `${state.config.radiusKm} km`) : null,
           viewing ? null : h("details", {}, h("summary", {}, "Change campus"), renderCampusPicker()),
+          renderCollegeHousing(c),
         ]
       : viewing
         ? h("div", { class: "hint" }, `${state.viewingAs.username} hasn't chosen a campus yet.`)
         : [h("div", { class: "hint" }, "Choose the college you want places near."), h("button", { class: "primary", type: "button", onclick: () => setup.start() }, "Get started")],
+  );
+}
+
+// The college's own residences and listing boards, which ASAP can't read (the boards need a college login). Without them
+// here, a quiet list could be taken to mean there is nothing to be had near the campus at all.
+function renderCollegeHousing(c) {
+  if (!c.housing?.length) return null;
+  return h(
+    "div",
+    { class: "college-housing" },
+    h("h3", {}, "Your college's own accommodation"),
+    h("p", { class: "hint" }, "ASAP can't check these for you: the listings need your college login, and residences are applied for through the college. Have a look yourself."),
+    h(
+      "ul",
+      { class: "elsewhere" },
+      c.housing.map((x) =>
+        h("li", {}, h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.name, icon("external", 16)), h("span", { class: "hint" }, x.note)),
+      ),
+    ),
   );
 }
 

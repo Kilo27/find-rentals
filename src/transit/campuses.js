@@ -14,7 +14,8 @@ export const CAMPUSES = [
   { id: "dcu-glasnevin", name: "DCU Glasnevin", short: "DCU", region: "Dublin", lat: 53.3862, lng: -6.2575, reachM: 450 },
   { id: "dcu-stpats", name: "DCU St Patrick's (Drumcondra)", short: "DCU St Pat’s", region: "Dublin", lat: 53.3715, lng: -6.2531, reachM: 400 },
   { id: "tud-grangegorman", name: "TU Dublin Grangegorman", short: "TU Dublin Grangegorman", region: "Dublin", lat: 53.3556, lng: -6.2823, reachM: 500 },
-  { id: "tud-city", name: "TU Dublin Kevin Street / Aungier Street", short: "TU Dublin Kevin St", region: "Dublin", lat: 53.3385, lng: -6.2665, reachM: 450 },
+  // Kevin Street closed in 2021; the id is kept so the transport data built for this point still applies.
+  { id: "tud-city", name: "TU Dublin Aungier Street", short: "TU Dublin Aungier St", region: "Dublin", lat: 53.3385, lng: -6.2665, reachM: 450 },
   { id: "tud-bolton", name: "TU Dublin Bolton Street", short: "TU Dublin Bolton St", region: "Dublin", lat: 53.3517, lng: -6.2687, reachM: 400 },
   { id: "tud-tallaght", name: "TU Dublin Tallaght", short: "TU Dublin Tallaght", region: "Dublin", lat: 53.2897, lng: -6.3753, reachM: 450 },
   { id: "tud-blanchardstown", name: "TU Dublin Blanchardstown", short: "TU Dublin Blanchardstown", region: "Dublin", lat: 53.4036, lng: -6.3785, reachM: 450 },

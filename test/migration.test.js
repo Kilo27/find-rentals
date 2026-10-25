@@ -39,10 +39,10 @@ function storeFrom(state) {
   return { dir, store: new Store(dir) };
 }
 
-test("a fresh install has the three regions, and the admin watching UL as it always has", () => {
+test("a fresh install has the four regions, and the admin watching UL as it always has", () => {
   const { store } = tempStore();
   assert.equal(store.data.version, STATE_VERSION);
-  assert.deepEqual(Object.keys(store.data.regions), ["limerick", "cork", "galway"]);
+  assert.deepEqual(Object.keys(store.data.regions), ["limerick", "cork", "galway", "dublin"]);
   assert.equal(store.data.searches[ADMIN_OWNER].campus, "ul");
   assert.equal(store.data.regions.limerick.daftLocation, DEFAULT_CONFIG.daftLocation);
   assert.equal(store.data.config, undefined, "there is no shared config any more");

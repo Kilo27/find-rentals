@@ -54,6 +54,26 @@ test("a Cork or Galway search asks Daft for its city area at 5 km, which covers 
   }
 });
 
+test("Dublin is one region, searched on Daft across the city, with Rent.ie and MyHome read near each campus", () => {
+  assert.deepEqual(REGIONS.dublin.campuses, ["tcd", "ucd", "dcu-glasnevin", "dcu-stpats", "tud-grangegorman", "tud-city", "tud-bolton", "tud-tallaght", "tud-blanchardstown", "rcsi", "ncad"]);
+  const { config: region } = REGIONS.dublin;
+  assert.deepEqual([region.rentUrls, region.myhomeUrls, region.ulUrls], [[], [], []], "nothing but Daft is read for the city as a whole");
+  const url = new URL(searchUrl(normalizeConfig(regionConfig("dublin")), "sharing"));
+  assert.equal(url.pathname, "/sharing/dublin-city");
+  assert.equal(url.searchParams.get("radius"), "5000");
+
+  for (const id of REGIONS.dublin.campuses) {
+    const c = normalizeConfig(campusConfig(id));
+    assert.deepEqual(c.sources, ["daft", "rent", "myhome"], id);
+    assert.equal(new Set(c.rentUrls).size, c.rentUrls.length, `${id} rent duplicates`);
+    assert.ok(c.rentUrls.some((u) => u.includes("/houses-to-let/")) && c.rentUrls.some((u) => u.includes("/rooms-to-rent/")), `${id} reads houses and rooms`);
+    // Rent.ie's postal-district pages are under /renting_*/, which its robots.txt disallows.
+    for (const u of c.rentUrls) assert.match(u, /^https:\/\/www\.rent\.ie\/(houses-to-let|rooms-to-rent)\/dublin\/[a-z-]+\/$/, `${id}: ${u}`);
+    assert.ok(c.myhomeUrls.length > 0, id);
+    for (const u of c.myhomeUrls) assert.match(u, /^https:\/\/www\.myhome\.ie\/rentals\/dublin-\d+\/property-to-rent$/, `${id}: a postal district, not all of Dublin: ${u}`);
+  }
+});
+
 test("the probe names the known regions when given an unknown one, without touching the network", () => {
   const r = spawnSync(process.execPath, ["scripts/probe-sources.mjs", "--region=nowhere"], { encoding: "utf8" });
   assert.equal(r.status, 1);
@@ -79,5 +99,5 @@ test("the probe names the known campuses when given an unknown one, without touc
   const r = spawnSync(process.execPath, ["scripts/probe-sources.mjs", "--campus=nowhere"], { encoding: "utf8" });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /unknown campus "nowhere"/);
-  for (const id of ["ul", "mic", "tus-limerick", "ucc", "mtu-cork", "uog", "atu-galway"]) assert.ok(r.stderr.includes(id), id);
+  for (const id of ["ul", "mic", "tus-limerick", "tcd", "ucd", "dcu-glasnevin", "tud-grangegorman", "ucc", "mtu-cork", "uog", "atu-galway"]) assert.ok(r.stderr.includes(id), id);
 });

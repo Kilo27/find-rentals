@@ -127,7 +127,12 @@ test("transit: the state lists the campuses, and a campus's stops can be read as
   const { data: state } = await call("GET", "/api/state");
   assert.ok(state.campuses.some((c) => c.id === "ul" && c.short === "UL"));
   assert.equal(state.campus.id, "ul");
-  assert.deepEqual(state.searchCampuses.map((c) => c.id), ["ul", "mic", "tus-limerick", "ucc", "mtu-cork", "uog", "atu-galway"], "only the campuses whose regions are set up can be chosen");
+  assert.deepEqual(
+    state.searchCampuses.map((c) => c.id),
+    ["ul", "mic", "tus-limerick", "tcd", "ucd", "dcu-glasnevin", "dcu-stpats", "tud-grangegorman", "tud-city", "tud-bolton", "tud-tallaght", "tud-blanchardstown", "rcsi", "ncad", "ucc", "mtu-cork", "uog", "atu-galway"],
+    "only the campuses whose regions are set up can be chosen",
+  );
+  assert.ok(!state.searchCampuses.some((c) => c.id === "maynooth"), "Maynooth's region isn't set up yet");
   assert.ok(state.transit.attribution);
 
   const json = await call("GET", "/api/transit/ul?routes=304,310");
