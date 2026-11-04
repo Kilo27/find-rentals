@@ -73,7 +73,8 @@ const ICON_PATHS = {
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   star: '<path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>',
-  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  // Sheets stacked like map overlays, for the map's key.
+  layers: '<path d="M12 4l8.5 4.5L12 13 3.5 8.5z"/><path d="M3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5"/>',
   bus: '<rect x="5" y="3" width="14" height="15" rx="3"/><path d="M5 11h14M8 21v-3M16 21v-3"/><path d="M8.5 14.5h.01M15.5 14.5h.01" stroke-width="2.6"/>',
   tram: '<rect x="6" y="5" width="12" height="13" rx="3"/><path d="M6 11h12M9 21l1.5-3M15 21l-1.5-3M9 2h6M12 2v3"/>',
   rail: '<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M5 10h14M12 3v7M7 21l2.5-4M17 21l-2.5-4"/><path d="M8.5 13.5h.01M15.5 13.5h.01" stroke-width="2.6"/>',

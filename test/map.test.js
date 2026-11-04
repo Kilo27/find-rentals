@@ -6,7 +6,7 @@ import { createScheduler } from "../src/scheduler.js";
 import { createGeocoder, resolveArea } from "../src/geocode.js";
 import { areasForMatches, createMapData } from "../src/mapdata.js";
 import { OVERPASS_MIRRORS, buildRoutes, buildStops, overpass, simplify, stitch, transitBounds } from "../src/transit-lines.js";
-import { clusterSpots, pinLabel, placeMatches } from "../public/map-model.js";
+import { clusterSpots, framePoints, pinLabel, placeMatches } from "../public/map-model.js";
 import { configOf } from "../src/searches.js";
 import { UL, configure, fakePusher, kmNorth, noSleep, router, searchOf, tempStore } from "./helpers.js";
 
@@ -405,6 +405,28 @@ test("clusterSpots merges markers that would overlap on screen and leaves distan
   assert.ok(Math.abs(merged.lat - 52.670005) < 1e-6);
   const alone = out.find((c) => c.spots.length === 1);
   assert.equal(alone.lat, 52.68);
+});
+
+test("clusterSpots takes a box, because price tags are wider than they are tall", () => {
+  const spot = (key, x, y) => ({ kind: "spot", key, lat: y, lng: x, items: [listing({ id: key })] });
+  const project = (lat, lng) => ({ x: lng, y: lat });
+  const gap = { x: 66, y: 30 };
+  assert.equal(clusterSpots([spot("a", 0, 0), spot("b", 50, 0)], project, gap).length, 1, "side by side, closer than a tag is wide");
+  assert.equal(clusterSpots([spot("a", 0, 0), spot("b", 0, 40)], project, gap).length, 2, "one above the other, clear of each other");
+  // a and b become one tag drawn at x 30, which would sit on c at x 90 although c is 90 from a.
+  const row = clusterSpots([spot("a", 0, 0), spot("b", 60, 0), spot("c", 90, 0)], project, gap);
+  assert.equal(row.length, 1, "a merged tag that drifts onto a neighbour takes it in too");
+  assert.deepEqual(row[0].items.map((m) => m.id).sort(), ["a", "b", "c"]);
+});
+
+test("framePoints leaves a few far-flung places out of the first view, but not most of them", () => {
+  const centre = { lat: UL.lat, lng: UL.lng };
+  const at = (km) => [kmNorth(km).lat, kmNorth(km).lng];
+  const near = [at(0.5), at(1), at(1.8), at(2.6)];
+  assert.deepEqual(framePoints([...near, at(9)], centre, 2), near, "within 3 km of a 2 km search, and the one 9 km out waits for Show all");
+  const many = [at(0.5), at(6), at(7), at(8)];
+  assert.deepEqual(framePoints(many, centre, 2), many, "when most places are far out, all of them are framed");
+  assert.deepEqual(framePoints([], centre, 2), []);
 });
 
 test("pinLabel shows the lowest price, with a plus for groups", () => {

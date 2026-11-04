@@ -545,20 +545,28 @@ ul.how .icon { flex: none; margin-top: 2px; }
   position: relative; z-index: 0; isolation: isolate; height: calc(100dvh - 236px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   min-height: 380px; margin: 0 -16px; overflow: hidden; background: var(--rule); border-bottom: 1px solid var(--ink);
 }
+/* The admin's "Viewing as" bar takes its share too, so the foot of the map stays clear of the tabs. */
+#app:has(.viewing) .map-wrap { height: calc(100dvh - 290px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 @media (min-width: 760px) { .map-wrap { margin: 14px 0 0; border: 1px solid var(--ink); } }
 .map-canvas { position: absolute; inset: 0; z-index: 0; }
-/* The streets in newsprint grey, so the prices, the routes and the marks are what carry colour. */
-.map-canvas .leaflet-tile-pane { filter: grayscale(1) contrast(0.92) brightness(1.04); }
-@media (prefers-color-scheme: dark) { .map-canvas .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(0.82) contrast(1.15); } }
+/* The streets in faded newsprint grey, a step back from the prices, the campus and the marks, which carry the colour. */
+.map-canvas .leaflet-tile-pane { filter: grayscale(1) contrast(0.8) brightness(1.08); }
+@media (prefers-color-scheme: dark) { .map-canvas .leaflet-tile-pane { filter: grayscale(1) invert(1) brightness(0.72) contrast(1.1); } }
 .map-canvas.leaflet-container { background: var(--rule); font-family: var(--font); }
 .map-status { position: absolute; z-index: 5; left: 50%; top: 40%; transform: translateX(-50%); padding: 10px 14px; background: var(--sheet); border: 1px solid var(--ink); }
-.map-note { position: absolute; z-index: 5; left: 8px; bottom: 28px; max-width: calc(100% - 16px); padding: 8px 12px; background: var(--sheet); color: var(--ink); border: 1.5px dashed var(--ink); font-size: 13px; box-shadow: var(--shadow); }
+/* Notes along the foot of the map, clear of the attribution. */
+.map-notes { position: absolute; z-index: 5; left: 8px; right: 8px; bottom: 26px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.map-note { max-width: 100%; padding: 6px 4px 6px 12px; background: var(--sheet); color: var(--ink); border: 1.5px dashed var(--ink); font-size: 13px; box-shadow: var(--shadow); pointer-events: auto; }
+.map-note .linklike { min-height: 32px; padding: 0 8px; font-weight: 750; }
+/* A finger pinches to zoom, so a phone doesn't need the zoom buttons in its way. */
+@media (hover: none) and (pointer: coarse) { .map-canvas .leaflet-control-zoom { display: none; } }
 .leaflet-bar { border: 1.5px solid var(--ink) !important; border-radius: 2px !important; box-shadow: none !important; }
 .leaflet-bar a, .leaflet-bar a:hover { display: grid !important; place-items: center; width: 40px !important; height: 40px !important; line-height: 40px !important; background: var(--sheet); color: var(--ink); border-bottom-color: var(--ink) !important; border-radius: 0 !important; }
 .leaflet-container .leaflet-control-attribution { background: color-mix(in srgb, var(--sheet) 85%, transparent); color: var(--ink-2); font-size: 11px; }
 .leaflet-container .leaflet-control-attribution a { color: var(--ink); }
 .radius-ring { stroke: var(--ink); }
 .campus-shape { stroke: var(--pen); fill: var(--pen); }
+.campus-casing { stroke: var(--sheet); }
 .zone-shape { stroke: var(--ink); fill: var(--ink); }
 
 .pin-wrap { background: none; border: 0; }
@@ -580,13 +588,34 @@ ul.how .icon { flex: none; margin-top: 2px; }
   background: var(--sheet); color: var(--ink); border: 1.5px dashed var(--ink); white-space: nowrap; box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
   font: 750 12.5px/1.2 var(--font); font-stretch: 78%;
 }
-.campus-pin { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-.campus-pin .star { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--pen); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); }
-.campus-pin .lbl { padding: 2px 7px; background: var(--ink); color: var(--on-ink); font: 850 12.5px/1.2 var(--font); font-stretch: 78%; letter-spacing: 0.05em; text-transform: uppercase; }
+/* The campus: a pen star on its centre, and its short name in pen beneath it. */
+.campus-mark { position: absolute; transform: translate(-50%, -15px); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
+.campus-mark .star {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--pen); color: #fff; border: 2.5px solid var(--sheet); box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+}
+.campus-mark .star .icon { fill: currentColor; }
+/* A long name ("TU Dublin Grangegorman") goes onto two short lines rather than one long bar. */
+.campus-mark .lbl {
+  width: max-content; max-width: 116px; padding: 2px 6px; background: var(--pen); color: #fff; text-align: center; text-wrap: balance; box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+  font: 850 12.5px/1.15 var(--font); font-stretch: 78%; letter-spacing: 0.05em; text-transform: uppercase;
+}
 .route-tip, .station-label { font: 650 12px/1.3 var(--font); }
+.map-canvas.far-out .station-label { display: none; }
 .route-tip .op { font-weight: 400; color: #555; }
 
-.map-panel { max-width: 280px; max-height: calc(100dvh - 300px); overflow: auto; background: var(--sheet); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 2px; box-shadow: var(--shadow); font-size: 13px; }
+/* On a phone the key is one small button; from 760 px it is a panel that starts open. */
+.map-key {
+  display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px 0 11px; border: 1.5px solid var(--ink); border-radius: 2px;
+  background: var(--sheet); color: var(--ink); box-shadow: var(--shadow); cursor: pointer;
+  font: 850 13px/1 var(--font); font-stretch: 80%; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.map-panel { display: none; max-width: 280px; max-height: calc(100dvh - 300px); overflow: auto; background: var(--sheet); color: var(--ink); border: 1.5px solid var(--ink); border-radius: 2px; box-shadow: var(--shadow); font-size: 13px; }
+@media (min-width: 760px) { .map-panel { display: block; } .map-key { display: none; } }
+/* The key lent to the sheet, sized for a thumb. */
+.sheet .panel-body { padding: 0 16px 8px; font-size: 15px; }
+.sheet .panel-body label.check { margin: 0; }
+.sheet .route-row { min-height: 44px; font-size: 15px; }
 .map-panel summary { min-height: 40px; margin: 0; padding: 10px 12px; font-stretch: 80%; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
 .panel-body { padding: 0 12px 10px; }
 .panel-title { margin: 12px 0 4px; padding-bottom: 2px; border-bottom: 1px solid var(--ink); font-stretch: 80%; font-weight: 850; letter-spacing: 0.05em; text-transform: uppercase; }
@@ -596,8 +625,8 @@ ul.how .icon { flex: none; margin-top: 2px; }
 .key-campus { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--pen); color: #fff; }
 /* The search radius is exact, so its line is solid; only approximate areas are dashed. */
 .key-radius { width: 22px; height: 0; border-top: 2px solid var(--ink); }
-/* The star on the campus mark has to stand out from the pen at night too. */
-@media (prefers-color-scheme: dark) { .campus-pin .star, .key-campus { color: var(--on-ink); } }
+/* The star and name on the campus mark have to stand out from the pen at night too. */
+@media (prefers-color-scheme: dark) { .campus-mark .star, .campus-mark .lbl, .key-campus { color: var(--on-ink); } }
 .map-panel label.check { min-height: 36px; margin: 2px 0; font-size: 13px; }
 .route-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; padding: 3px 4px; border: 0; border-radius: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; font-size: 13px; }
 .route-row.on { background: var(--hl); color: var(--hl-ink); }
