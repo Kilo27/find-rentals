@@ -1,5 +1,5 @@
 import { h, timeAgo, modeIcon, describeMatch, badgeRow, leadRow, listingImage, icon, transitRow, brand, penRing, isNewMatch } from "./ui.js";
-import { alertsSetup, answersFromPrefs, cleanSearch, describeAnswers, devicePlatform, homeScreenMode, inviteText, joinFromSearch, linkInviteText, listingFromSearch, safariLayout, summarizeSources } from "./app-model.js";
+import { alertsSetup, answersFromPrefs, cleanSearch, describeAnswers, describeChecks, devicePlatform, homeScreenMode, inviteText, joinFromSearch, linkInviteText, listingFromSearch, safariLayout, summarizeSources } from "./app-model.js";
 import { createMapView } from "./map.js";
 import { alertsAsked, createSetup, iosSteps } from "./setup.js";
 
@@ -1717,6 +1717,7 @@ function renderRegionStatus(r) {
     run ? kv("Last scan", `${timeAgo(run.at)} (${run.ok ? "ok" : "failed"})`) : kv("Last scan", "not yet"),
     run && run.ok && run.accounts ? kv("Found / matching / new", `${run.candidates} / ${run.matches} / ${run.newCount}`) : null,
     run && run.ok && run.pending ? kv("Waiting for detail pages", String(run.pending)) : null,
+    run && run.ok && run.checks ? kv("Adverts read by Haiku", describeChecks(run.checks)) : null,
     run && !run.ok ? kv("Error", run.error) : null,
     kv("Next scan", state.scanning ? "running now" : r.settings.enabled && r.watching ? inFuture(r.nextRunAt) : "not scheduled"),
     r.failureCount ? kv("Consecutive failures", String(r.failureCount)) : null,

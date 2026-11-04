@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertsSetup, answersFromPrefs, cleanSearch, collegeYearEnd, describeAnswers, devicePlatform, distanceChoices, homeScreenMode, inviteText, joinFromSearch, kindOf, linkInviteText, listingFromSearch, prefsFromAnswers, safariLayout, setupQuestions, summarizeSources } from "../public/app-model.js";
+import { alertsSetup, answersFromPrefs, cleanSearch, collegeYearEnd, describeAnswers, describeChecks, devicePlatform, distanceChoices, homeScreenMode, inviteText, joinFromSearch, kindOf, linkInviteText, listingFromSearch, prefsFromAnswers, safariLayout, setupQuestions, summarizeSources } from "../public/app-model.js";
 
 const NOW = Date.parse("2026-10-02T12:00:00Z");
 const minutesAgo = (m) => new Date(NOW - m * 60_000).toISOString();
@@ -234,4 +234,9 @@ test("setup answers: the questions stand for preferences, and back again", () =>
   assert.equal(collegeYearEnd(new Date("2027-07-01")), "2028-06-30", "in summer, the coming year");
   assert.deepEqual(distanceChoices(4.5), [1, 2, 3]);
   assert.deepEqual(distanceChoices(5), [1, 2, 3, 5]);
+});
+
+test("scanner details: how Haiku's reading of the adverts went", () => {
+  assert.equal(describeChecks({ checked: 3, cached: 41, failed: 0, waiting: 0, error: null }), "3 new, 41 already read");
+  assert.equal(describeChecks({ checked: 0, cached: 2, failed: 1, waiting: 5, error: "401 invalid x-api-key" }), "0 new, 2 already read, 5 waiting, 1 couldn't be read: 401 invalid x-api-key");
 });

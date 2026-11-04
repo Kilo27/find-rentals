@@ -117,3 +117,11 @@ test("a scan with nobody watching says so and fetches nothing", async () => {
   assert.deepEqual(lines.log, ["[scan] idle: nobody is watching in a region that is switched on"]);
   assert.equal(fetchImpl.calls.length, 0);
 });
+
+test("with Haiku on, the summary says how many adverts it read, and its error gets a line", () => {
+  const run = { ok: true, region: "limerick", mode: "normal", durationMs: 5, sources: [], candidates: 4, rejected: 1, pending: 0, matches: 3, newCount: 0, notified: 0, accounts: 1 };
+  assert.match(summarizeRun({ ...run, checks: { checked: 3, cached: 41, failed: 0, waiting: 0, error: null } }), / \| haiku read=3 cached=41$/);
+  const failing = { ...run, checks: { checked: 0, cached: 2, failed: 1, waiting: 5, error: "Connection error." } };
+  assert.match(summarizeRun(failing), / \| haiku read=0 cached=2 failed=1 waiting=5$/);
+  assert.deepEqual(problemLines(failing), ["[scan] limerick haiku: ERROR Connection error. (1 advert(s) not read; their wording rules were used)"]);
+});

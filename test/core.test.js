@@ -229,6 +229,13 @@ test("filter: owner-occupied by field, keyword, and when toggled off", () => {
   assert.equal(ev({ title: "Owner occupied room" }, { excludeOwnerOccupied: false }).ok, true);
 });
 
+test("filter: an advert that says it isn't owner-occupied isn't turned away for the words", () => {
+  assert.equal(ev({ title: "Non-owner-occupied student house, room to let" }).ok, true, "contains the keyword owner-occupied");
+  assert.equal(ev({ title: "Room to let, no live-in landlord" }).ok, true, "contains the keyword live-in landlord");
+  assert.match(ev({ title: "Room in owner-occupied home", extra: { ownerOccupied: false } }).reason, /keyword: owner-occupied/, "Daft's box doesn't outweigh the advert's words");
+  assert.match(ev({ title: "Non-owner-occupied house", extra: { description: "No smoking" } }, { excludeKeywords: ["smoking"] }).reason, /keyword: smoking/, "other keywords still count");
+});
+
 test("filter: custom exclude/include keywords", () => {
   assert.equal(ev({ title: "Room with smoking allowed" }, { excludeKeywords: ["smoking"] }).ok, false);
   assert.equal(ev({ title: "Quiet room" }, { includeKeywords: ["ensuite"] }).ok, false);

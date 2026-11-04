@@ -39,6 +39,8 @@ const freshState = () => ({
   // Shared by every region and account: nothing in them depends on who is asking.
   debug: {},
   pageCache: {},
+  // What Claude Haiku read in each advert (listing-check.js), kept until the advert changes.
+  listingChecks: {},
   geocache: {},
   mapCache: { transit: {}, campus: {} },
   siteConstants: {},

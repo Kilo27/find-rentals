@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG, normalizeConfig } from "../src/config.js";
 import { createFetcher } from "../src/html.js";
 import { ADAPTERS } from "../src/sources/index.js";
 import { analyzeListing, evaluateNonLocation } from "../src/filter.js";
+import { listingCheckerFromEnv } from "../src/listing-check.js";
 import { REGIONS, campusConfig, regionConfig } from "./lib/regions.mjs";
 
 const args = process.argv.slice(2);
@@ -33,6 +34,8 @@ const config = normalizeConfig({
   ...(urlArg ? { webUrls: [urlArg], sources: ["web"] } : {}),
 });
 const now = new Date();
+// With ANTHROPIC_API_KEY set, the listings shown are also read by Claude Haiku, as a scan would read them.
+const checker = listingCheckerFromEnv();
 
 if (regionArg || campusArg) {
   console.log(
@@ -70,13 +73,16 @@ for (const id of urlArg ? ["web"] : ids) {
     if (debug) console.log(`  bytes=${debug.bytes ?? "?"} cards=${debug.cards ?? "?"} structured=${debug.structured ?? "?"}`);
   }
   console.log(`  ${result.listings.length} listing(s); showing up to 5:`);
-  for (const l of result.listings.slice(0, 5)) {
-    analyzeListing(l, now);
+  const shown = result.listings.slice(0, 5);
+  for (const l of shown) analyzeListing(l, now);
+  const checks = checker ? await checker.checkAll(shown, {}, now) : null;
+  for (const l of shown) {
     const ev = evaluateNonLocation(l, config, now);
     console.log(
-      `   - ${l.title.slice(0, 70)} | ${l.priceText || "no price"} | coords=${l.lat !== null ? `${l.lat.toFixed(4)},${l.lng.toFixed(4)}` : "none"}` +
+      `   - ${l.title.slice(0, 70)} | ${l.priceText || "no price"}${l.priceMonthly !== null ? ` (€${l.priceMonthly}/mo)` : ""} | ${l.kind} | coords=${l.lat !== null ? `${l.lat.toFixed(4)},${l.lng.toFixed(4)}` : "none"}` +
         ` | avail=${l.availableFrom ?? "?"}${l.availableTo ? `..${l.availableTo}` : ""} | owner=${l.ownerOccupied ?? l.ownerOccupiedText ?? "?"}` +
-        ` | weekdayOnly=${l.weekdayOnly} | pending=${l.pending} | filter=${ev.ok ? "pass" : ev.reason}\n     ${l.url}`,
+        ` | weekdayOnly=${l.weekdayOnly} | pending=${l.pending}${l.corrected ? ` | corrected=${l.corrected.join(",")}` : ""} | filter=${ev.ok ? "pass" : ev.reason}\n     ${l.url}`,
     );
   }
+  if (checks) console.log(`  haiku: ${checks.checked} read${checks.failed ? `, ${checks.failed} not read: ${checks.error}` : ""}`);
 }

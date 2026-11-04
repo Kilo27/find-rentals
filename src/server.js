@@ -8,6 +8,7 @@ import { createAgentHub } from "./agent-hub.js";
 import { alertAfterFromEnv, createLaptopWatch } from "./laptop-watch.js";
 import { createMapData } from "./mapdata.js";
 import { proxyFromEnv } from "./proxy.js";
+import { listingCheckerFromEnv } from "./listing-check.js";
 import { isValidUsername, normalizeUsername } from "./users.js";
 import { configOf, watchers } from "./searches.js";
 
@@ -46,7 +47,10 @@ if (process.env.AGENT_TOKEN) {
 }
 
 const proxy = proxyFromEnv(process.env, console.warn, agentHub);
-const scanner = createScanner({ store, pusher, log: console, proxy });
+// ANTHROPIC_API_KEY has Claude Haiku read each advert's description during the collect.
+const checker = listingCheckerFromEnv(process.env);
+if (checker) console.log(`[scan] adverts are read by ${checker.model}`);
+const scanner = createScanner({ store, pusher, log: console, proxy, checker });
 // The admin's devices hear when the laptop agent goes away and when it is back.
 const laptopWatch = createLaptopWatch({ store, pusher, proxy, alertAfterMs: alertAfterFromEnv(process.env) });
 const startDelayMs = Number(process.env.SCAN_START_DELAY_SECONDS ?? 10) * 1000;
