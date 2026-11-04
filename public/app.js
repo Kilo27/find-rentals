@@ -432,7 +432,7 @@ function render() {
     refreshNote.replaceChildren();
   }
   const inSetup = Boolean(state) && setup.active();
-  root.classList.toggle("wide", Boolean(state) && !inSetup && tab === "matches" && view === "map");
+  root.classList.toggle("on-map", Boolean(state?.config) && !inSetup && tab === "matches" && view === "map");
   document.body.classList.toggle("in-setup", inSetup);
   root.replaceChildren(inSetup ? setup.render() : state ? renderMain() : unreachable ? renderUnreachable() : renderLogin());
   if (key) focusKey(key);
