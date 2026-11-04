@@ -22,6 +22,7 @@ export function summarizeRun(run) {
     `[scan] ${run.region} ok mode=${run.mode} ${run.durationMs}ms | ${sources} | candidates=${run.candidates} rejected=${run.rejected}` +
     ` pending=${run.pending} matches=${run.matches} new=${run.newCount} notified=${run.notified}` +
     ` accounts=${run.accounts}` +
+    (run.checks ? ` | haiku read=${run.checks.checked} cached=${run.checks.cached}${run.checks.failed ? ` failed=${run.checks.failed}` : ""}${run.checks.waiting ? ` waiting=${run.checks.waiting}` : ""}` : "") +
     (run.proxied?.length ? ` | via-${run.via ?? "proxy"}=${run.proxied.join(",")}` : "") +
     (run.laptopOffline ? " | laptop=offline" : "")
   );
@@ -41,6 +42,7 @@ export function problemLines(run) {
     }
     if (!s.ok && s.notes.length === 0) out.push(`[scan] ${run.region} ${s.id}: ERROR ${s.error}`);
   }
+  if (run.checks?.error) out.push(`[scan] ${run.region} haiku: ERROR ${run.checks.error} (${run.checks.failed} advert(s) not read; their wording rules were used)`);
   for (const [source, count] of Object.entries(run.coordsIgnored ?? {})) {
     out.push(`[scan] ${run.region} ${source}: ignored ${count} coordinate(s) shared by many listings (site-level map position, not the property)`);
   }
@@ -76,8 +78,9 @@ function aggregate(runs, at) {
 // and keeps the pool of listings, with nobody's preferences applied. Then it MATCHES each account watching there against that
 // pool, with the account's own preferences, its own list of what it has seen, and alerts to its own devices. So what the
 // sites are asked grows with the number of regions being watched, not with the number of accounts, and one account can be
-// matched again, after a change of preferences, without asking the sites anything.
-export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT, proxy = proxyFromEnv(), transit = defaultTransit(log.warn) }) {
+// matched again, after a change of preferences, without asking the sites anything. A `checker` (listing-check.js) has Claude
+// Haiku read the adverts during the collect.
+export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politenessMs, geocodeDelayMs, now = () => new Date(), log = SILENT, proxy = proxyFromEnv(), transit = defaultTransit(log.warn), checker = null }) {
   // The latest pool for each region. It lives in memory: the accounts' own matches are what is saved, and a restart
   // collects again before the next match.
   const pools = new Map();
@@ -126,7 +129,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   async function scanRegion(regionId, geocoder) {
     const t0 = now();
     const accounts = watchers(store, regionId);
-    const { pool, run: collected } = await collectRegion({ store, pusher, regionId, geocoder, fetchImpl, sleep, politenessMs, proxy, now, seq: ++seq });
+    const { pool, run: collected } = await collectRegion({ store, pusher, regionId, geocoder, fetchImpl, sleep, politenessMs, proxy, now, seq: ++seq, checker });
 
     if (!pool) {
       // Nothing could be read, so every account keeps what it has and is told the check didn't work.

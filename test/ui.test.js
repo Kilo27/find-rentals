@@ -62,6 +62,13 @@ test("card: how near it is rides with the price, and the meta line no longer rep
   assert.equal(d.meta, "3 Beds · House · Daft.ie");
 });
 
+test("card: a price or bedrooms corrected from the description says so", () => {
+  const d = describeMatch(listing({ distanceKm: 0.9, priceMonthly: 650, corrected: ["price", "bedrooms"] }), config);
+  assert.equal(d.price, "€650/mo");
+  assert.ok(d.badges.some((b) => b.text === "price, bedrooms corrected from the description"));
+  assert.ok(!describeMatch(listing({ distanceKm: 0.9 }), config).badges.some((b) => /corrected/.test(b.text)));
+});
+
 test("card: approximate and area-only distances say so once, in the lead", () => {
   const area = describeMatch(listing({ distanceKm: 1.7, distanceSource: "geocoded-area", flags: ["distance-approx"] }), config);
   assert.deepEqual(area.near, { text: "~1.7 km", note: "area only", tone: "approx" });

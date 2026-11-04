@@ -24,9 +24,12 @@ const noteFailure = (r) => r.notes.find((n) => !n.ok);
 // afterwards, in match.js. What comes out is a pool of listings with the text already analysed and, where the source gave
 // no position, an address looked up (within a budget), plus a record of how each site did.
 //
+// With a `checker` (listing-check.js), Claude Haiku also reads each advert's description, to fill in what the site's fields
+// leave out and correct what they get wrong, before any address is looked up.
+//
 // Returns { pool, run }: `pool` is null when no site could be reached (every account then keeps what it has), and `run` is
 // the record of how it went, for the logs and the admin.
-export async function collectRegion({ store, pusher, regionId, geocoder, fetchImpl, sleep, politenessMs, proxy, now, seq }) {
+export async function collectRegion({ store, pusher, regionId, geocoder, fetchImpl, sleep, politenessMs, proxy, now, seq, checker = null }) {
   const t0 = now();
   const nowIso = t0.toISOString();
   const d = store.data;
@@ -180,7 +183,7 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
   // The names of the neighbourhoods around every campus here, for finding the area a listing with no position sits in.
   const hints = { geocode: config.geocode, center: centre, localityHints: [...new Set(campusesInRegion(regionId).flatMap((c) => c.localityHints))] };
   const attempts = {};
-  const listings = [];
+  const ready = [];
   let pending = 0;
   for (const listing of candidates.values()) {
     if (listing.pending) {
@@ -192,6 +195,13 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
       }
     }
     analyzeListing(listing, t0);
+    ready.push(listing);
+  }
+  // Before the addresses are looked up, because Haiku may have found one where the site gave none.
+  const checks = checker ? await checker.checkAll(ready, (d.listingChecks ??= {}), t0) : null;
+
+  const listings = [];
+  for (const listing of ready) {
     budget.exhausted = false;
     await resolveLocation(listing, hints, geocoder, budget);
     if (listing.lat === null && config.geocode && budget.exhausted) {
@@ -208,6 +218,6 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
   }
 
   const pool = { regionId, at: nowIso, seq, durationMs: now() - t0, listings, results, candidates: candidates.size, pending, laptopOffline, proxied, via: proxy.kind, leaseRequested: [...ranges.keys()], leaseMatches: Object.fromEntries(Object.entries(leaseMatches).map(([k, ids]) => [k, new Set(ids)])) };
-  status.lastRun = { ...base, durationMs: now() - t0, ok: true, candidates: candidates.size, pending, coordsIgnored, listings: listings.length };
+  status.lastRun = { ...base, durationMs: now() - t0, ok: true, candidates: candidates.size, pending, coordsIgnored, listings: listings.length, ...(checks ? { checks } : {}) };
   return { pool, run: status.lastRun };
 }

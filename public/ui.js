@@ -144,6 +144,8 @@ export function describeMatch(m, config) {
   if (flags.includes("transit-access")) badges.push({ cls: "transit", text: `beyond ${config.radiusKm} km · direct route` });
   if (flags.includes("distance-unverified")) badges.push({ cls: "warn", text: "check distance" });
   if (flags.includes("availability-unknown")) badges.push({ cls: "warn", text: "availability not stated" });
+  // What is shown here differs from the advert's own fields because its description says otherwise.
+  if (m.corrected?.length) badges.push({ text: `${m.corrected.join(", ")} corrected from the description` });
   if (m.alsoOn?.length) badges.push({ text: `also on ${m.alsoOn.map((a) => a.label).join(", ")}` });
 
   return {

@@ -50,6 +50,14 @@ export function summarizeSources(state, now = Date.now()) {
   return { ...base, level, headline };
 }
 
+// How Claude Haiku's reading of the adverts went in a region's last scan, for the admin: "3 new, 41 already read".
+export function describeChecks(c) {
+  const parts = [`${c.checked} new`, `${c.cached} already read`];
+  if (c.waiting) parts.push(`${c.waiting} waiting`);
+  if (c.failed) parts.push(`${c.failed} couldn't be read: ${c.error}`);
+  return parts.join(", ");
+}
+
 // What the admin sends to someone they have just added, or a fresh link: one link that signs them in, and nothing to
 // remember. `link` is the full address.
 export function linkInviteText({ name, link, fresh = false }) {

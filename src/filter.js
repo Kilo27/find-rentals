@@ -30,7 +30,10 @@ export function evaluateNonLocation(listing, config, now = new Date()) {
   if (config.excludeOwnerOccupied) {
     if (listing.ownerOccupied === true) return reject("owner occupied");
     if (listing.ownerOccupied !== false && listing.ownerOccupiedText === true) return reject("owner occupied (from description)");
-    const hit = config.excludeKeywords.find((k) => text.includes(k));
+    // An advert whose own words say it isn't owner-occupied isn't turned away for them: "not owner occupied" contains "owner
+    // occupied". Daft's box saying so doesn't count here, because the advert's words can still say otherwise.
+    const saysNotOwner = listing.ownerOccupiedText === false;
+    const hit = config.excludeKeywords.find((k) => text.includes(k) && !(saysNotOwner && /owner|landlord/.test(k)));
     if (hit) return reject(`keyword: ${hit}`);
   } else {
     const hit = config.excludeKeywords.find((k) => text.includes(k));
