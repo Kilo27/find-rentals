@@ -80,7 +80,7 @@ a { color: inherit; text-underline-offset: 3px; }
 h1, h2, h3 { text-wrap: balance; }
 p, .hint { text-wrap: pretty; }
 #app { max-width: 720px; margin: 0 auto; }
-#app.wide { max-width: 1280px; }
+#app.on-map { max-width: 1280px; }
 main { padding: 4px 16px 28px; }
 [hidden] { display: none !important; }
 
@@ -540,14 +540,27 @@ ul.how .icon { flex: none; margin-top: 2px; }
 
 /* --- The map ---------------------------------------------------------------------------------------------------------- */
 
-/* Below the masthead, the column head and the tabs, the map takes the rest of the screen. */
-.map-wrap {
-  position: relative; z-index: 0; isolation: isolate; height: calc(100dvh - 236px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  min-height: 380px; margin: 0 -16px; overflow: hidden; background: var(--rule); border-bottom: 1px solid var(--ink);
+.map-wrap { position: relative; z-index: 0; isolation: isolate; overflow: hidden; background: var(--rule); }
+/* On a phone the map is the whole screen above the tabs. The masthead makes way, the column head's title is left to
+   screen readers, and List/Map floats over the map's corner, level with the Key button. Any bar over the page ("Viewing
+   as", offline) keeps its place at the top and the map takes what is left. */
+@media (max-width: 759px) {
+  #app.on-map > div { display: flex; flex-direction: column; height: calc(100dvh - env(safe-area-inset-top) - var(--tabs-h) - env(safe-area-inset-bottom)); }
+  #app.on-map .masthead { display: none; }
+  #app.on-map main { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; }
+  #app.on-map .map-wrap { flex: 1; }
+  #app.on-map .colhead { position: absolute; z-index: 10; top: 10px; left: 10px; margin: 0; padding: 0; border: 0; }
+  #app.on-map .colhead > div:not(.seg) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #app.on-map .seg { background: var(--sheet); box-shadow: var(--shadow); }
+  /* A mouse on a narrow window still gets the zoom buttons: they move down below List/Map rather than sit behind it. */
+  #app.on-map .leaflet-top.leaflet-left { top: 54px; }
 }
-/* The admin's "Viewing as" bar takes its share too, so the foot of the map stays clear of the tabs. */
-#app:has(.viewing) .map-wrap { height: calc(100dvh - 290px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
-@media (min-width: 760px) { .map-wrap { margin: 14px 0 0; border: 1px solid var(--ink); } }
+/* From 760 px the map sits in the column, below the masthead and the column head, and takes the rest of the window. */
+@media (min-width: 760px) {
+  .map-wrap { height: calc(100dvh - 236px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 380px; margin: 14px 0 0; border: 1px solid var(--ink); }
+  /* The admin's "Viewing as" bar takes its share too, so the foot of the map stays clear of the tabs. */
+  #app:has(.viewing) .map-wrap { height: calc(100dvh - 290px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+}
 .map-canvas { position: absolute; inset: 0; z-index: 0; }
 /* The streets in faded newsprint grey, a step back from the prices, the campus and the marks, which carry the colour. */
 .map-canvas .leaflet-tile-pane { filter: grayscale(1) contrast(0.8) brightness(1.08); }
