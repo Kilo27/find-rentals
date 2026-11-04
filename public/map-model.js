@@ -38,15 +38,23 @@ export function placeMatches(matches, areas = {}) {
 }
 
 // Merges spots whose markers would overlap on screen at the current zoom. `project` turns a position into pixels.
-// Each cluster lists its spots and all of their listings; one that holds a single spot is that spot, unchanged.
-export function clusterSpots(spots, project, minPx = 44) {
-  const ordered = [...spots].sort((a, b) => b.lat - a.lat || a.lng - b.lng);
-  const clusters = [];
-  for (const spot of ordered) {
-    const p = project(spot.lat, spot.lng);
-    const home = clusters.find((c) => Math.hypot(c.px.x - p.x, c.px.y - p.y) < minPx);
-    if (home) home.spots.push(spot);
-    else clusters.push({ px: p, spots: [spot] });
+// A price tag is wider than it is tall, so `gap` is a box ({ x, y } pixels, or one number for both).
+// A merged tag is drawn at the middle of its spots, which can move it onto a neighbour, so merging goes on until no two
+// tags touch. Each cluster lists its spots and all of their listings; one that holds a single spot is that spot, unchanged.
+export function clusterSpots(spots, project, gap = 44) {
+  const { x: gx, y: gy } = typeof gap === "number" ? { x: gap, y: gap } : gap;
+  const touch = (a, b) => Math.abs(a.px.x - b.px.x) < gx && Math.abs(a.px.y - b.px.y) < gy;
+  const clusters = [...spots].sort((a, b) => b.lat - a.lat || a.lng - b.lng).map((spot) => ({ px: project(spot.lat, spot.lng), spots: [spot] }));
+  for (let i = 0; i < clusters.length; i++) {
+    const j = clusters.findIndex((c, k) => k > i && touch(clusters[i], c));
+    if (j < 0) continue;
+    const [a, b] = [clusters[i], clusters[j]];
+    const n = a.spots.length + b.spots.length;
+    a.px = { x: (a.px.x * a.spots.length + b.px.x * b.spots.length) / n, y: (a.px.y * a.spots.length + b.px.y * b.spots.length) / n };
+    a.spots.push(...b.spots);
+    clusters.splice(j, 1);
+    // The grown tag has moved: look again from the start.
+    i = -1;
   }
   return clusters.map(({ spots: members }) => {
     const items = members.flatMap((s) => s.items);
@@ -54,6 +62,17 @@ export function clusterSpots(spots, project, minPx = 44) {
     const lng = members.reduce((sum, s) => sum + s.lng, 0) / members.length;
     return { kind: "spot", key: members.map((s) => s.key).join("|"), lat, lng, spots: members, items };
   });
+}
+
+const kmApart = (a, [lat, lng]) => Math.hypot((lat - a.lat) * 111.19, (lng - a.lng) * 111.19 * Math.cos((a.lat * Math.PI) / 180));
+
+// The positions the map first frames, out of `points` ([lat, lng] pairs): those near the search circle. One place far
+// across the city (a direct route, an area the geocoder put wide) would otherwise shrink every other pin into a
+// huddle round the campus, so the far ones wait for "Show all", unless they are more than a quarter of the whole.
+export function framePoints(points, center, radiusKm) {
+  const reach = Math.max(radiusKm * 1.5, radiusKm + 1);
+  const near = points.filter((p) => kmApart(center, p) <= reach);
+  return points.length - near.length > points.length / 4 ? points : near;
 }
 
 export const priceShort = (m) => (m.priceMonthly !== null && m.priceMonthly !== undefined ? `€${Math.round(m.priceMonthly).toLocaleString("en-IE")}` : "€?");

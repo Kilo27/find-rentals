@@ -1,13 +1,18 @@
 import { fill, h, describeMatch, badgeRow, icon, isNewMatch, leadRow, listingImage, transitRow } from "./ui.js";
-import { clusterSpots, pinLabel, placeMatches } from "./map-model.js";
+import { clusterSpots, framePoints, pinLabel, placeMatches } from "./map-model.js";
 
 // OpenStreetMap's own tiles. Their usage policy wants a Referer (this site otherwise sends none) and attribution.
 const TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
 // Fallbacks only: each shape carries a class, and the stylesheet colours it from the theme (ink, and pen for the campus).
 const COLOURS = { radius: "#141414", campus: "#2340b8", zone: "#141414", zoneFill: "#141414" };
-const CLUSTER_PX = 44;
+// Price tags closer than this (in pixels, across and up) would overlap, so they become one tag.
+const CLUSTER_GAP = { x: 76, y: 30 };
 const STOP_MIN_ZOOM = 15;
+// Station names are drawn on the map only once it is zoomed in this far; further out they crowd the prices.
+const STATION_LABEL_ZOOM = 14;
+// Below this width the key is a button that opens a sheet, rather than a panel over the map.
+const WIDE = window.matchMedia("(min-width: 760px)");
 const MAX_CARD_ITEMS = 6;
 const POLL_MS = 4000;
 const POLL_LIMIT = 60;
@@ -37,8 +42,10 @@ export function createMapView({ api, onShowList, onOpened }) {
   const canvas = h("div", { class: "map-canvas", role: "region", "aria-label": "Map of matching rentals" });
   const status = h("div", { class: "map-status", role: "status" });
   const note = h("div", { class: "map-note", hidden: true });
+  // How many places are out of view, with the way back to all of them. It only shows while some are.
+  const away = h("div", { class: "map-note away", hidden: true });
   const card = h("div", { class: "hovercard", hidden: true });
-  const el = h("div", { class: "map-wrap" }, canvas, status, note, card);
+  const el = h("div", { class: "map-wrap" }, canvas, status, h("div", { class: "map-notes" }, away, note), card);
 
   let opener = null;
   const sheet = h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": "Listing details", hidden: true });
@@ -81,7 +88,7 @@ export function createMapView({ api, onShowList, onOpened }) {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Tab" && !sheet.hidden) {
       // The sheet is modal: keep keyboard focus inside it until it is closed.
-      const els = [...sheet.querySelectorAll("a[href], button")];
+      const els = [...sheet.querySelectorAll("a[href], button, input")];
       if (!els.length) return;
       const first = els[0];
       const last = els[els.length - 1];
@@ -181,14 +188,12 @@ export function createMapView({ api, onShowList, onOpened }) {
     );
   }
 
-  function openSheet(group) {
+  // The sheet rising from the foot of a phone's screen: the listings under a pin, or the map's key.
+  function showSheet(label, ...content) {
     hideCard();
-    const n = group.items.length;
-    fill(sheet, 
-      h("button", { class: "sheet-close", type: "button", "aria-label": "Close", onclick: () => closeSheet() }, icon("close", 24)),
-      group.kind === "zone" ? h("div", { class: "hc-head" }, zoneHeading(group)) : n > 1 ? h("div", { class: "hc-head" }, `${n} listings here`) : null,
-      h("div", { class: "sheet-list" }, group.items.map(sheetItem)),
-    );
+    restorePanel();
+    fill(sheet, h("button", { class: "sheet-close", type: "button", "aria-label": "Close", onclick: () => closeSheet() }, icon("close", 24)), ...content);
+    sheet.setAttribute("aria-label", label);
     opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     sheet.hidden = false;
     backdrop.hidden = false;
@@ -197,11 +202,30 @@ export function createMapView({ api, onShowList, onOpened }) {
     sheet.querySelector(".sheet-close")?.focus({ preventScroll: true });
   }
 
+  function openSheet(group) {
+    const n = group.items.length;
+    showSheet(
+      "Listing details",
+      group.kind === "zone" ? h("div", { class: "hc-head" }, zoneHeading(group)) : n > 1 ? h("div", { class: "hc-head" }, `${n} listings here`) : null,
+      h("div", { class: "sheet-list" }, group.items.map(sheetItem)),
+    );
+  }
+
+  // On a phone the key and the transport list are lent to the sheet, and given back to the panel when it closes.
+  function openKey() {
+    showSheet("Map key and transport", h("div", { class: "hc-head" }, "Map key & transport"), panelBody);
+  }
+  const keyInSheet = () => Boolean(panelBody) && sheet.contains(panelBody);
+  function restorePanel() {
+    if (keyInSheet()) panelDetails.append(panelBody);
+  }
+
   function closeSheet() {
     if (sheet.hidden) return;
     sheet.hidden = true;
     backdrop.hidden = true;
     document.body.classList.remove("sheet-open");
+    restorePanel();
     // Back to the pin that opened it, so keyboard focus isn't dropped.
     if (opener?.isConnected) opener.focus({ preventScroll: true });
     opener = null;
@@ -247,8 +271,8 @@ export function createMapView({ api, onShowList, onOpened }) {
     return L.divIcon({ className: "pin-wrap", html, iconSize: [0, 0], iconAnchor: [0, 0] });
   }
 
-  function addMarker(group, icon, latlng, lift) {
-    const marker = L.marker(latlng, { icon, keyboard: true, riseOnHover: true });
+  function addMarker(group, icon, latlng, lift, zIndexOffset = 0) {
+    const marker = L.marker(latlng, { icon, keyboard: true, riseOnHover: true, zIndexOffset });
     const anchor = () => {
       const p = map.latLngToContainerPoint(latlng);
       return { x: p.x, y: p.y - lift };
@@ -274,7 +298,8 @@ export function createMapView({ api, onShowList, onOpened }) {
     shape.on("mouseout", () => raise(false));
     shape.addTo(layers.zones);
     const centre = group.geometry ? shape.getBounds().getCenter() : L.latLng(group.lat, group.lng);
-    addMarker(group, chipIcon(group), centre, 14).addTo(layers.zones);
+    // An approximate area's chip goes under the exact prices, and over the campus mark.
+    addMarker(group, chipIcon(group), centre, 14, -10000).addTo(layers.zones);
     group.centre = centre;
   }
 
@@ -283,7 +308,7 @@ export function createMapView({ api, onShowList, onOpened }) {
     if (!pinned) card.hidden = true;
     layers.spots.clearLayers();
     layers.zones.clearLayers();
-    const clusters = clusterSpots(model.spots, (lat, lng) => map.project([lat, lng], map.getZoom()), CLUSTER_PX);
+    const clusters = clusterSpots(model.spots, (lat, lng) => map.project([lat, lng], map.getZoom()), CLUSTER_GAP);
     for (const c of clusters) addMarker(c, pinIcon(c), [c.lat, c.lng], 30).addTo(layers.spots);
     for (const z of model.zones) addZone(z);
 
@@ -292,43 +317,66 @@ export function createMapView({ api, onShowList, onOpened }) {
     if (n) {
       fill(note, `${n} listing${n > 1 ? "s have" : " has"} no location to show. `, h("button", { type: "button", class: "linklike", onclick: onShowList }, "See them in the list"));
     }
+    countAway();
   }
 
-  function fit() {
-    if (!map || !radiusCircle) return;
+  // Where each spot and area is drawn, with how many listings it holds.
+  const placed = () => [
+    ...model.spots.map((s) => ({ at: [s.lat, s.lng], n: s.items.length })),
+    ...model.zones.map((z) => ({ at: z.centre ? [z.centre.lat, z.centre.lng] : [z.lat, z.lng], n: z.items.length })),
+  ];
+
+  // Frames the search circle and the places near it, or with `all`, every place there is.
+  function fit(all = false) {
+    if (!map || !radiusCircle || !current) return;
     const bounds = radiusCircle.getBounds();
-    for (const s of model.spots) bounds.extend([s.lat, s.lng]);
-    for (const z of model.zones) bounds.extend(z.centre ?? [z.lat, z.lng]);
-    map.fitBounds(bounds.pad(0.08), { animate: false });
+    const points = placed().map((p) => p.at);
+    for (const p of all ? points : framePoints(points, current.config.center, current.config.radiusKm)) bounds.extend(p);
+    map.fitBounds(bounds.pad(0.04), { animate: all });
+  }
+
+  function countAway() {
+    if (!map || !current) return;
+    const view = map.getBounds();
+    const n = placed().reduce((sum, p) => sum + (view.contains(p.at) ? 0 : p.n), 0);
+    away.hidden = n === 0;
+    if (n) fill(away, `${n} more ${n === 1 ? "place" : "places"} off the map. `, h("button", { type: "button", class: "linklike", onclick: () => fit(true) }, "Show all"));
   }
 
   // --- campus, search radius and transport -------------------------------------------------------------------
 
-  function drawBackdrop(config) {
+  // The campus mark: a pen star with the campus's short name under it. It sits beneath the prices, so a place on the
+  // campus's doorstep is never hidden by it; the outline in drawCampus is what makes the campus stand out.
+  function drawBackdrop(config, name) {
     layers.backdrop.clearLayers();
-    const { lat, lng, label } = config.center;
-    radiusCircle = L.circle([lat, lng], { radius: config.radiusKm * 1000, color: COLOURS.radius, weight: 2, fill: false, interactive: false, className: "radius-ring", pane: "backdrop" }).addTo(layers.backdrop);
-    const html = h("div", { class: "campus-pin" }, h("span", { class: "star" }, icon("star", 16)), h("span", { class: "lbl" }, label)).outerHTML;
-    L.marker([lat, lng], { icon: L.divIcon({ className: "pin-wrap", html, iconSize: [0, 0], iconAnchor: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(layers.backdrop);
+    const { lat, lng } = config.center;
+    radiusCircle = L.circle([lat, lng], { radius: config.radiusKm * 1000, color: COLOURS.radius, weight: 1.5, opacity: 0.6, fill: false, interactive: false, className: "radius-ring", pane: "backdrop" }).addTo(layers.backdrop);
+    const html = h("div", { class: "campus-mark" }, h("span", { class: "star" }, icon("star", 15)), h("span", { class: "lbl" }, name)).outerHTML;
+    L.marker([lat, lng], { icon: L.divIcon({ className: "pin-wrap", html, iconSize: [0, 0], iconAnchor: [0, 0] }), interactive: false, keyboard: false, zIndexOffset: -20000 }).addTo(layers.backdrop);
   }
 
+  // The campus grounds in pen, as if circled on the paper, drawn over the bus lines so they never bury it.
   function drawCampus(polygons) {
     layers.campus.clearLayers();
     for (const g of polygons ?? []) {
-      L.geoJSON(g, { className: "campus-shape", style: () => ({ color: COLOURS.campus, weight: 2, fillColor: COLOURS.campus, fillOpacity: 0.12 }), interactive: false, pane: "backdrop" }).addTo(layers.campus);
+      const common = { interactive: false, pane: "campus", lineJoin: "round" };
+      L.geoJSON(g, { ...common, className: "campus-casing", style: () => ({ color: "#fff", weight: 6, opacity: 0.9, fill: false }) }).addTo(layers.campus);
+      L.geoJSON(g, { ...common, className: "campus-shape", style: () => ({ color: COLOURS.campus, weight: 2.5, fillColor: COLOURS.campus, fillOpacity: 0.2 }) }).addTo(layers.campus);
     }
     campusDrawn = polygons !== null;
   }
 
   const routeTip = (r) => h("div", {}, h("b", {}, r.ref || r.mode), r.label ? ` ${r.label}` : "", r.operator ? h("div", { class: "op" }, r.operator) : null);
 
+  // The lines are context for the prices, so they stay quiet: those serving the campus in colour, the rest faint and
+  // thin until one is picked from the key.
   function styleRoutes() {
     for (const [id, { line, casing, route }] of routeLines) {
       const on = selectedRoute === id;
       const dim = selectedRoute !== null && !on;
-      const weight = (route.nearCentre ? 5 : 3) + (on ? 2 : 0);
-      line.setStyle({ weight, opacity: dim ? 0.15 : route.nearCentre || on ? 0.95 : 0.7 });
-      casing.setStyle({ weight: weight + 4, opacity: dim ? 0.1 : 0.85 });
+      const weight = on ? 5 : route.nearCentre ? 2.5 : 1.5;
+      line.setStyle({ weight, opacity: dim ? 0.1 : on ? 1 : route.nearCentre ? 0.45 : 0.2 });
+      casing.setStyle({ weight: weight + 3, opacity: on ? 0.9 : 0 });
       if (on) {
         casing.bringToFront();
         line.bringToFront();
@@ -351,7 +399,7 @@ export function createMapView({ api, onShowList, onOpened }) {
     }
     for (const s of data.stops) {
       if (s.mode === "rail") {
-        const m = L.circleMarker([s.lat, s.lng], { radius: 7, color: "#fff", weight: 2, fillColor: "#111827", fillOpacity: 1, pane: "stops" }).addTo(layers.rail);
+        const m = L.circleMarker([s.lat, s.lng], { radius: 5, color: "#fff", weight: 1.5, fillColor: "#111827", fillOpacity: 1, pane: "stops" }).addTo(layers.rail);
         if (s.name) m.bindTooltip(s.name, { permanent: true, direction: "right", offset: [8, 0], className: "station-label" });
       } else {
         const m = L.circleMarker([s.lat, s.lng], { radius: 4, color: "#fff", weight: 1.5, fillColor: "#1d4ed8", fillOpacity: 1, pane: "stops" }).addTo(layers.stops);
@@ -371,6 +419,7 @@ export function createMapView({ api, onShowList, onOpened }) {
     set(layers.bus, visible.bus);
     set(layers.rail, visible.rail);
     set(layers.stops, visible.stops && map.getZoom() >= STOP_MIN_ZOOM);
+    canvas.classList.toggle("far-out", map.getZoom() < STATION_LABEL_ZOOM);
   }
 
   async function loadOverlay(retry = false) {
@@ -435,6 +484,8 @@ export function createMapView({ api, onShowList, onOpened }) {
           onclick: () => {
             selectedRoute = selectedRoute === r.id ? null : r.id;
             styleRoutes();
+            // On a phone the sheet covers the map, so picking a route closes it to show the route.
+            if (selectedRoute && keyInSheet()) return closeSheet();
             renderPanel();
             // The panel is drawn again, so put keyboard focus back on the route that was toggled.
             panelBody.querySelector('[data-route="' + CSS.escape(String(r.id)) + '"]')?.focus({ preventScroll: true });
@@ -468,33 +519,23 @@ export function createMapView({ api, onShowList, onOpened }) {
     );
   }
 
+  // A wide screen has room for the key as a panel in the corner. A phone gets one small Key button, so the prices have
+  // the screen, and the key opens in the sheet.
   function addControls() {
     const Panel = L.Control.extend({
       onAdd() {
         panelBody = h("div", { class: "panel-body" });
         panelDetails = h("details", { class: "map-panel" }, h("summary", {}, "Map key & transport"), panelBody);
-        panelDetails.open = window.matchMedia("(min-width: 760px)").matches;
-        L.DomEvent.disableClickPropagation(panelDetails);
-        L.DomEvent.disableScrollPropagation(panelDetails);
-        return panelDetails;
-      },
-    });
-    new Panel({ position: "topright" }).addTo(map);
-
-    const Fit = L.Control.extend({
-      onAdd() {
-        const box = h("div", { class: "leaflet-bar leaflet-control" });
-        const a = h("a", { href: "#", role: "button", title: "Show everything", "aria-label": "Show everything", class: "map-fit" }, icon("expand", 18));
+        panelDetails.open = WIDE.matches;
+        const keyButton = h("button", { type: "button", class: "map-key", "aria-haspopup": "dialog", onclick: () => openKey() }, icon("layers", 18), "Key");
+        const box = h("div", { class: "map-key-box" }, panelDetails, keyButton);
         L.DomEvent.disableClickPropagation(box);
-        L.DomEvent.on(a, "click", (e) => {
-          L.DomEvent.preventDefault(e);
-          fit();
-        });
-        box.append(a);
+        L.DomEvent.disableScrollPropagation(box);
         return box;
       },
     });
-    new Fit({ position: "topleft" }).addTo(map);
+    new Panel({ position: "topright" }).addTo(map);
+    map.attributionControl.setPrefix(false);
   }
 
   // --- setup and updates -------------------------------------------------------------------------------------
@@ -515,8 +556,8 @@ export function createMapView({ api, onShowList, onOpened }) {
     initialising = false;
 
     const { center } = current.config;
-    map = L.map(canvas, { minZoom: 9, maxZoom: 19, zoomSnap: 0.5 }).setView([center.lat, center.lng], 14);
-    for (const [name, z] of [["backdrop", 350], ["areas", 380], ["transit", 420], ["stops", 430]]) map.createPane(name).style.zIndex = z;
+    map = L.map(canvas, { minZoom: 9, maxZoom: 19, zoomSnap: 0.25 }).setView([center.lat, center.lng], 14);
+    for (const [name, z] of [["backdrop", 350], ["areas", 380], ["transit", 420], ["campus", 425], ["stops", 430]]) map.createPane(name).style.zIndex = z;
     L.tileLayer(TILE_URL, { maxZoom: 19, attribution: ATTRIBUTION, referrerPolicy: "origin" }).addTo(map);
     layers = {
       backdrop: L.layerGroup().addTo(map),
@@ -534,6 +575,11 @@ export function createMapView({ api, onShowList, onOpened }) {
     });
     map.on("movestart", () => {
       if (!pinned) card.hidden = true;
+    });
+    map.on("moveend", countAway);
+    // Leaving phone width with the key in the sheet puts it back in its panel.
+    WIDE.addEventListener("change", () => {
+      if (keyInSheet()) closeSheet();
     });
     map.on("click", () => {
       unpin();
@@ -555,7 +601,7 @@ export function createMapView({ api, onShowList, onOpened }) {
       transitStatus = { state: "loading", error: null };
       selectedRoute = null;
       polls = 0;
-      drawBackdrop(config);
+      drawBackdrop(config, current.campusName);
       layers.campus.clearLayers();
       for (const g of [layers.bus, layers.rail, layers.stops]) g.clearLayers();
       routeLines = new Map();
@@ -580,7 +626,9 @@ export function createMapView({ api, onShowList, onOpened }) {
   return {
     el,
     update(state) {
-      current = { matches: state.matches, areas: state.areas ?? {}, config: state.config };
+      // The campus goes on the map by its short name ("UL"), which covers less of the places around it.
+      const campusName = state.campus?.short || state.config.center.label;
+      current = { matches: state.matches, areas: state.areas ?? {}, config: state.config, campusName };
       if (map) apply();
       else if (canvas.clientWidth > 0) init();
     },
