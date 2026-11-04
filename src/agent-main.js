@@ -21,7 +21,15 @@ if (server.protocol !== "https:" && !(server.protocol === "http:" && LOCAL.has(s
   fail("AGENT_SERVER_URL must be https:// so the token isn't sent in clear text");
 }
 
-// Timestamped lines on the console, and in AGENT_LOG when it is set (the scheduled task runs hidden).
+// Timestamped lines on the console, and in AGENT_LOG when it is set (the tray app and the Linux service run it hidden).
+// AGENT_LOG only grows, so a run that finds it over 2 MB moves it to AGENT_LOG.old first.
+if (AGENT_LOG) {
+  try {
+    if (fs.statSync(AGENT_LOG).size > 2 * 1024 * 1024) fs.renameSync(AGENT_LOG, `${AGENT_LOG}.old`);
+  } catch {
+    /* no log yet */
+  }
+}
 const line = (level) => (...parts) => {
   const text = `${new Date().toISOString()} ${parts.join(" ")}`;
   console[level](text);
