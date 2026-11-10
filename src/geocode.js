@@ -57,6 +57,8 @@ export function createGeocoder({
 }) {
   let lastCall = 0;
   const cache = () => (store.data.geocache ??= {});
+  // The same words name different places in different regions ("Newtown", "Castle Road"), so what is kept is kept per centre.
+  const scope = (c) => `@${c.lat.toFixed(2)},${c.lng.toFixed(2)}`;
 
   // One throttled Nominatim request; null when it could not be made (nothing is cached for that).
   async function search(q, center, { limit = 1, outline = false } = {}) {
@@ -81,7 +83,7 @@ export function createGeocoder({
   }
 
   async function lookup(q, center) {
-    const key = q.toLowerCase();
+    const key = q.toLowerCase() + scope(center);
     const hit = cache()[key];
     if (hit && now() - Date.parse(hit.at) < (hit.miss ? MISS_TTL_MS : HIT_TTL_MS)) return hit.miss ? null : hit;
 
@@ -106,7 +108,7 @@ export function createGeocoder({
     for (let drop = 0; drop < Math.min(3, segments.length); drop++) {
       const q = segments.slice(drop).join(", ");
       if (q.length < 4) break;
-      const cached = cache()[q.toLowerCase()];
+      const cached = cache()[q.toLowerCase() + scope(center)];
       const needsCall = !cached || now() - Date.parse(cached.at) >= (cached.miss ? MISS_TTL_MS : HIT_TTL_MS);
       if (needsCall) {
         if (budget.geocode <= 0) {
@@ -143,7 +145,7 @@ export function createGeocoder({
   async function area(query, center, budget) {
     const q = String(query ?? "").trim();
     if (q.length < 3) return null;
-    const key = `area:${q.toLowerCase()}`;
+    const key = `area:${q.toLowerCase()}${scope(center)}`;
     const entry = await cached(key, budget, async () => {
       const rows = await search(q, center, { limit: 5, outline: true });
       if (rows === null) return undefined;
@@ -165,7 +167,7 @@ export function createGeocoder({
   async function outline(query, center, budget) {
     const q = String(query ?? "").trim();
     if (q.length < 3) return [];
-    const entry = await cached(`outline:${q.toLowerCase()}`, budget, async () => {
+    const entry = await cached(`outline:${q.toLowerCase()}${scope(center)}`, budget, async () => {
       const rows = await search(q, center, { limit: 6, outline: true });
       if (rows === null) return undefined;
       const near = rows.filter((x) => haversineKm(center.lat, center.lng, Number(x.lat), Number(x.lon)) <= OUTLINE_MAX_KM && cleanOutline(x.geojson));

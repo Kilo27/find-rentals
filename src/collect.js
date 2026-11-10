@@ -137,7 +137,7 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
     const n = status.failureCount;
     if (n === 3 || n % 48 === 0) {
       await toAdmin({
-        title: "Rental bot can't reach any source",
+        title: "ASAP can't reach any site",
         body: `${name}: ${n} scans failed in a row: ${firstError}`,
         url: "/",
         tag: `scan-failure-${regionId}`,
@@ -148,7 +148,7 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
 
   const recovered = status.failureCount >= 3;
   status.failureCount = 0;
-  if (recovered) await toAdmin({ title: "Rental bot is back", body: `${name}: scans are working again.`, url: "/", tag: `scan-failure-${regionId}` });
+  if (recovered) await toAdmin({ title: "ASAP is checking again", body: `${name}: scans are working again.`, url: "/", tag: `scan-failure-${regionId}` });
 
   // Per-source health: a source that keeps failing or recognising nothing gets flagged.
   for (const r of results) {

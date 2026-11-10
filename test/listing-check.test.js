@@ -176,7 +176,19 @@ test("checker: an answer that can't be used costs only that advert, which then g
   const limited = createListingChecker({ client, concurrency: 1, perScan: 1 });
   const next = await limited.checkAll([ad(1), ad(4)], cache, NOW);
   assert.match(client.calls.at(-1).messages[0].content, /Room 4,/, "the new advert is read first");
-  assert.deepEqual([next.checked, next.waiting], [1, 1]);
+  assert.deepEqual([next.checked, next.waiting], [1, 0], "and the one that failed is left for a day, not retried at once");
+
+  const DAY = 24 * 3600_000;
+  const later = new Date(NOW.getTime() + DAY + 1000);
+  const callsBefore = client.calls.length;
+  const retry = await limited.checkAll([ad(1)], cache, later);
+  assert.equal(client.calls.length, callsBefore + 1, "a day later it is tried again");
+  assert.equal(retry.failed, 1);
+  const third = await limited.checkAll([ad(1)], cache, new Date(later.getTime() + DAY + 1000));
+  assert.equal(third.failed, 1);
+  const calls = client.calls.length;
+  await limited.checkAll([ad(1)], cache, new Date(later.getTime() + 3 * DAY));
+  assert.equal(client.calls.length, calls, "after three failures it is given up on");
 });
 
 test("scan: accounts are matched on Haiku's reading of each description", async () => {

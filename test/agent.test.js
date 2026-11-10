@@ -507,7 +507,7 @@ test("laptop watch, with the real hub and pusher: the agent going quiet reaches 
     sendNotification: async (sub, body) => void delivered.push({ to: sub.endpoint.split("/").pop(), ...JSON.parse(body) }),
   };
   const pusher = createPusher({ store, webpush, env: {} });
-  const device = (name) => ({ endpoint: `https://push.example/${name}`, keys: { p256dh: "k", auth: "a" } });
+  const device = (name) => ({ endpoint: `https://web.push.apple.com/${name}`, keys: { p256dh: "k", auth: "a" } });
   pusher.addSubscription(device("admin-phone"), "", ADMIN_OWNER);
   pusher.addSubscription(device("admin-ipad"), "", ADMIN_OWNER);
   pusher.addSubscription(device("housemate-phone"), "", "sam");

@@ -85,6 +85,8 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   // collects again before the next match.
   const pools = new Map();
   let inflight = null;
+  // The regions the scan in flight was asked for, or null when it is every region.
+  let covers = null;
   let seq = 0;
   // Only one account is matched at a time, so a match asked for by the app and one in the middle of a scan can't both alert
   // for the same listing.
@@ -96,9 +98,21 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   };
   const matchContext = { store, pusher, transit, now };
 
+  // One scan runs at a time. A call that arrives while one is running shares it when that scan covers the regions asked for;
+  // otherwise the regions it leaves out are scanned straight after, so a region that came due (or was brought forward) in
+  // the middle of another region's scan is never passed over.
   function run({ regions } = {}) {
-    if (!inflight) inflight = doScan(regions).finally(() => (inflight = null));
-    return inflight;
+    if (!inflight) {
+      covers = regions ? new Set(regions) : null;
+      const scan = doScan(regions).finally(() => {
+        if (inflight === scan) inflight = null;
+      });
+      inflight = scan;
+      return scan;
+    }
+    const missing = covers === null ? [] : (regions ?? Object.keys(store.data.regions)).filter((id) => !covers.has(id));
+    if (missing.length === 0) return inflight;
+    return inflight.catch(() => {}).then(() => run({ regions: missing }));
   }
 
   async function doScan(only) {

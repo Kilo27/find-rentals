@@ -6,6 +6,7 @@ export function createScheduler({ store, scanner, startDelayMs = 10_000, log = c
   const due = new Map();
   let timer = null;
   let stopped = false;
+  let running = false;
 
   const intervalMs = (id) => store.data.regions[id].intervalMinutes * 60_000;
   const ids = () => Object.keys(store.data.regions);
@@ -22,15 +23,22 @@ export function createScheduler({ store, scanner, startDelayMs = 10_000, log = c
 
   async function tick() {
     timer = null;
-    if (stopped) return;
+    // A region brought forward while a scan is running re-arms the timer; the scan in hand picks it up when it finishes.
+    if (stopped || running) return;
+    running = true;
     const now = Date.now();
     const ready = ids().filter((id) => (due.get(id) ?? Infinity) <= now);
+    const was = new Map(ready.map((id) => [id, due.get(id)]));
     try {
       if (ready.length) await scanner.run({ regions: ready });
     } catch (err) {
       log.error("scan crashed:", err);
+    } finally {
+      running = false;
     }
-    for (const id of ready) due.set(id, Date.now() + intervalMs(id));
+    // A region that was brought forward again during its own scan (someone chose a campus there after its accounts were
+    // read) keeps that time, so it is looked at once more instead of waiting out the interval.
+    for (const id of ready) if (due.get(id) === was.get(id)) due.set(id, Date.now() + intervalMs(id));
     arm();
   }
 

@@ -26,6 +26,21 @@ const publicDevice = (s) => ({ endpoint: s.endpoint.slice(-12), userAgent: s.use
 
 const csvCell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replaceAll('"', '""')}"` : String(v));
 
+// What an account that isn't the admin is told about how the sites were read: whether each was, never the pages, the
+// errors or what a site sent back, which are the admin's to work from.
+const slimSource = (s) => ({ id: s.id, label: s.label, ok: s.ok !== false, ...(s.skipped ? { skipped: "paused" } : {}), fetched: s.fetched ?? 0, notes: (s.notes ?? []).some((n) => n.warning) ? [{ warning: "some listings may be missing" }] : [] });
+const slimRun = (run) => {
+  if (!run) return run;
+  const { error: _e, sources, regions: _r, checks: _c, coordsIgnored: _i, ...rest } = run;
+  return { ...rest, ...(sources ? { sources: sources.map(slimSource) } : {}) };
+};
+const slimHealth = (health) => Object.fromEntries(Object.entries(health ?? {}).map(([id, h]) => [id, { failures: h.failures }]));
+
+// The page's own scripts and styles only. Pictures come from the listing sites and the map from OpenStreetMap, so images may
+// come from any https address; nothing else may be loaded from, or sent to, anywhere but this server.
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+const RUN_SOON_GAP_MS = 10 * 60_000;
 const REVIEW_STATUSES = new Set(["seen", "rejected", "unavailable"]);
 
 const memberIds = (m) => m.memberIds ?? [m.id];
@@ -50,9 +65,12 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(express.json({ limit: "100kb" }));
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
     res.set("X-Content-Type-Options", "nosniff");
     res.set("Referrer-Policy", "no-referrer");
+    res.set("X-Frame-Options", "DENY");
+    res.set("Content-Security-Policy", CSP);
+    if (req.secure) res.set("Strict-Transport-Security", "max-age=15552000");
     next();
   });
 
@@ -156,10 +174,10 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
       sources: SOURCES,
       campuses: CAMPUSES.map(({ id, name, short, region }) => ({ id, name, short, region })),
       transit: transit ? transit.meta : null,
-      sourceHealth: status?.sourceHealth ?? {},
+      sourceHealth: effective.isAdmin ? (status?.sourceHealth ?? {}) : slimHealth(status?.sourceHealth),
       matches: search.matches.map(({ memberIds: _ids, ...m }) => ({ ...m, review: reviewFor(search.reviews, m)?.status ?? null })),
       areas: areasForMatches(search.matches, store.data.geocache),
-      lastRun: search.lastRun,
+      lastRun: effective.isAdmin ? search.lastRun : slimRun(search.lastRun),
       failureCount: status?.failureCount ?? 0,
       scanning: scanner.isRunning(),
       nextRunAt: scheduler.nextRunAt(campus?.regionId),
@@ -196,7 +214,13 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
     const { owner } = req.auth.effective;
     const campus = campusOf(mine(req));
     const matched = campus ? Boolean(await scanner.match?.(owner)) : false;
-    if (campus && !matched) scheduler.runSoon?.(campus.regionId);
+    if (campus && !matched) {
+      // Asking for a collect is the admin's to do on demand; an account only gets one brought forward when the region has
+      // no pool yet, or it hasn't been read for a while, so changing a setting over and over can't hammer the sites.
+      const at = Date.parse(regionStatus(store, campus.regionId).lastRun?.at ?? "");
+      const recent = scanner.hasPool?.(campus.regionId) && Number.isFinite(at) && Date.now() - at < RUN_SOON_GAP_MS;
+      if (!recent) scheduler.runSoon?.(campus.regionId);
+    }
     return matched;
   }
 
@@ -399,10 +423,11 @@ export function createApp({ store, scanner, pusher, scheduler, agentHub = null, 
 
   api.delete("/users/:username", auth.requireAdmin, (req, res) => {
     const user = users.find(req.params.username);
+    if (!user) throw new UserError("No such user", 404);
+    if (store.data.homeScreens) delete store.data.homeScreens[user.username];
     users.remove(req.params.username);
     pusher.removeOwner(user.username);
     auth.forgetLinks(user.username);
-    if (store.data.homeScreens) delete store.data.homeScreens[user.username];
     res.json({ ok: true });
   });
 

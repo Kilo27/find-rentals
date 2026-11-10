@@ -496,3 +496,11 @@ test("list data carrying literal 0,0 or NaN coordinates still gets the advert pa
   assert.ok(Math.abs(searchOf(store).matches.find((m) => m.id === "myhome:7101").distanceKm - 0.8) < 0.02);
   assert.ok(Math.abs(searchOf(store).matches.find((m) => m.id === "myhome:7103").distanceKm - 1.2) < 0.02);
 });
+
+test("dedupe: neighbours in one postal district are not merged by the district's number, and the same house still is", () => {
+  const a = L({ source: "daft", title: "14 Camden Row, Dublin 8", lat: 53.3366, lng: -6.2661 });
+  const b = L({ source: "rent", sourceLabel: "Rent.ie", title: "16 Camden Row, Dublin 8", lat: 53.33662, lng: -6.26612 });
+  assert.equal(dedupe([a, b]).length, 2, "14 and 16 share only the 8 of Dublin 8");
+  const same = L({ source: "rent", sourceLabel: "Rent.ie", title: "Room, 14 Camden Row, Dublin 8", lat: 53.33662, lng: -6.26612 });
+  assert.equal(dedupe([a, same]).length, 1);
+});

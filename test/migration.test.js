@@ -16,7 +16,7 @@ const legacy = (over = {}) => ({
   seen: { "daft:1": { firstSeenAt: "2026-09-30T10:00:00.000Z" }, "rent:9": { firstSeenAt: "2026-10-01T10:00:00.000Z" } },
   reviews: { "daft:1": { status: "rejected", at: "2026-10-02T10:00:00.000Z" } },
   matches: [{ id: "daft:1", memberIds: ["daft:1"], title: "Room 1" }, { id: "rent:9", memberIds: ["rent:9"], title: "Flat 9" }],
-  subscriptions: [{ endpoint: "https://push.example/phone", keys: { p256dh: "k", auth: "a" } }, { endpoint: "https://push.example/bobs", keys: { p256dh: "k", auth: "a" }, owner: "bob" }],
+  subscriptions: [{ endpoint: "https://web.push.apple.com/phone", keys: { p256dh: "k", auth: "a" } }, { endpoint: "https://web.push.apple.com/bobs", keys: { p256dh: "k", auth: "a" }, owner: "bob" }],
   users: [{ username: "bob", passwordHash: "scrypt$a$b", sessionKey: "k", createdAt: "2026-10-01T00:00:00Z", lastLoginAt: null, lastSeenAt: null }],
   vapid: { publicKey: "pub", privateKey: "priv" },
   baselineDone: true,

@@ -88,3 +88,36 @@ test("a stopped scheduler runs nothing more, and a scheduler with nothing due do
   assert.deepEqual(runs, []);
   assert.equal(scheduler.nextRunAt("nowhere"), null);
 });
+
+test("a region brought forward during another region's scan is scanned as soon as that one ends", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.parse("2026-10-05T10:00:00Z") });
+  const { store } = tempStore();
+  const runs = [];
+  let finish = null;
+  const scanner = {
+    run(opts) {
+      runs.push(opts.regions);
+      return new Promise((resolve) => (finish = resolve));
+    },
+  };
+  const scheduler = createScheduler({ store, scanner, startDelayMs: 10_000, log: { error() {} } });
+  const advance = async (ms) => {
+    t.mock.timers.tick(ms);
+    await flush();
+  };
+  scheduler.start();
+  await advance(10_000);
+  assert.equal(runs.length, 1, "the first scan is running");
+
+  scheduler.runSoon("cork");
+  await advance(1_000);
+  assert.equal(runs.length, 1, "no second scan is started on top of the one in hand");
+  finish();
+  await flush();
+  await advance(0);
+  assert.deepEqual(runs.at(-1), ["cork"], "Cork keeps its place and is scanned next");
+  finish();
+  await flush();
+  assert.equal(scheduler.nextRunAt("cork").getTime(), Date.now() + store.data.regions.cork.intervalMinutes * MINUTE);
+  scheduler.stop();
+});

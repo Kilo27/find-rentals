@@ -128,7 +128,24 @@ export async function matchAccount({ store, pusher, transit, now }, { owner, sea
     return r && (!r.ok || r.skipped || r.notes.some((n) => !n.ok && n.group === m.group));
   };
   const currentIds = new Set(matches.flatMap((m) => m.memberIds));
-  const kept = search.matches.filter((m) => failedFor(m) && !currentIds.has(m.id));
+  // ...but only while they still fit what the account now asks for: a lower price limit or a shorter distance applies to
+  // them too, even though the source can't be asked again. (Their wording is no longer stored, so only the numbers are checked.)
+  const stillFits = (m) => {
+    if (m.priceMonthly != null) {
+      if (config.priceMin !== null && m.priceMonthly < config.priceMin) return false;
+      if (config.priceMax !== null && m.priceMonthly > config.priceMax) return false;
+    }
+    if (m.kind === "property" && m.beds != null) {
+      if (config.bedsMin !== null && m.beds < config.bedsMin) return false;
+      if (config.bedsMax !== null && m.beds > config.bedsMax) return false;
+    }
+    if (m.distanceKm != null) {
+      const limit = m.flags?.includes("transit-access") ? config.transitMaxKm : config.radiusKm + (m.flags?.includes("distance-approx") ? 1 : 0);
+      if (m.distanceKm > limit) return false;
+    }
+    return true;
+  };
+  const kept = search.matches.filter((m) => failedFor(m) && !currentIds.has(m.id) && stillFits(m));
   // memberIds stay on the stored match so a verdict on any copy of a property still applies when another copy wins.
   search.matches = [
     ...matches.map(({ text, areaQuery, ...m }) => ({ ...m, firstSeenAt: seen[m.memberIds[0]]?.firstSeenAt ?? null })),

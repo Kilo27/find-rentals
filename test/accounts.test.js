@@ -337,3 +337,61 @@ test("the laptop watch only worries about sites that someone is watching a regio
   assert.equal(pusher.ops().length, 1);
   assert.match(pusher.ops()[0].body, /^Daft\.ie isn't being checked\./);
 });
+
+test("a region asked for while another region is being read is read straight after, not passed over", async () => {
+  const { store, pusher } = setup();
+  await addUser(store, "bob", "ucc");
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const fetchImpl = makeFetch(async (_q, _n, url) => {
+    const area = new URL(url).pathname.split("/")[2];
+    if (area === AREAS.limerick) await gate;
+    return daftPage(area === AREAS.cork ? [cork(1)] : [limerick(1)]);
+  });
+  const scanner = scannerFor(store, pusher, fetchImpl);
+  const first = scanner.run({ regions: ["limerick"] });
+  while (!fetchImpl.pages().some((c) => c.url.includes(AREAS.limerick))) await new Promise((resolve) => setImmediate(resolve));
+
+  const second = scanner.run({ regions: ["cork"] });
+  const again = scanner.run({ regions: ["limerick"] });
+  release();
+  assert.equal((await first).region, "limerick");
+  assert.equal((await second).region, "cork", "Cork gets a scan of its own once Limerick's is done");
+  assert.equal((await again).region, "limerick", "and asking for what is already being read shares that scan");
+  assert.ok(asked(fetchImpl, AREAS.cork) > 0);
+  assert.equal(scanner.hasPool("cork"), true);
+  const limerickPages = asked(fetchImpl, AREAS.limerick);
+  await scanner.run({ regions: ["cork"] });
+  assert.equal(asked(fetchImpl, AREAS.limerick), limerickPages, "Limerick was read once");
+});
+
+test("an invited account is told whether each site was read, never the pages, errors or what a site sent back", async () => {
+  const { createApp } = await import("../src/app.js");
+  const { createScheduler } = await import("../src/scheduler.js");
+  const { store, pusher } = setup();
+  await addUser(store, "bob", "ul");
+  const fetchImpl = makeFetch(() => httpError(403, "Security Check cloudflare"));
+  const scanner = scannerFor(store, pusher, fetchImpl);
+  searchOf(store, "bob").lastRun = { at: "2026-11-01T10:00:00Z", ok: true, error: "HTTP 403 from www.daft.ie", sources: [{ id: "daft", label: "Daft.ie", ok: false, error: "HTTP 403 from www.daft.ie", fetched: 0, notes: [{ group: "https://www.daft.ie/x", ok: false, error: "x", body: "Security Check" }] }] };
+  store.data.regionStatus.limerick = { failureCount: 0, lastRun: null, pendingAttempts: {}, sourceHealth: { daft: { failures: 4, lastError: "HTTP 403 from www.daft.ie", lastOkAt: null } } };
+  const scheduler = createScheduler({ store, scanner, startDelayMs: 3_600_000 });
+  const app = createApp({ store, scanner, pusher, scheduler, password: "pw", secret: "s" });
+  const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const login = async (username, password) => {
+      const r = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+      return r.headers.get("set-cookie").split(";")[0];
+    };
+    const stateFor = async (cookie) => (await fetch(`${base}/api/state`, { headers: { cookie } })).json();
+    const bob = await stateFor(await login("bob", "password-123"));
+    const text = JSON.stringify([bob.lastRun, bob.sourceHealth]);
+    assert.ok(!/403|Security Check|https:|lastError/.test(text), text);
+    assert.equal(bob.lastRun.sources[0].ok, false);
+    assert.equal(bob.sourceHealth.daft.failures, 4);
+    const admin = await stateFor(await login("admin", "pw"));
+    assert.equal(admin.sourceHealth.daft.lastError, "HTTP 403 from www.daft.ie", "the admin still sees the detail");
+  } finally {
+    server.close();
+  }
+});

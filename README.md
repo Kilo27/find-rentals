@@ -74,7 +74,7 @@ Upgrading from the shared-search version: the one search everybody shared become
 
 ## First thing to do after deploying: verify the scrapers
 
-I built the HTML scrapers without network access to the live sites, so check them once on the real thing. In a Railway shell (or locally):
+The scrapers were checked against the live sites in October 2026, but sites change layout without warning, so check them again after deploying. In a Railway shell (or locally):
 
 ```bash
 npm run probe                 # all sources

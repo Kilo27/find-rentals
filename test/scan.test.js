@@ -157,7 +157,7 @@ test("scan: total failure records error and alerts on 3rd consecutive failure on
   assert.equal(store.data.regionStatus.limerick.failureCount, 4);
   assert.equal(pusher.sent.length, 0, "everyone else is not sent error codes");
   assert.equal(pusher.ops().length, 1);
-  assert.match(pusher.ops()[0].title, /can't reach any source/);
+  assert.match(pusher.ops()[0].title, /can't reach any site/);
   assert.match(pusher.ops()[0].body, /^Limerick: 3 scans failed in a row: .*403/, "the admin does get the detail, and which region it is");
   assert.equal(searchOf(store).baselineDone, false, "baseline must wait for a successful scan");
 });
@@ -175,8 +175,8 @@ test("scan: recovery after 3+ failures sends a recovery push", async () => {
   pusher.sentToOwner.length = 0;
   ok = true;
   await scanner.run();
-  assert.ok(pusher.ops().some((p) => /is back/.test(p.title)));
-  assert.ok(!pusher.sent.some((p) => /is back/.test(p.title)), "recovery is the admin's news, not everyone's");
+  assert.ok(pusher.ops().some((p) => /is checking again/.test(p.title)));
+  assert.ok(!pusher.sent.some((p) => /checking again/.test(p.title)), "recovery is the admin's news, not everyone's");
   assert.equal(store.data.regionStatus.limerick.failureCount, 0);
 });
 
@@ -224,7 +224,7 @@ test("push: dead subscriptions (410) are pruned, failures recorded", async () =>
   const pusher = createPusher({ store, webpush, env: { VAPID_SUBJECT: "mailto:a@b.co" } });
   assert.equal(pusher.publicKey, "pub");
   for (const name of ["ok", "gone", "flaky"]) {
-    pusher.addSubscription({ endpoint: `https://push.example/${name}`, keys: { p256dh: "k", auth: "a" } }, "UA");
+    pusher.addSubscription({ endpoint: `https://web.push.apple.com/${name}`, keys: { p256dh: "k", auth: "a" } }, "UA");
   }
   const r = await pusher.sendToAll({ title: "hi" });
   assert.deepEqual(r, { sent: 1, failed: 1, removed: 1 });
@@ -311,4 +311,37 @@ test("scan: without transport data (or with it switched off) the radius is stric
     assert.equal(run.matches, 1);
     assert.equal(run.rejected, 1);
   }
+});
+
+test("scan: matches kept from a section that couldn't be read still obey a lower price limit", async () => {
+  const { store, pusher } = setup({ sections: ["sharing", "residential-to-rent"] });
+  let failRent = false;
+  const scanner = newScanner({
+    store,
+    pusher,
+    fetchImpl: bySection({
+      sharing: daftPage([rawListing({ id: 1, price: "€500 per month" })]),
+      "residential-to-rent": () => (failRent ? httpError(500) : daftPage([rawListing({ id: 2, price: "€900 per month" })])),
+    }),
+  });
+  await scanner.run();
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id).sort(), ["daft:1", "daft:2"]);
+  failRent = true;
+  configure(store, { priceMax: 700 });
+  await scanner.run();
+  assert.deepEqual(searchOf(store).matches.map((m) => m.id), ["daft:1"], "the €900 place is no longer kept");
+});
+
+test("push: only the browsers' own push services are accepted as a device, and an account has a limited number", () => {
+  const { store } = tempStore();
+  const pusher = createPusher({ store, webpush: { generateVAPIDKeys: () => ({ publicKey: "p", privateKey: "k" }) }, env: {} });
+  const sub = (endpoint) => ({ endpoint, keys: { p256dh: "k", auth: "a" } });
+  assert.throws(() => pusher.addSubscription(sub("https://internal.example.com/hook"), "UA", "bob"), /known push service/);
+  assert.throws(() => pusher.addSubscription(sub("https://evilpush.apple.com.attacker.net/x"), "UA", "bob"), /known push service/);
+  for (const url of ["https://web.push.apple.com/a", "https://fcm.googleapis.com/fcm/send/b", "https://updates.push.services.mozilla.com/c", "https://db5.notify.windows.com/d"]) {
+    pusher.addSubscription(sub(url), "UA", "bob");
+  }
+  for (let i = 0; i < 6; i++) pusher.addSubscription(sub(`https://web.push.apple.com/more${i}`), "UA", "bob");
+  assert.throws(() => pusher.addSubscription(sub("https://web.push.apple.com/eleventh"), "UA", "bob"), /Too many devices/);
+  pusher.addSubscription(sub("https://web.push.apple.com/a"), "UA", "bob");
 });

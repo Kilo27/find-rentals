@@ -14,7 +14,7 @@ export class SourceError extends Error {
 // An honest bot name. A user agent claiming to be Chrome from a client that isn't gets Cloudflare's
 // "Security Check" 403 on Daft and Rent.ie from any network, home connections included.
 const DEFAULT_UA = "Mozilla/5.0 (compatible; ASAPAccommodation/1.0; personal rental monitor)";
-const UA_TOKEN = "rentalwatch";
+const UA_TOKEN = "asapaccommodation";
 const MAX_HTML = 3_000_000;
 
 export const collapse = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -136,9 +136,22 @@ export function createFetcher({
     }
     await politely(u.host);
     let res;
+    let at = url;
     try {
-      res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(20_000), redirect: "follow" });
+      // Redirects are followed one at a time so that each address is checked like the first: a page that sends us on to an
+      // internal address (or a plain http one) is refused rather than fetched.
+      for (let hop = 0; ; hop++) {
+        res = await fetchImpl(at, { headers, signal: AbortSignal.timeout(20_000), redirect: "manual" });
+        const location = res.status >= 300 && res.status < 400 ? res.headers?.get?.("location") : null;
+        if (!location) break;
+        await res.body?.cancel?.();
+        if (hop >= 5) throw new SourceError(`Too many redirects from ${u.host}`, { code: "redirect" });
+        const next = new URL(location, at).href;
+        if (!isSafeUrl(next)) throw new SourceError(`Redirect to a URL that is not allowed: ${new URL(next).host}`, { code: "unsafe-url" });
+        at = next;
+      }
     } catch (err) {
+      if (err instanceof SourceError) throw err;
       throw new SourceError(`Network error fetching ${u.host}: ${err.message}`, { code: "network" });
     }
     if (!res.ok) {
@@ -146,7 +159,7 @@ export function createFetcher({
       throw new SourceError(`HTTP ${res.status} from ${u.host}`, { status: res.status, code: "http", body });
     }
     const html = (await res.text()).slice(0, MAX_HTML);
-    return { html, url: res.url || url, status: res.status };
+    return { html, url: res.url || at, status: res.status };
   }
 
   return { get };

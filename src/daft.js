@@ -83,7 +83,7 @@ export async function fetchSection(config, section, { fetcher = createFetcher() 
     }
     // An area name Daft doesn't know silently becomes a search of all of Ireland.
     if (config.daftLocation !== "ireland" && lastSegment(data.canonicalUrl ?? "") === "ireland") {
-      throw new SourceError(`Daft doesn't recognise the area "${config.daftLocation}" (check Settings → Advanced → Daft area)`, { code: "location" });
+      throw new SourceError(`Daft doesn't recognise the area "${config.daftLocation}" (check Settings → Regions)`, { code: "location" });
     }
 
     // Daft answers a paging parameter it doesn't understand with page 1 again; stop rather than re-read it.

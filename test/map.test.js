@@ -227,7 +227,7 @@ test("geocoder.area finds the named place with its outline, cached, and ignores 
   const { geo, fetchImpl } = areaGeocoder([{ lat: "52.6654", lon: "-8.5712", name: "Castletroy", addresstype: "suburb", geojson: SUBURB_POLYGON }]);
   const budget = { geocode: 5, exhausted: false };
   const a = await geo.area("Castletroy", UL, budget);
-  assert.equal(a.key, "area:castletroy");
+  assert.equal(a.key, "area:castletroy@52.67,-8.57");
   assert.equal(a.name, "Castletroy");
   assert.equal(a.kind, "suburb");
   assert.equal(a.geometry.type, "Polygon");
@@ -312,16 +312,16 @@ test("a scan gives approximate and unlocated listings the area they are in, whic
 
   const by = (id) => searchOf(store).matches.find((m) => m.id === id);
   assert.equal(by("ul:2001").distanceSource, "geocoded-area");
-  assert.equal(by("ul:2001").areaKey, "area:castletroy");
+  assert.equal(by("ul:2001").areaKey, "area:castletroy@52.67,-8.57");
   assert.equal(by("ul:2001").areaQuery, undefined, "the helper field is not stored");
   assert.equal(by("ul:2002").lat, null);
-  assert.equal(by("ul:2002").areaKey, "area:castletroy", "found from the area name in its address");
+  assert.equal(by("ul:2002").areaKey, "area:castletroy@52.67,-8.57", "found from the area name in its address");
   assert.equal(by("ul:2003").distanceSource, "geocoded");
   assert.equal(by("ul:2003").areaKey, undefined, "an exact address needs no area");
 
   const areas = areasForMatches(searchOf(store).matches, store.data.geocache);
-  assert.equal(areas["area:castletroy"].geometry.type, "Polygon");
-  assert.equal(areas["area:castletroy"].name, "Castletroy");
+  assert.equal(areas["area:castletroy@52.67,-8.57"].geometry.type, "Polygon");
+  assert.equal(areas["area:castletroy@52.67,-8.57"].name, "Castletroy");
 });
 
 // --- the API ------------------------------------------------------------------------------------------------------------------------
@@ -433,4 +433,22 @@ test("pinLabel shows the lowest price, with a plus for groups", () => {
   assert.equal(pinLabel([listing({ priceMonthly: 1200 })]), "€1,200");
   assert.equal(pinLabel([listing({ priceMonthly: 900 }), listing({ priceMonthly: 600 })]), "€600+");
   assert.equal(pinLabel([listing({ priceMonthly: null })]), "€?");
+});
+
+test("geocoder: the same place name in two regions is looked up, and cached, separately", async () => {
+  const CORK = { lat: 51.8935, lng: -8.4917 };
+  const { store } = tempStore();
+  const fetchImpl = router([
+    [/nominatim/, (url) => {
+      const near = decodeURIComponent(url).includes("viewbox=-8.7917");
+      return near ? [{ lat: "51.89", lon: "-8.49", addresstype: "suburb" }] : [{ lat: "52.66", lon: "-8.57", addresstype: "suburb" }];
+    }],
+  ]);
+  const geo = createGeocoder({ store, fetchImpl, sleep: noSleep, minIntervalMs: 0 });
+  const budget = { geocode: 10, exhausted: false };
+  const inLimerick = await geo.geocode("Newtown", UL, budget);
+  const inCork = await geo.geocode("Newtown", CORK, budget);
+  assert.ok(Math.abs(inLimerick.lat - 52.66) < 0.01, "Limerick's Newtown");
+  assert.ok(Math.abs(inCork.lat - 51.89) < 0.01, "Cork's Newtown is not Limerick's cached answer");
+  assert.equal(fetchImpl.count(/nominatim/), 2);
 });

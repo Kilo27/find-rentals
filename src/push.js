@@ -5,6 +5,10 @@ import webpushLib from "web-push";
 export const ADMIN_OWNER = "@admin";
 export const ownerOf = (sub) => sub.owner ?? ADMIN_OWNER;
 
+// Apple, Google (Chrome, Android), Mozilla and Microsoft's push services.
+const PUSH_HOSTS = ["push.apple.com", "googleapis.com", "push.services.mozilla.com", "notify.windows.com"];
+const MAX_DEVICES = 10;
+
 export function resolveSubject(env = process.env) {
   if (env.VAPID_SUBJECT) return env.VAPID_SUBJECT;
   if (env.RAILWAY_PUBLIC_DOMAIN) return `https://${env.RAILWAY_PUBLIC_DOMAIN}`;
@@ -64,6 +68,15 @@ export function createPusher({ store, webpush = webpushLib, env = process.env })
       throw new Error("Invalid push subscription");
     }
     if (!/^https:\/\//.test(sub.endpoint)) throw new Error("Push endpoint must be https");
+    // Only the browsers' own push services: the server will POST to this address, so it can't be any address someone names.
+    let host;
+    try {
+      host = new URL(sub.endpoint).hostname.toLowerCase();
+    } catch {
+      throw new Error("Invalid push subscription");
+    }
+    if (!env.ALLOW_ANY_PUSH_HOST && !PUSH_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) throw new Error("Push endpoint is not a known push service");
+    if (subs().filter((s) => ownerOf(s) === owner && s.endpoint !== sub.endpoint).length >= MAX_DEVICES) throw new Error("Too many devices on this account. Remove one first.");
     const entry = {
       endpoint: sub.endpoint,
       keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },

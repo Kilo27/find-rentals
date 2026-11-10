@@ -11,6 +11,8 @@ const PROMPT_VERSION = 1;
 const CHECKS_PER_SCAN = 100;
 const CONCURRENCY = 4;
 const CHECK_TTL_MS = 14 * 24 * 3600_000;
+const RETRY_AFTER_MS = 24 * 3600_000;
+const MAX_FAILS = 3;
 // Less of an advert's own text than this beyond its title and address (most Daft results) leaves nothing to read.
 const MIN_OWN_TEXT = 40;
 
@@ -188,7 +190,12 @@ export function createListingChecker({ client, model = CHECK_MODEL, perScan = CH
         entry.lastSeen = at;
         applyFacts(listing, entry.facts, now);
         stats.cached++;
-      } else todo.push({ listing, key, failedBefore: entry?.key === key });
+      } else if (entry?.key === key && entry.failedAt) {
+        // An advert that couldn't be read waits a day before it is tried again, and is given up on after a few tries (it is
+        // read again if it changes). Its wording is filtered meanwhile, as without Haiku.
+        entry.lastSeen = at;
+        if ((entry.fails ?? 1) < MAX_FAILS && now.getTime() - Date.parse(entry.failedAt) >= RETRY_AFTER_MS) todo.push({ listing, key, failedBefore: true, fails: entry.fails ?? 1 });
+      } else todo.push({ listing, key, failedBefore: false, fails: 0 });
     }
     // An advert that couldn't be read last time goes to the back, so one that never can be doesn't hold up the others.
     todo.sort((a, b) => a.failedBefore - b.failedBefore);
@@ -197,14 +204,14 @@ export function createListingChecker({ client, model = CHECK_MODEL, perScan = CH
     let stopped = false;
     const worker = async () => {
       while (!stopped && next < work.length) {
-        const { listing, key } = work[next++];
+        const { listing, key, fails } = work[next++];
         try {
           const facts = await read(listing, today);
           cache[listing.id] = { key, at, lastSeen: at, facts };
           applyFacts(listing, facts, now);
           stats.checked++;
         } catch (err) {
-          cache[listing.id] = { key, at, lastSeen: at, failedAt: at };
+          cache[listing.id] = { key, at, lastSeen: at, failedAt: at, fails: fails + 1 };
           stats.failed++;
           stats.error ??= err.message;
           // The service itself failing, after the SDK's own retries, won't get better by asking again in this scan.

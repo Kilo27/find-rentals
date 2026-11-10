@@ -3,7 +3,7 @@ import { haversineKm } from "./geo.js";
 const RANK = { daft: 0, ul: 1, rent: 2, myhome: 3, web: 4 };
 const STOP = new Set([
   "room", "rooms", "double", "single", "twin", "bedroom", "bed", "to", "rent", "let", "share", "sharing", "co", "county",
-  "limerick", "ireland", "the", "in", "available", "house", "apartment", "flat", "ensuite", "en", "suite", "shared",
+  "limerick", "dublin", "cork", "galway", "ireland", "the", "in", "available", "house", "apartment", "flat", "ensuite", "en", "suite", "shared",
   "large", "small", "per", "month", "week", "and", "for",
 ]);
 
@@ -33,7 +33,10 @@ const canonical = (u) => {
   }
 };
 
-const digits = (s) => new Set(String(s ?? "").match(/\d+/g) ?? []);
+// Postal districts ("Dublin 8", "D08") and Eircodes name an area, not a door, so they can't tell two houses apart or say
+// they are the same one.
+const AREA_CODES = /\bdublin\s*\d{1,2}w?\b|\bd\d{2}\b|\b[a-z]\d{2}\s*[a-z0-9]{4}\b/gi;
+const digits = (s) => new Set(String(s ?? "").replace(AREA_CODES, " ").match(/\d+/g) ?? []);
 
 export function sameProperty(a, b) {
   if (canonical(a.url) === canonical(b.url)) return true;

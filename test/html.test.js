@@ -35,7 +35,7 @@ Disallow: /search?
 Allow: /search?q=ok
 Disallow: /*.json$
 
-User-agent: rentalwatch
+User-agent: asapaccommodation
 Disallow: /blocked-for-us/
 `;
 
@@ -47,7 +47,7 @@ test("robots.txt: specific group wins over *, longest rule wins, wildcards work"
   assert.equal(isAllowed(generic, "/data.json"), false);
   assert.equal(isAllowed(generic, "/rooms/123"), true);
 
-  const ours = parseRobots(ROBOTS, "rentalwatch");
+  const ours = parseRobots(ROBOTS, "asapaccommodation");
   assert.equal(isAllowed(ours, "/private/x"), true, "our group does not disallow /private/");
   assert.equal(isAllowed(ours, "/blocked-for-us/x"), false);
   assert.deepEqual(parseRobots("", "x"), []);
@@ -234,4 +234,28 @@ test("null, empty or non-numeric coordinates in page JSON mean 'no location', ne
   const ld = `<script type="application/ld+json">{"@type":"Apartment","name":"Flat","url":"/p/9","geo":{"latitude":null,"longitude":null}}</script>`;
   const [l] = candidatesFromJsonLd(extractJsonLd(load(ld)), "https://site.ie/");
   assert.ok(!Number.isFinite(l.lat), "JSON-LD null geo is not a coordinate");
+});
+
+test("robots.txt: a group for our own user agent is honoured by default", () => {
+  const rules = parseRobots("User-agent: *\nAllow: /\n\nUser-agent: ASAPAccommodation\nDisallow: /listings/");
+  assert.equal(isAllowed(rules, "/listings/5"), false);
+});
+
+test("fetcher: redirects are followed one hop at a time, and one to an address that isn't allowed is refused", async () => {
+  const hops = [];
+  const fetchImpl = async (url, opts) => {
+    hops.push([url, opts.redirect]);
+    if (url.endsWith("/robots.txt")) return new Response("", { status: 404 });
+    if (url === "https://a.example.ie/old") return new Response(null, { status: 301, headers: { location: "/new" } });
+    if (url === "https://a.example.ie/new") return new Response("<p>hello</p>", { status: 200 });
+    if (url === "https://a.example.ie/evil") return new Response(null, { status: 302, headers: { location: "https://service.railway.internal/secret" } });
+    return new Response("no", { status: 404 });
+  };
+  const f = createFetcher({ politenessMs: 0, fetchImpl });
+  const ok = await f.get("https://a.example.ie/old");
+  assert.equal(ok.html, "<p>hello</p>");
+  assert.equal(ok.url, "https://a.example.ie/new");
+  await assert.rejects(f.get("https://a.example.ie/evil"), /not allowed/);
+  assert.ok(!hops.some(([u]) => u.includes("railway.internal")), "the internal address was never requested");
+  assert.ok(hops.filter(([u]) => !u.endsWith("robots.txt")).every(([, r]) => r === "manual"));
 });

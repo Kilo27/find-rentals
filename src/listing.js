@@ -33,6 +33,8 @@ export function makeListing({
 }) {
   const bedsMatch = bedsText ? /(\d+)/.exec(bedsText) : null;
   const hasCoords = validCoord(lat, lng);
+  // The address becomes a link in the app, so anything that isn't a web address (javascript:, data:) is not kept.
+  if (!/^https?:\/\//i.test(String(url ?? ""))) url = "";
   return {
     id: `${source}:${externalId}`,
     source,

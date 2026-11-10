@@ -13,7 +13,7 @@ let store;
 let dir;
 let pushed;
 
-const sub = (name) => ({ endpoint: `https://push.example/${name}`, keys: { p256dh: "k", auth: "a" } });
+const sub = (name) => ({ endpoint: `https://web.push.apple.com/${name}`, keys: { p256dh: "k", auth: "a" } });
 
 // Each caller keeps its own cookie jar: { session, viewAs }.
 const jar = () => ({ session: "", viewAs: "" });
@@ -276,12 +276,12 @@ test("devices belong to the user who registered them; test pushes only reach you
 
   pushed.length = 0;
   assert.equal((await call(bob, "POST", "/api/test-push")).data.sent, 1);
-  assert.deepEqual(pushed, ["https://push.example/bobs-phone"]);
+  assert.deepEqual(pushed, ["https://web.push.apple.com/bobs-phone"]);
 
   // nobody can remove someone else's device
-  await call(admin, "POST", "/api/unsubscribe", { endpoint: "https://push.example/bobs-phone" });
+  await call(admin, "POST", "/api/unsubscribe", { endpoint: "https://web.push.apple.com/bobs-phone" });
   assert.equal((await call(bob, "GET", "/api/state")).data.subscriptions.length, 1);
-  await call(bob, "POST", "/api/unsubscribe", { endpoint: "https://push.example/bobs-phone" });
+  await call(bob, "POST", "/api/unsubscribe", { endpoint: "https://web.push.apple.com/bobs-phone" });
   assert.equal((await call(bob, "GET", "/api/state")).data.subscriptions.length, 0);
 });
 
@@ -300,7 +300,7 @@ test("the admin sees every user's devices and activity, and can test one user's 
 
   pushed.length = 0;
   assert.equal((await call(admin, "POST", "/api/users/bob/test-push")).data.sent, 1);
-  assert.deepEqual(pushed, ["https://push.example/bobs-phone"]);
+  assert.deepEqual(pushed, ["https://web.push.apple.com/bobs-phone"]);
   assert.equal((await call(admin, "POST", "/api/users/nobody/test-push")).status, 404);
 });
 
@@ -353,7 +353,7 @@ test("the admin can view the app as a user, and only the admin", async () => {
   assert.equal((await call(admin, "GET", "/api/users")).status, 403);
   assert.equal((await call(admin, "GET", "/api/debug")).status, 403);
   assert.equal((await call(admin, "POST", "/api/subscribe", sub("admins-laptop"))).status, 403);
-  assert.equal((await call(admin, "POST", "/api/unsubscribe", { endpoint: "https://push.example/bobs-phone" })).status, 403);
+  assert.equal((await call(admin, "POST", "/api/unsubscribe", { endpoint: "https://web.push.apple.com/bobs-phone" })).status, 403);
   assert.equal((await call(admin, "POST", "/api/test-push")).status, 403);
   assert.equal((await call(admin, "POST", "/api/account/password", { current: "admin-pass-1", next: "brand-new-pass-1" })).status, 403);
   assert.equal(store.data.subscriptions.some((s) => s.endpoint.includes("admins-laptop")), false);
