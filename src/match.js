@@ -1,9 +1,12 @@
 import { evaluateLocation, evaluateNonLocation } from "./filter.js";
 import { dedupe } from "./dedupe.js";
-import { buildListingPayload } from "./push.js";
+import { ADMIN_OWNER, buildListingPayload } from "./push.js";
 import { attachTransit } from "./transit.js";
 import { leaseKey } from "./daft.js";
 import { campusOf, configOf } from "./searches.js";
+
+// How a site did, without the page addresses, errors or what it sent back.
+export const slimSource = (s) => ({ id: s.id, label: s.label, ok: s.ok !== false, ...(s.skipped ? { skipped: "paused" } : {}), fetched: s.fetched ?? 0, notes: (s.notes ?? []).some((n) => n.warning) ? [{ warning: "some listings may be missing" }] : [] });
 
 const MAX_INDIVIDUAL_PUSHES = 5;
 const MAX_STORED_MATCHES = 200;
@@ -162,7 +165,9 @@ export async function matchAccount({ store, pusher, transit, now }, { owner, sea
     durationMs: pool.durationMs,
     ok: true,
     mode,
-    sources: pool.results,
+    // The pages and errors are the admin's to read; every other account keeps only whether each site was read, which is
+    // all it is shown, so each account's copy of the region's notes isn't saved over and over.
+    sources: owner === ADMIN_OWNER ? pool.results : pool.results.map(slimSource),
     candidates: pool.candidates,
     rejected,
     pending: pool.pending,

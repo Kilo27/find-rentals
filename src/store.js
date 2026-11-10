@@ -155,7 +155,11 @@ function upgrade(parsed) {
 }
 
 export class Store {
-  constructor(dir) {
+  // `saveDelayMs`: with a delay, changes made close together are written once, that long after the first of them (the whole
+  // state is rewritten each time, so a burst of taps shouldn't be a burst of writes). Call flush() before exiting.
+  constructor(dir, { saveDelayMs = 0 } = {}) {
+    this.saveDelayMs = saveDelayMs;
+    this.saveTimer = null;
     fs.mkdirSync(dir, { recursive: true });
     this.file = path.join(dir, "state.json");
     this.data = this.#load();
@@ -181,6 +185,23 @@ export class Store {
   }
 
   save() {
+    if (this.saveDelayMs > 0) {
+      this.saveTimer ??= setTimeout(() => this.flush(), this.saveDelayMs);
+      this.saveTimer.unref?.();
+      return;
+    }
+    this.#write();
+  }
+
+  // Writes any change that is waiting.
+  flush() {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.#write();
+  }
+
+  #write() {
     const tmp = `${this.file}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(this.data));
     fs.renameSync(tmp, this.file);

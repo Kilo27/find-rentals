@@ -1,6 +1,6 @@
 import { ADAPTERS } from "./sources/index.js";
 import { usableDetail } from "./sources/web.js";
-import { createFetcher } from "./html.js";
+
 import { resolveArea, resolveLocation } from "./geocode.js";
 import { analyzeListing } from "./filter.js";
 import { stripSharedCoords } from "./coords.js";
@@ -15,6 +15,8 @@ const GEOCODE_BUDGET = 60;
 const MAX_PENDING_SCANS = 5;
 const SOURCE_ALERT_AFTER = 6;
 const CACHE_TTL_MS = 14 * 24 * 3600_000;
+const GEOCACHE_KEEP_MS = 100 * 24 * 3600_000;
+const DEBUG_KEEP_MS = 7 * 24 * 3600_000;
 
 const noteWarning = (r) => r.notes.find((n) => n.warning)?.warning;
 const noteFailure = (r) => r.notes.find((n) => !n.ok);
@@ -29,7 +31,7 @@ const noteFailure = (r) => r.notes.find((n) => !n.ok);
 //
 // Returns { pool, run }: `pool` is null when no site could be reached (every account then keeps what it has), and `run` is
 // the record of how it went, for the logs and the admin.
-export async function collectRegion({ store, pusher, regionId, geocoder, fetchImpl, sleep, politenessMs, proxy, now, seq, checker = null }) {
+export async function collectRegion({ store, pusher, regionId, geocoder, fetchImpl, fetcherFor, proxy, now, seq, checker = null }) {
   const t0 = now();
   const nowIso = t0.toISOString();
   const d = store.data;
@@ -84,14 +86,14 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
   const budget = { detail: region.maxDetailFetches, geocode: GEOCODE_BUDGET, exhausted: false };
   const deps = {
     fetchImpl,
-    fetcher: createFetcher({ fetchImpl, sleep, politenessMs, respectRobots: region.respectRobots }),
+    fetcher: fetcherFor("direct", region.respectRobots),
     cache: d.pageCache,
     budget,
     now: () => now().getTime(),
   };
   // Sources listed in SCRAPER_PROXY_SOURCES go out through the proxy or laptop agent; everything else
   // (and the geocoder) stays direct.
-  const proxiedFetcher = proxy.fetch ? createFetcher({ fetchImpl: proxy.fetch, sleep, politenessMs, respectRobots: region.respectRobots }) : null;
+  const proxiedFetcher = proxy.fetch ? fetcherFor("proxy", region.respectRobots) : null;
   const depsFor = (id) => (proxy.fetch && proxy.sources.has(id) ? { ...deps, fetchImpl: proxy.fetch, fetcher: proxiedFetcher } : deps);
   const routed = proxy.fetch ? region.sources.filter((id) => proxy.sources.has(id)) : [];
   // A sleeping laptop is not a broken source: its sources are skipped for this scan, not failed.
@@ -215,6 +217,14 @@ export async function collectRegion({ store, pusher, regionId, geocoder, fetchIm
 
   for (const [id, v] of Object.entries(d.pageCache)) {
     if (t0.getTime() - Date.parse(v.lastSeen ?? v.at) > CACHE_TTL_MS) delete d.pageCache[id];
+  }
+  // Addresses looked up long ago would be asked again anyway, and notes about pages that haven't been read lately (a page
+  // dropped from the region's settings) are no use to anyone, so neither is kept for ever.
+  for (const [key, v] of Object.entries(d.geocache ?? {})) {
+    if (t0.getTime() - Date.parse(v.at) > GEOCACHE_KEEP_MS) delete d.geocache[key];
+  }
+  for (const [key, v] of Object.entries(d.debug)) {
+    if (t0.getTime() - Date.parse(v.at) > DEBUG_KEEP_MS) delete d.debug[key];
   }
 
   const pool = { regionId, at: nowIso, seq, durationMs: now() - t0, listings, results, candidates: candidates.size, pending, laptopOffline, proxied, via: proxy.kind, leaseRequested: [...ranges.keys()], leaseMatches: Object.fromEntries(Object.entries(leaseMatches).map(([k, ids]) => [k, new Set(ids)])) };

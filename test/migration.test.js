@@ -175,3 +175,20 @@ test("a saved state is put right on the way in: accounts that no longer exist, u
   assert.equal(data.regions.cork.daftLocation, "cork-city", "an invalid saved region falls back to the catalogue's");
   assert.ok(data.regions.galway, "a region the file didn't have is added");
 });
+
+test("store: with a save delay, a burst of changes is written once, and flush() writes what is waiting", async () => {
+  const fsm = await import("node:fs");
+  const { dir } = tempStore();
+  const store = new Store(dir, { saveDelayMs: 60 });
+  store.data.homeScreens.bob = "2026-11-10T10:00:00Z";
+  store.save();
+  store.data.homeScreens.carol = "2026-11-10T10:00:01Z";
+  store.save();
+  assert.equal(fsm.existsSync(store.file), false, "nothing is written yet");
+  await new Promise((r) => setTimeout(r, 150));
+  assert.deepEqual(Object.keys(JSON.parse(fsm.readFileSync(store.file, "utf8")).homeScreens), ["bob", "carol"]);
+  store.data.homeScreens.dan = "x";
+  store.save();
+  store.flush();
+  assert.ok(JSON.parse(fsm.readFileSync(store.file, "utf8")).homeScreens.dan, "flush writes at once");
+});

@@ -6,6 +6,7 @@ import express from "express";
 import { ConfigError, SECTIONS, SOURCES, normalizePrefs, normalizeRegion } from "./config.js";
 import { createAuth } from "./auth.js";
 import { DEVICE_TTL_MS, isLinkToken } from "./links.js";
+import { slimSource } from "./match.js";
 import { areasForMatches } from "./mapdata.js";
 import { createUsers, UserError, normalizeUsername } from "./users.js";
 import { CAMPUSES } from "./transit/campuses.js";
@@ -28,7 +29,6 @@ const csvCell = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replaceAll('"',
 
 // What an account that isn't the admin is told about how the sites were read: whether each was, never the pages, the
 // errors or what a site sent back, which are the admin's to work from.
-const slimSource = (s) => ({ id: s.id, label: s.label, ok: s.ok !== false, ...(s.skipped ? { skipped: "paused" } : {}), fetched: s.fetched ?? 0, notes: (s.notes ?? []).some((n) => n.warning) ? [{ warning: "some listings may be missing" }] : [] });
 const slimRun = (run) => {
   if (!run) return run;
   const { error: _e, sources, regions: _r, checks: _c, coordsIgnored: _i, ...rest } = run;

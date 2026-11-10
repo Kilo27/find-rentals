@@ -26,7 +26,7 @@ if (!isValidUsername(adminUsername)) {
 }
 
 const dataDir = path.resolve(process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || "./data");
-const store = new Store(dataDir);
+const store = new Store(dataDir, { saveDelayMs: 1000 });
 const pusher = createPusher({ store });
 
 // AGENT_TOKEN lets a laptop agent (npm run agent) fetch the proxied sources from a home connection.
@@ -81,6 +81,16 @@ for (const sig of ["SIGTERM", "SIGINT"]) {
   process.on(sig, () => {
     scheduler.stop();
     laptopWatch.stop();
-    server.close(() => process.exit(0));
+    store.flush();
+    server.close(() => {
+      store.flush();
+      process.exit(0);
+    });
+    // The agent's open poll would keep the server waiting; don't wait on it.
+    setTimeout(() => {
+      store.flush();
+      process.exit(0);
+    }, 3000).unref();
+    server.closeIdleConnections?.();
   });
 }

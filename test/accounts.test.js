@@ -395,3 +395,19 @@ test("an invited account is told whether each site was read, never the pages, er
     server.close();
   }
 });
+
+test("state doesn't grow for ever: old address lookups and notes about unread pages are dropped, and other accounts keep only a slim record of each site", async () => {
+  const { store, pusher } = setup();
+  const bob = await addUser(store, "bob", "ul");
+  const old = "2020-01-01T00:00:00.000Z";
+  store.data.geocache["gone street@52.67,-8.57"] = { lat: 1, lng: 2, at: old };
+  store.data.geocache["fresh street@52.67,-8.57"] = { lat: 1, lng: 2, at: new Date().toISOString() };
+  store.data.debug["limerick/rent:https://www.rent.ie/removed/"] = { at: old };
+  const scanner = scannerFor(store, pusher, daft({ limerick: () => [limerick(1)] }));
+  await scanner.run();
+  assert.deepEqual(Object.keys(store.data.geocache), ["fresh street@52.67,-8.57"]);
+  assert.equal(store.data.debug["limerick/rent:https://www.rent.ie/removed/"], undefined);
+  assert.ok(searchOf(store).lastRun.sources[0].notes.length > 0, "the admin keeps the page notes");
+  assert.deepEqual(Object.keys(bob.lastRun.sources[0]).sort(), ["fetched", "id", "label", "notes", "ok"]);
+  assert.ok(!JSON.stringify(bob.lastRun.sources).includes("daft.ie"), "no page addresses");
+});

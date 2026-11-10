@@ -345,3 +345,13 @@ test("push: only the browsers' own push services are accepted as a device, and a
   assert.throws(() => pusher.addSubscription(sub("https://web.push.apple.com/eleventh"), "UA", "bob"), /Too many devices/);
   pusher.addSubscription(sub("https://web.push.apple.com/a"), "UA", "bob");
 });
+
+test("scan: robots.txt is read once per site across scans, not once per scan", async () => {
+  const { store, pusher } = setup();
+  const fetchImpl = bySection({ sharing: daftPage([rawListing({ id: 1 })]) });
+  const scanner = newScanner({ store, pusher, fetchImpl });
+  await scanner.run();
+  await scanner.run();
+  await scanner.run();
+  assert.equal(fetchImpl.calls.filter((c) => c.url.endsWith("/robots.txt")).length, 1);
+});

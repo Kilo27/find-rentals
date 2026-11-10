@@ -1,6 +1,7 @@
 import { collectRegion } from "./collect.js";
 import { matchAccount } from "./match.js";
 import { createGeocoder } from "./geocode.js";
+import { createFetcher } from "./html.js";
 import { proxyFromEnv } from "./proxy.js";
 import { searchCampus } from "./catalogue.js";
 import { regionStatus, scannableRegionIds } from "./regions.js";
@@ -84,6 +85,14 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   // The latest pool for each region. It lives in memory: the accounts' own matches are what is saved, and a restart
   // collects again before the next match.
   const pools = new Map();
+  // One fetcher per route (direct or through the proxy or laptop) for the life of the scanner, so the wait between requests
+  // to a site and the robots.txt it was last read with are shared by every region and every scan, not started afresh each time.
+  const fetchers = new Map();
+  const fetcherFor = (via, respectRobots) => {
+    const key = `${via}:${respectRobots === false ? "any" : "robots"}`;
+    if (!fetchers.has(key)) fetchers.set(key, createFetcher({ fetchImpl: via === "proxy" ? proxy.fetch : fetchImpl, sleep, politenessMs, respectRobots }));
+    return fetchers.get(key);
+  };
   let inflight = null;
   // The regions the scan in flight was asked for, or null when it is every region.
   let covers = null;
@@ -143,7 +152,7 @@ export function createScanner({ store, pusher, fetchImpl = fetch, sleep, politen
   async function scanRegion(regionId, geocoder) {
     const t0 = now();
     const accounts = watchers(store, regionId);
-    const { pool, run: collected } = await collectRegion({ store, pusher, regionId, geocoder, fetchImpl, sleep, politenessMs, proxy, now, seq: ++seq, checker });
+    const { pool, run: collected } = await collectRegion({ store, pusher, regionId, geocoder, fetchImpl, fetcherFor, proxy, now, seq: ++seq, checker });
 
     if (!pool) {
       // Nothing could be read, so every account keeps what it has and is told the check didn't work.
